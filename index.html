@@ -1,252 +1,314 @@
 
-<!-- saved from url=(0075)file:///C:/Users/%EC%9C%A4%EA%B8%B0%EB%B3%B4/Downloads/tennis_club_app.html -->
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><style>
+<style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--font-sans);background:var(--color-background-tertiary);min-height:100vh}
-.app{display:flex;flex-direction:column;min-height:600px;max-width:480px;margin:0 auto;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
-.header{background:#1D9E75;padding:14px 16px;display:flex;align-items:center;gap:8px}
-.header h1{color:#fff;font-size:17px;font-weight:500}
-.header-badge{background:rgba(255,255,255,0.25);color:#fff;font-size:12px;padding:3px 10px;border-radius:20px}
-.content{flex:1;overflow-y:auto;padding:12px 14px}
-.section-title{font-size:13px;color:var(--color-text-secondary);font-weight:500;margin:4px 0 10px;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary)}
-.member-row{display:flex;align-items:center;padding:11px 12px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);margin-bottom:7px;gap:10px}
-.member-avatar{width:36px;height:36px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:#0F6E56;flex-shrink:0}
-.member-name{flex:1;font-size:15px;font-weight:500;color:var(--color-text-primary)}
-.member-sub{font-size:12px;color:var(--color-text-secondary)}
-.btn-attend{background:#1D9E75;color:#fff;border:none;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;font-weight:500;transition:opacity 0.15s}
-.btn-attend:hover{opacity:0.85}
-.btn-attend.done{background:#B4B2A9;color:#fff;cursor:default}
-.attend-row{display:flex;align-items:center;padding:10px 12px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);margin-bottom:7px;gap:8px}
-.seq-badge{width:26px;height:26px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:#0F6E56;flex-shrink:0}
-.attend-name{flex:1;font-size:15px;font-weight:500;color:var(--color-text-primary)}
-.game-ctrl{display:flex;align-items:center;gap:4px}
-.game-btn{width:26px;height:26px;border-radius:50%;border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--color-text-primary);transition:background 0.1s}
+.app{display:flex;flex-direction:column;min-height:640px;max-width:500px;margin:0 auto;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;font-family:var(--font-sans)}
+.header{background:#1D9E75;padding:12px 14px 10px}
+.header-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.header-top h1{color:#fff;font-size:16px;font-weight:500;flex:1}
+.header-date{color:rgba(255,255,255,0.8);font-size:12px}
+.stat-row{display:flex;gap:6px}
+.stat-chip{flex:1;background:rgba(255,255,255,0.18);border-radius:8px;padding:6px 4px;text-align:center;cursor:pointer;transition:background 0.15s;border:1px solid rgba(255,255,255,0.1)}
+.stat-chip:hover{background:rgba(255,255,255,0.3)}
+.stat-chip .num{font-size:18px;font-weight:500;color:#fff}
+.stat-chip .lbl{font-size:10px;color:rgba(255,255,255,0.8);margin-top:1px}
+.content{flex:1;overflow-y:auto;padding:10px 12px}
+.section-title{font-size:12px;color:var(--color-text-secondary);font-weight:500;margin:8px 0 6px;padding-bottom:5px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:6px}
+.time-band{font-size:11px;background:#E1F5EE;color:#0F6E56;padding:2px 8px;border-radius:10px}
+.member-row{display:flex;align-items:center;padding:9px 10px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);margin-bottom:6px;gap:8px}
+.avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;flex-shrink:0}
+.avatar.m{background:#E6F1FB;color:#185FA5}
+.avatar.f{background:#FBEAF0;color:#993556}
+.gender-tag{font-size:10px;padding:1px 6px;border-radius:8px;font-weight:500}
+.gender-tag.m{background:#E6F1FB;color:#185FA5}
+.gender-tag.f{background:#FBEAF0;color:#993556}
+.member-info{flex:1;min-width:0}
+.member-name{font-size:14px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:5px}
+.member-sub{font-size:11px;color:var(--color-text-secondary);margin-top:1px}
+.btn-attend{background:#1D9E75;color:#fff;border:none;padding:5px 12px;border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap;transition:opacity 0.15s}
+.btn-attend:hover{opacity:0.82}
+.btn-attend.done{background:#B4B2A9;cursor:default}
+
+.attend-row{display:flex;align-items:center;padding:8px 10px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);margin-bottom:5px;gap:6px;flex-wrap:wrap}
+.seq-badge{width:22px;height:22px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:#0F6E56;flex-shrink:0}
+.attend-name{font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:52px}
+.attend-time{font-size:11px;color:var(--color-text-secondary);background:var(--color-background-secondary);padding:2px 6px;border-radius:6px;white-space:nowrap}
+.game-ctrl{display:flex;align-items:center;gap:3px;margin-left:auto}
+.game-btn{width:24px;height:24px;border-radius:50%;border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--color-text-primary);line-height:1}
 .game-btn:hover{background:var(--color-background-tertiary)}
-.game-count{min-width:24px;text-align:center;font-size:14px;font-weight:500;color:var(--color-text-primary)}
-.btn-leave{background:var(--color-background-danger);color:var(--color-text-danger);border:0.5px solid var(--color-border-danger);padding:5px 10px;border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;transition:opacity 0.15s}
-.btn-leave:hover{opacity:0.75}
-.empty-state{text-align:center;padding:40px 20px;color:var(--color-text-secondary);font-size:14px}
-.empty-icon{font-size:36px;margin-bottom:8px;color:var(--color-border-secondary)}
+.game-count{min-width:20px;text-align:center;font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.btn-leave{background:var(--color-background-danger);color:var(--color-text-danger);border:0.5px solid var(--color-border-danger);padding:4px 8px;border-radius:var(--border-radius-md);font-size:11px;cursor:pointer;white-space:nowrap}
+
+.empty-state{text-align:center;padding:32px 16px;color:var(--color-text-secondary);font-size:13px}
+
 .bottom-nav{display:flex;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
-.nav-btn{flex:1;padding:12px 8px;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--color-text-secondary);transition:color 0.15s;font-family:var(--font-sans)}
+.nav-btn{flex:1;padding:10px 6px;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--color-text-secondary);font-family:var(--font-sans)}
 .nav-btn.active{color:#1D9E75}
-.nav-btn i{font-size:20px}
-.stats-bar{display:flex;gap:8px;margin-bottom:12px}
-.stat-card{flex:1;background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;text-align:center}
-.stat-num{font-size:20px;font-weight:500;color:#1D9E75}
-.stat-label{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
-.left-badge{font-size:11px;background:#E1F5EE;color:#0F6E56;padding:2px 7px;border-radius:10px;margin-left:6px}
-.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:999;white-space:nowrap}
+.nav-btn i{font-size:18px}
+
+.save-section{padding:10px 12px 14px;border-top:0.5px solid var(--color-border-tertiary)}
+.btn-save{width:100%;padding:11px;background:#1D9E75;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--font-sans)}
+.btn-save:hover{opacity:0.88}
+.save-info{text-align:center;font-size:11px;color:var(--color-text-secondary);margin-top:6px}
+
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#2C2C2A;color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:999;white-space:nowrap}
 .toast.show{opacity:1}
+
+.left-chip{font-size:10px;background:#E1F5EE;color:#0F6E56;padding:1px 6px;border-radius:8px}
+.time-group{margin-bottom:8px}
+.time-group-header{font-size:11px;color:#0F6E56;background:#E1F5EE;padding:4px 10px;border-radius:6px;margin-bottom:4px;font-weight:500}
+.left-rec{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:7px 10px;margin-bottom:5px;display:flex;align-items:center;gap:8px;opacity:0.65}
 </style>
 
-</head><body><div class="app">
+<div class="app">
   <div class="header">
-    <i class="ti ti-tennis" style="color:#fff;font-size:20px" aria-hidden="true"></i>
-    <h1>테니스 동호회</h1>
-    <span class="header-badge" id="dateLabel">6/8 (월)</span>
+    <div class="header-top">
+      <i class="ti ti-tennis" style="color:#fff;font-size:18px" aria-hidden="true"></i>
+      <h1>테니스 동호회</h1>
+      <span class="header-date" id="dateLabel"></span>
+    </div>
+    <div class="stat-row" id="statRow"></div>
   </div>
-
-  <div class="content" id="mainContent"><div class="stats-bar">
-    <div class="stat-card"><div class="stat-num">10</div><div class="stat-label">전체 회원</div></div>
-    <div class="stat-card"><div class="stat-num">2</div><div class="stat-label">오늘 참석</div></div>
-    <div class="stat-card"><div class="stat-num">1</div><div class="stat-label">퇴소</div></div>
-  </div>
-  <div class="section-title">전체 회원 (10명)</div><div class="member-row">
-      <div class="member-avatar">김</div>
-      <div style="flex:1">
-        <div class="member-name">김민준<span class="left-badge">참석중</span></div>
-        <div class="member-sub">중급</div>
-      </div>
-      <button class="btn-attend done" disabled="">출석완료</button>
-    </div><div class="member-row">
-      <div class="member-avatar">이</div>
-      <div style="flex:1">
-        <div class="member-name">이서연<span class="left-badge">참석중</span></div>
-        <div class="member-sub">고급</div>
-      </div>
-      <button class="btn-attend done" disabled="">출석완료</button>
-    </div><div class="member-row">
-      <div class="member-avatar">박</div>
-      <div style="flex:1">
-        <div class="member-name">박지호</div>
-        <div class="member-sub">초급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(3);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">최</div>
-      <div style="flex:1">
-        <div class="member-name">최유나</div>
-        <div class="member-sub">중급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(4);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">정</div>
-      <div style="flex:1">
-        <div class="member-name">정현우</div>
-        <div class="member-sub">고급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(5);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">윤</div>
-      <div style="flex:1">
-        <div class="member-name">윤소희</div>
-        <div class="member-sub">초급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(6);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">강</div>
-      <div style="flex:1">
-        <div class="member-name">강도윤<span class="left-badge" style="background:#FAECE7;color:#993C1D">퇴소</span></div>
-        <div class="member-sub">중급</div>
-      </div>
-      <span style="font-size:11px;color:var(--color-text-secondary)">퇴소</span>
-    </div><div class="member-row">
-      <div class="member-avatar">임</div>
-      <div style="flex:1">
-        <div class="member-name">임채원</div>
-        <div class="member-sub">고급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(8);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">한</div>
-      <div style="flex:1">
-        <div class="member-name">한수진</div>
-        <div class="member-sub">초급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(9);showPage(&#39;today&#39;)">출석</button>
-    </div><div class="member-row">
-      <div class="member-avatar">오</div>
-      <div style="flex:1">
-        <div class="member-name">오태양</div>
-        <div class="member-sub">중급</div>
-      </div>
-      <button class="btn-attend" onclick="markAttend(10);showPage(&#39;today&#39;)">출석</button>
-    </div></div>
-
+  <div class="content" id="mainContent"></div>
+  <div id="saveSection"></div>
   <div class="bottom-nav">
-    <button class="nav-btn active" id="navMembers" onclick="showPage(&#39;members&#39;)">
+    <button class="nav-btn active" id="navMembers" onclick="showPage('members')">
       <i class="ti ti-users" aria-hidden="true"></i>회원명부
     </button>
-    <button class="nav-btn" id="navToday" onclick="showPage(&#39;today&#39;)">
+    <button class="nav-btn" id="navToday" onclick="showPage('today')">
       <i class="ti ti-clipboard-list" aria-hidden="true"></i>오늘 참석자
     </button>
   </div>
 </div>
-<div class="toast" id="toast">김민준 출석 완료 ✓</div>
+<div class="toast" id="toast"></div>
 
 <script>
-const members = [
-  {id:1,name:'김민준',level:'중급'},
-  {id:2,name:'이서연',level:'고급'},
-  {id:3,name:'박지호',level:'초급'},
-  {id:4,name:'최유나',level:'중급'},
-  {id:5,name:'정현우',level:'고급'},
-  {id:6,name:'윤소희',level:'초급'},
-  {id:7,name:'강도윤',level:'중급'},
-  {id:8,name:'임채원',level:'고급'},
-  {id:9,name:'한수진',level:'초급'},
-  {id:10,name:'오태양',level:'중급'},
+// 회원 데이터 - 가나다 순, 성별 포함
+const MEMBERS = [
+  {id:1, name:'강도윤', gender:'m', level:'중급'},
+  {id:2, name:'김민준', gender:'m', level:'중급'},
+  {id:3, name:'박지호', gender:'m', level:'초급'},
+  {id:4, name:'오태양', gender:'m', level:'중급'},
+  {id:5, name:'윤기보', gender:'m', level:'고급'},
+  {id:6, name:'이서연', gender:'f', level:'고급'},
+  {id:7, name:'임채원', gender:'f', level:'고급'},
+  {id:8, name:'정현우', gender:'m', level:'고급'},
+  {id:9, name:'최유나', gender:'f', level:'중급'},
+  {id:10, name:'한수진', gender:'f', level:'초급'},
+  {id:11, name:'윤소희', gender:'f', level:'초급'},
 ];
 
-let attendees = [];
-let leftMembers = [];
-let seqCounter = 0;
-let currentPage = 'members';
+const TIME_BANDS = [
+  {key:'t1730', label:'17:30 ~ 18:00', start:17*60+30, end:18*60},
+  {key:'t1800', label:'18:00 ~ 19:00', start:18*60,    end:19*60},
+  {key:'t1900', label:'19:00 ~ 20:00', start:19*60,    end:20*60},
+  {key:'t2000', label:'20:00 ~ 21:00', start:20*60,    end:21*60},
+];
 
+const STORAGE_KEY = 'tennis_club_data';
 const today = new Date();
+const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+let state = {attendees:[], leftMembers:[], seqCounter:0, savedAt:null};
+let currentPage = 'members';
+let filterGender = null; // null=전체, 'm'=남, 'f'=여
+
+// 날짜 표시
 document.getElementById('dateLabel').textContent =
   `${today.getMonth()+1}/${today.getDate()} (${['일','월','화','수','목','금','토'][today.getDay()]})`;
 
-function getInitial(name){return name[0];}
-
-function showToast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),1800);
+// ── 로컬스토리지 로드 ──
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const parsed = JSON.parse(raw);
+    if(parsed.date === todayStr && parsed.state){
+      state = parsed.state;
+    }
+  }catch(e){}
 }
 
-function markAttend(memberId){
-  const m=members.find(x=>x.id===memberId);
-  if(!m)return;
-  if(attendees.find(x=>x.id===memberId))return;
-  seqCounter++;
-  attendees.push({id:m.id,name:m.name,level:m.level,seq:seqCounter,games:0});
-  showToast(`${m.name} 출석 완료 ✓`);
+// ── 로컬스토리지 저장 ──
+function saveState(manual=false){
+  state.savedAt = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({date:todayStr, state}));
+  if(manual) showToast('💾 저장 완료! ' + state.savedAt);
   renderPage();
 }
 
+function exportDailyJSON(){
+  const allData = [];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith('tennis_')||k===STORAGE_KEY){
+        const raw = localStorage.getItem(k);
+        allData.push(JSON.parse(raw));
+      }
+    }
+  }catch(e){}
+  const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), records:allData},null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`tennis_${todayStr}.json`; a.click();
+  URL.revokeObjectURL(url);
+  showToast('📁 파일 저장 완료!');
+}
+
+function getTimeBand(minsSinceMidnight){
+  for(const b of TIME_BANDS){
+    if(minsSinceMidnight>=b.start && minsSinceMidnight<b.end) return b.label;
+  }
+  return '기타';
+}
+
+function timeToMins(timeStr){
+  if(!timeStr) return 0;
+  const [h,m]=timeStr.split(':').map(Number);
+  return h*60+m;
+}
+
+function nowTimeStr(){
+  const n=new Date();
+  return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+function markAttend(memberId){
+  const m=MEMBERS.find(x=>x.id===memberId);
+  if(!m||state.attendees.find(x=>x.id===memberId)) return;
+  state.seqCounter++;
+  const time=nowTimeStr();
+  state.attendees.push({id:m.id,name:m.name,gender:m.gender,level:m.level,seq:state.seqCounter,games:0,time});
+  saveState();
+  showToast(`${m.name} 출석 ✓ (${time})`);
+  showPage('today');
+}
+
 function changeGames(id,delta){
-  const a=attendees.find(x=>x.id===id);
-  if(!a)return;
+  const a=state.attendees.find(x=>x.id===id);
+  if(!a) return;
   a.games=Math.max(0,a.games+delta);
+  saveState();
   renderPage();
 }
 
 function leaveAttendee(id){
-  const a=attendees.find(x=>x.id===id);
-  if(!a)return;
-  if(!confirm(`${a.name} 회원을 퇴소 처리하시겠습니까?`))return;
-  leftMembers.push({...a,leftAt:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})});
-  attendees=attendees.filter(x=>x.id!==id);
+  const a=state.attendees.find(x=>x.id===id);
+  if(!a) return;
+  if(!confirm(`${a.name} 회원을 퇴소 처리하시겠습니까?`)) return;
+  state.leftMembers.push({...a, leftAt:nowTimeStr()});
+  state.attendees=state.attendees.filter(x=>x.id!==id);
+  saveState();
   showToast(`${a.name} 퇴소 처리됨`);
   renderPage();
 }
 
-function showPage(page){
+function showPage(page, genderFilter){
   currentPage=page;
+  if(genderFilter!==undefined) filterGender=genderFilter;
+  else if(page==='members') filterGender=null;
   document.getElementById('navMembers').classList.toggle('active',page==='members');
   document.getElementById('navToday').classList.toggle('active',page==='today');
   renderPage();
 }
 
+function renderStatRow(){
+  const total=state.attendees.length;
+  const male=state.attendees.filter(x=>x.gender==='m').length;
+  const female=state.attendees.filter(x=>x.gender==='f').length;
+  document.getElementById('statRow').innerHTML=`
+    <div class="stat-chip" onclick="showPage('today',null)" title="전체 참석자">
+      <div class="num">${total}</div><div class="lbl">오늘 참석 총</div>
+    </div>
+    <div class="stat-chip" onclick="showPage('today','m')" title="남성 참석자">
+      <div class="num" style="color:#B5D4F4">${male}</div><div class="lbl">남</div>
+    </div>
+    <div class="stat-chip" onclick="showPage('today','f')" title="여성 참석자">
+      <div class="num" style="color:#F4C0D1">${female}</div><div class="lbl">여</div>
+    </div>`;
+}
+
 function renderPage(){
+  renderStatRow();
   const c=document.getElementById('mainContent');
-  if(currentPage==='members') renderMembers(c);
-  else renderToday(c);
+  const s=document.getElementById('saveSection');
+  if(currentPage==='members'){
+    renderMembers(c); s.innerHTML='';
+  } else {
+    renderToday(c); renderSaveSection(s);
+  }
 }
 
 function renderMembers(c){
-  const attendedIds=new Set(attendees.map(x=>x.id));
-  const leftIds=new Set(leftMembers.map(x=>x.id));
-  let html=`<div class="stats-bar">
-    <div class="stat-card"><div class="stat-num">${members.length}</div><div class="stat-label">전체 회원</div></div>
-    <div class="stat-card"><div class="stat-num">${attendees.length}</div><div class="stat-label">오늘 참석</div></div>
-    <div class="stat-card"><div class="stat-num">${leftMembers.length}</div><div class="stat-label">퇴소</div></div>
-  </div>
-  <div class="section-title">전체 회원 (${members.length}명)</div>`;
-  members.forEach(m=>{
+  const attendedIds=new Set(state.attendees.map(x=>x.id));
+  const leftIds=new Set(state.leftMembers.map(x=>x.id));
+  let html=`<div class="section-title"><i class="ti ti-users" style="font-size:14px" aria-hidden="true"></i>전체 회원 (${MEMBERS.length}명) — 가나다순</div>`;
+  MEMBERS.forEach(m=>{
     const attended=attendedIds.has(m.id);
     const left=leftIds.has(m.id);
-    const tag=left?`<span style="font-size:11px;color:var(--color-text-secondary)">퇴소</span>`:
+    const gi=m.gender==='m'?'m':'f';
+    const gLabel=m.gender==='m'?'남':'여';
+    const chip=attended&&!left?`<span class="left-chip">참석중</span>`:(left?`<span class="left-chip" style="background:#FAECE7;color:#993C1D">퇴소</span>`:'');
+    const btn=left?`<span style="font-size:11px;color:var(--color-text-secondary)">퇴소</span>`:
       attended?`<button class="btn-attend done" disabled>출석완료</button>`:
-      `<button class="btn-attend" onclick="markAttend(${m.id});showPage('today')">출석</button>`;
+      `<button class="btn-attend" onclick="markAttend(${m.id})">출석</button>`;
     html+=`<div class="member-row">
-      <div class="member-avatar">${getInitial(m.name)}</div>
-      <div style="flex:1">
-        <div class="member-name">${m.name}${attended&&!left?`<span class="left-badge">참석중</span>`:''}${left?`<span class="left-badge" style="background:#FAECE7;color:#993C1D">퇴소</span>`:''}</div>
+      <div class="avatar ${gi}">${m.name[0]}</div>
+      <div class="member-info">
+        <div class="member-name">${m.name}<span class="gender-tag ${gi}">${gLabel}</span>${chip}</div>
         <div class="member-sub">${m.level}</div>
       </div>
-      ${tag}
+      ${btn}
     </div>`;
   });
   c.innerHTML=html;
 }
 
 function renderToday(c){
-  let html=`<div class="stats-bar">
-    <div class="stat-card"><div class="stat-num">${attendees.length}</div><div class="stat-label">현재 참석</div></div>
-    <div class="stat-card"><div class="stat-num">${attendees.reduce((s,a)=>s+a.games,0)}</div><div class="stat-label">총 게임수</div></div>
-    <div class="stat-card"><div class="stat-num">${leftMembers.length}</div><div class="stat-label">퇴소</div></div>
-  </div>
-  <div class="section-title">현재 참석자 (${attendees.length}명)</div>`;
-  if(attendees.length===0){
-    html+=`<div class="empty-state"><div class="empty-icon"><i class="ti ti-users-minus"></i></div>아직 출석한 회원이 없습니다.<br><small style="margin-top:6px;display:block">회원명부에서 출석 버튼을 눌러주세요</small></div>`;
-  } else {
-    attendees.forEach(a=>{
+  let list = filterGender ? state.attendees.filter(x=>x.gender===filterGender) : state.attendees;
+  const fLabel = filterGender==='m'?'남성 참석자':filterGender==='f'?'여성 참석자':'전체 참석자';
+  let html=`<div class="section-title"><i class="ti ti-clipboard-list" style="font-size:14px" aria-hidden="true"></i>${fLabel} (${list.length}명)`;
+  if(filterGender) html+=`<span style="cursor:pointer;color:#1D9E75;font-size:11px" onclick="showPage('today',null)">전체 보기 ×</span>`;
+  html+=`</div>`;
+
+  if(list.length===0){
+    html+=`<div class="empty-state"><i class="ti ti-users-minus" style="font-size:32px;color:var(--color-border-secondary);display:block;margin-bottom:8px"></i>아직 출석한 회원이 없습니다.<br><small style="margin-top:4px;display:block">회원명부에서 출석 버튼을 눌러주세요</small></div>`;
+    c.innerHTML=html; return;
+  }
+
+  // 시간대별 그룹핑
+  const bands = {};
+  TIME_BANDS.forEach(b=>bands[b.label]=[]);
+  bands['기타']=[];
+  list.forEach(a=>{
+    const mins=timeToMins(a.time);
+    const band=getTimeBand(mins);
+    bands[band].push(a);
+  });
+
+  TIME_BANDS.forEach(b=>{
+    const group=bands[b.label];
+    if(group.length===0) return;
+    html+=`<div class="time-group"><div class="time-group-header"><i class="ti ti-clock" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i> ${b.label} · ${group.length}명</div>`;
+    group.forEach(a=>{
+      const gi=a.gender==='m'?'m':'f';
+      const gL=a.gender==='m'?'남':'여';
       html+=`<div class="attend-row">
         <div class="seq-badge">${a.seq}</div>
-        <div class="attend-name">${a.name}</div>
+        <div class="avatar ${gi}" style="width:26px;height:26px;font-size:11px">${a.name[0]}</div>
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="attend-name">${a.name}</span>
+            <span class="gender-tag ${gi}" style="font-size:9px;padding:1px 5px">${gL}</span>
+          </div>
+          <div class="attend-time"><i class="ti ti-clock" style="font-size:10px;vertical-align:-1px" aria-hidden="true"></i> ${a.time}</div>
+        </div>
         <div class="game-ctrl">
           <button class="game-btn" onclick="changeGames(${a.id},-1)" aria-label="게임 감소">−</button>
           <span class="game-count">${a.games}</span>
@@ -255,20 +317,65 @@ function renderToday(c){
         <button class="btn-leave" onclick="leaveAttendee(${a.id})">퇴소</button>
       </div>`;
     });
+    html+=`</div>`;
+  });
+
+  if(bands['기타'].length>0){
+    html+=`<div class="time-group"><div class="time-group-header">기타 시간대 · ${bands['기타'].length}명</div>`;
+    bands['기타'].forEach(a=>{
+      const gi=a.gender==='m'?'m':'f';
+      const gL=a.gender==='m'?'남':'여';
+      html+=`<div class="attend-row">
+        <div class="seq-badge">${a.seq}</div>
+        <div style="min-width:0;flex:1">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="attend-name">${a.name}</span>
+            <span class="gender-tag ${gi}" style="font-size:9px">${gL}</span>
+          </div>
+          <div class="attend-time">${a.time}</div>
+        </div>
+        <div class="game-ctrl">
+          <button class="game-btn" onclick="changeGames(${a.id},-1)">−</button>
+          <span class="game-count">${a.games}</span>
+          <button class="game-btn" onclick="changeGames(${a.id},1)">+</button>
+        </div>
+        <button class="btn-leave" onclick="leaveAttendee(${a.id})">퇴소</button>
+      </div>`;
+    });
+    html+=`</div>`;
   }
-  if(leftMembers.length>0){
-    html+=`<div class="section-title" style="margin-top:14px">퇴소 회원 (${leftMembers.length}명)</div>`;
-    leftMembers.forEach(a=>{
-      html+=`<div class="attend-row" style="opacity:0.55">
-        <div class="seq-badge" style="background:#F1EFE8;color:#5F5E5A">${a.seq}</div>
-        <div class="attend-name" style="text-decoration:line-through;color:var(--color-text-secondary)">${a.name}</div>
-        <span style="font-size:12px;color:var(--color-text-secondary);margin-left:auto">${a.games}게임 · ${a.leftAt}</span>
+
+  // 퇴소 이력
+  const leftToShow = filterGender ? state.leftMembers.filter(x=>x.gender===filterGender) : state.leftMembers;
+  if(leftToShow.length>0){
+    html+=`<div class="section-title" style="margin-top:10px"><i class="ti ti-door-exit" style="font-size:14px" aria-hidden="true"></i>퇴소 (${leftToShow.length}명)</div>`;
+    leftToShow.forEach(a=>{
+      html+=`<div class="left-rec">
+        <span style="font-size:11px;font-weight:500;color:var(--color-text-secondary)">${a.seq}. ${a.name}</span>
+        <span class="gender-tag ${a.gender==='m'?'m':'f'}" style="font-size:9px">${a.gender==='m'?'남':'여'}</span>
+        <span style="font-size:11px;color:var(--color-text-secondary);margin-left:auto">${a.games}게임 · 퇴소 ${a.leftAt}</span>
       </div>`;
     });
   }
+
   c.innerHTML=html;
 }
 
+function renderSaveSection(s){
+  const savedText=state.savedAt?`마지막 저장: ${state.savedAt}`:'저장된 기록 없음';
+  s.innerHTML=`<div class="save-section">
+    <button class="btn-save" onclick="saveState(true)">
+      <i class="ti ti-device-floppy" aria-hidden="true"></i>오늘 데이터 저장
+    </button>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button onclick="exportDailyJSON()" style="flex:1;padding:8px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);font-size:12px;cursor:pointer;font-family:var(--font-sans);color:var(--color-text-primary)">
+        <i class="ti ti-download" aria-hidden="true"></i> JSON 파일로 내보내기
+      </button>
+    </div>
+    <div class="save-info">${savedText}</div>
+  </div>`;
+}
+
+loadState();
 renderPage();
 </script>
-</body></html>
