@@ -276,21 +276,58 @@ function tmins(s){if(!s)return 9999;const[h,m]=s.split(':').map(Number);return h
 function getBand(t){const m=tmins(t);return TBANDS.find(b=>m>=b.s&&m<b.e)||null;}
 function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
 
-/* ════ 스토리지 ════ */
-function load(){
-  try{
-    const r=localStorage.getItem(SK);if(!r)return;
-    const o=JSON.parse(r);
-    if(o.date===dateStr()){S=o.state;courtConfirmed=o.courtConfirmed||{1:false,2:false,3:false,4:false};}
-  }catch(e){}
-}
-function save(){
-  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,courtConfirmed}));}catch(e){}
-}
-function archive(s,dt){
-  try{const h=JSON.parse(localStorage.getItem(HK)||'[]');const f=h.filter(r=>r.date!==dt);f.push({date:dt,...JSON.parse(JSON.stringify(s))});localStorage.setItem(HK,JSON.stringify(f));}catch(e){}
+// 호스팅 환경에 맞춰 baseUrl 주소를 입력하세요. (서버와 같은 곳에 올리면 공백 가능)
+const API_URL = '/'; 
+
+// 서버에서 실시간으로 데이터를 불러오는 함수
+function load() {
+  fetch(API_URL)
+    .then(res => res.json())
+    .then(o => {
+      if (o && o.date === dateStr()) {
+        S = o.state;
+        courtConfirmed = o.courtConfirmed || {1:false,2:false,3:false,4:false};
+      } else {
+        // 날짜가 바뀌었거나 데이터가 없으면 초기화 상태 유지
+        S = {attendees:[],leftMembers:[],seqCounter:0};
+        courtConfirmed = {1:false,2:false,3:false,4:false};
+      }
+      render();
+    })
+    .catch(e => {
+      console.error("데이터 로드 실패:", e);
+      toast("⚠️ 서버에서 데이터를 가져오지 못했습니다.");
+    });
 }
 
+// 변화된 데이터를 서버에 동기화하는 함수
+function save() {
+  const payload = {
+    date: dateStr(),
+    state: S,
+    courtConfirmed: courtConfirmed
+  };
+
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(res => {
+    if(!res.success) console.error("저장 실패", res.message);
+  })
+  .catch(e => {
+    console.error("데이터 동기화 실패:", e);
+    toast("⚠️ 실시간 데이터 저장에 실패했습니다.");
+  });
+}
+
+// 아카이브 기능은 필요시 백엔드 파일 시스템에 구현하거나, 
+// 간소화를 위해 서버에 상태를 즉시 저장하는 것으로 save()와 통합 처리합니다.
+function archive(s, dt) {
+  save(); 
+}
 /* ════ 토스트 ════ */
 function toast(msg,dur=2400){
   const el=document.getElementById('toast');
