@@ -33,13 +33,13 @@ function writeData(data) {
 }
 
 // 1. 데이터 가져오기 API
-app.get('/', (req, res) => {
+app.get('/api/tennis', (req, res) => {
   const data = readData();
   res.json(data);
 });
 
 // 2. 데이터 저장하기 API
-app.post('/', (req, res) => {
+app.post('/api/tennis', (req, res) => {
   const { date, state, courtConfirmed } = req.body;
   const data = { date, state, courtConfirmed };
   writeData(data);
@@ -47,7 +47,7 @@ app.post('/', (req, res) => {
 });
 
 // 메인 페이지 서빙 (public/index.html)
-app.get('/', (req, res) => {
+app.get('/api/tennis', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 

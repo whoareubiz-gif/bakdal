@@ -277,7 +277,7 @@ function getBand(t){const m=tmins(t);return TBANDS.find(b=>m>=b.s&&m<b.e)||null;
 function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
 
 // 호스팅 환경에 맞춰 baseUrl 주소를 입력하세요. (서버와 같은 곳에 올리면 공백 가능)
-const API_URL = '/'; 
+const API_URL = '/api/tennis'; 
 
 // 서버에서 실시간으로 데이터를 불러오는 함수
 function load() {
