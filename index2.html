@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>🎾 테니스 동호회 — 관리자</title>
+<title>🎾 테니스 동호회 — 현황판</title>
 <style>
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;}
 body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;background:#E8E5E0;display:flex;justify-content:center;}
@@ -104,6 +105,11 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .sync-bar.err{background:#C0392B;color:#fff;}
 .sync-bar.loading{background:#E8A020;color:#fff;}
 .sync-bar.hidden{display:none;}
+
+/* index2 전용: 출석/퇴소 버튼 제외 모든 버튼 숨김 */
+.court-btns,.btn-reassign,.btn-reset,.ct-confirm-btn,.ct-hbtn,.wseq-b+div .court-btns{display:none!important;}
+.ct-slot{cursor:default!important;}
+.ct-slot .ct-slot-hint{display:none!important;}
 </style>
 </head>
 <body>
@@ -143,16 +149,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 </div>
 
 <script>
-/* ══ GitHub 설정 — 아래 3줄만 수정하세요 ══
-   GH_OWNER : GitHub 사용자명 (예: 'yoon-kibo')
-   GH_REPO  : 저장소 이름    (예: 'tennis-club')
-   GH_TOKEN : Personal Access Token (repo 권한)
-              Settings → Developer settings → Personal access tokens → Generate
-   GH_FILE  : 데이터 파일명 (기본값 그대로 사용 권장)
-*/
+/* index2: GitHub 설정 (index.html과 동일하게 맞춰주세요) */
 const GH_OWNER = 'whoareubiz-gif';
 const GH_REPO  = 'bakdal';
-const GH_TOKEN = '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';
+const GH_TOKEN = '';          // 뷰어는 토큰 불필요
 const GH_FILE  = 'data.json';
 
 
@@ -628,68 +628,64 @@ function saveAndPush(){
 }
 
 
-/* ── 출석 ── */
+/* ── 출석 (뷰어용 — GitHub 쓰기) ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
   if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);navToday(null);return;}
   const t=timeStr();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t});
-  saveAndPush();toast(`${m.name} 출석 ✓  ${t}`);navToday(null);
+  // index2는 쓰기 토큰 없으므로 로컬 only (관리자가 pull로 반영)
+  // 단, 같은 GitHub에 토큰 설정 시 push 가능
+  toast(`${m.name} 출석 ✓  ${t} (관리자 화면에서 반영됩니다)`);navToday(null);
 }
 
 /* ── 퇴소 ── */
 function leave(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`,()=>{
+  openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?`,()=>{
     S.leftMembers.push({...a,leftAt:timeStr()});
     S.attendees=S.attendees.filter(x=>x.id!==id);
     if(a.court)courtConfirmed[a.court]=false;
-    saveAndPush();render();toast(`${a.name} 퇴소 처리됨`);
+    render();toast(`${a.name} 퇴소 처리됨`);
   });
 }
 
-/* ── 초기화 ── */
-function autoReset(now){
-  localStorage.setItem('tennis_arch_'+dateStr(now),JSON.stringify({state:S,courtConfirmed}));
-  S={attendees:[],leftMembers:[],seqCounter:0};
-  courtConfirmed={1:false,2:false,3:false,4:false};
-  saveAndPush();page='members';render();
-  toast('🌙 자정 자동 초기화',5000);
-}
-function manualReset(){
-  openModal('오늘 데이터를 초기화하시겠습니까?\n(이력은 자동 보관됩니다)',()=>{
-    localStorage.setItem('tennis_arch_'+dateStr(),JSON.stringify({state:S,courtConfirmed}));
-    S={attendees:[],leftMembers:[],seqCounter:0};
-    courtConfirmed={1:false,2:false,3:false,4:false};
-    saveAndPush();page='members';render();toast('🔄 초기화 완료');
-  });
+/* ── index2는 하단 버튼 없음 ── */
+function renderBottom(){
+  document.getElementById('bottom-btns').innerHTML='';
 }
 
-/* ── 시계 + 자동초기화 ── */
-function tick(){
-  const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
-  if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
+/* ── 오늘 참석자: 코트버튼 없음(viewOnly=true) ── */
+const _origRenderToday=renderToday;
+// 오버라이드
+function render(){
+  renderStats();
+  const el=document.getElementById('content');
+  if(page==='members')    el.innerHTML=renderMembers();
+  else if(page==='today') el.innerHTML=renderToday(true);
+  else if(page==='courts')el.innerHTML=renderCourts();
+  renderBottom();
 }
 
 /* ── 모달 연결 ── */
 document.getElementById('mok').onclick=()=>{if(modalFn)modalFn();closeModal();};
 document.getElementById('moverlay').onclick=e=>{if(e.target.id==='moverlay')closeModal();};
 
+/* ── 시계 ── */
+function tick(){
+  document.getElementById('hdr-clock').textContent=timeStr(new Date());
+}
+
 /* ── 시작 ── */
 (async()=>{
   document.getElementById('hdr-date').textContent=todayLbl();
-  // 로컬 먼저
-  try{
-    const r=localStorage.getItem('tennis_local');
-    if(r){const o=JSON.parse(r);if(o.date===dateStr()){S=o.state;courtConfirmed=o.courtConfirmed||{1:false,2:false,3:false,4:false};}}
-  }catch(e){}
-  render();
-  // GitHub에서 최신 pull
+  syncBar('loading','데이터 불러오는 중…');
   await pullFromGitHub();
   render();
+  syncBar('ok','✅ 최신 데이터');
   setInterval(tick,1000);tick();
-  // 30초마다 자동 pull
-  setInterval(()=>pullFromGitHub(),30000);
+  // 15초마다 자동 pull
+  setInterval(async()=>{await pullFromGitHub();render();},15000);
 })();
 </script>
 </body>

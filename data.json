@@ -1,0 +1,15 @@
+{
+  "date": "2026-06-10",
+  "state": {
+    "attendees": [],
+    "leftMembers": [],
+    "seqCounter": 0
+  },
+  "courtConfirmed": {
+    "1": false,
+    "2": false,
+    "3": false,
+    "4": false
+  },
+  "updatedAt": "2026-06-10T22:10:49.043347"
+}
