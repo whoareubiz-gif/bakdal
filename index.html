@@ -8,40 +8,35 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;}
 body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;background:#E8E5E0;display:flex;justify-content:center;align-items:flex-start;}
-#app{width:100%;max-width:480px;height:100vh;display:flex;flex-direction:column;background:#f8f7f4;position:relative;overflow:hidden;}
+#app{width:100%;max-width:480px;height:100vh;display:flex;flex-direction:column;background:#f8f7f4;overflow:hidden;}
 
 /* 헤더 */
-.hdr{background:#1D9E75;padding:12px 14px 10px;flex-shrink:0;}
-.hdr-top{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-.hdr-title{color:#fff;font-size:16px;font-weight:700;flex:1;}
-.hdr-date{color:rgba(255,255,255,.82);font-size:11px;}
-.hdr-clock{color:rgba(255,255,255,.6);font-size:11px;font-variant-numeric:tabular-nums;}
-.stat-row{display:flex;gap:5px;}
-.sc{flex:1;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:6px 3px;text-align:center;cursor:pointer;user-select:none;}
+.hdr{background:#1D9E75;padding:10px 13px 9px;flex-shrink:0;}
+.hdr-top{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+.hdr-title{color:#fff;font-size:15px;font-weight:700;flex:1;}
+.hdr-date{color:rgba(255,255,255,.82);font-size:10px;}
+.hdr-clock{color:rgba(255,255,255,.6);font-size:10px;font-variant-numeric:tabular-nums;}
+.stat-row{display:flex;gap:4px;}
+.sc{flex:1;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:5px 2px;text-align:center;cursor:pointer;user-select:none;}
 .sc:active{background:rgba(255,255,255,.35);}
-.sn{font-size:19px;font-weight:700;color:#fff;line-height:1.1;}
-.sn.m{color:#B5D4F4;}.sn.f{color:#F4C0D1;}
+.sn{font-size:17px;font-weight:700;color:#fff;line-height:1.1;}
+.sn.m{color:#B5D4F4;}.sn.f{color:#F4C0D1;}.sn.lv{color:#FFD580;}
 .sl{font-size:9px;color:rgba(255,255,255,.76);margin-top:1px;}
 
 /* 탭 */
 .tab-bar{display:flex;background:#fff;border-bottom:1px solid #E0DFDB;flex-shrink:0;}
-.tab{flex:1;padding:10px 4px;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:11px;color:#888780;font-weight:500;display:flex;flex-direction:column;align-items:center;gap:2px;border-bottom:2.5px solid transparent;transition:all .15s;}
-.tab span{font-size:18px;}
+.tab{flex:1;padding:9px 3px;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:10px;color:#888780;font-weight:500;display:flex;flex-direction:column;align-items:center;gap:1px;border-bottom:2.5px solid transparent;}
+.tab span{font-size:17px;}
 .tab.active{color:#1D9E75;font-weight:700;border-bottom-color:#1D9E75;}
 
 /* 본문 */
-.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 8px;}
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:9px 11px 6px;}
 
 /* 섹션 타이틀 */
-.stitle{display:flex;align-items:center;gap:5px;font-size:12px;color:#888780;font-weight:600;padding-bottom:6px;border-bottom:.5px solid #E0DFDB;margin-bottom:8px;margin-top:4px;}
+.stitle{display:flex;align-items:center;gap:5px;font-size:11px;color:#888780;font-weight:600;padding-bottom:5px;border-bottom:.5px solid #E0DFDB;margin-bottom:7px;margin-top:3px;}
 
 /* 카드 */
-.card{display:flex;align-items:center;flex-wrap:wrap;padding:9px 10px;background:#fff;border:.5px solid #E0DFDB;border-radius:11px;margin-bottom:7px;gap:7px;}
-
-/* 아바타 */
-.av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
-.av.m{background:#E6F1FB;color:#185FA5;}.av.f{background:#FBEAF0;color:#993556;}
-.av.sm{width:24px;height:24px;font-size:10px;}
+.card{display:flex;align-items:center;flex-wrap:wrap;padding:8px 9px;background:#fff;border:.5px solid #E0DFDB;border-radius:10px;margin-bottom:6px;gap:6px;}
 
 /* 성별태그 */
 .gt{font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;flex-shrink:0;}
@@ -52,160 +47,119 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .chip.g{background:#E1F5EE;color:#0F6E56;}.chip.r{background:#FAECE7;color:#993C1D;}
 
 /* 회원명부 버튼 */
-.btn-att{background:#1D9E75;color:#fff;border:none;padding:6px 13px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;}
+.btn-att{background:#1D9E75;color:#fff;border:none;padding:5px 11px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;}
 .btn-att.done{background:#B4B2A9;cursor:default;}
 
 /* 참석자 행 */
-.ai{flex:1;min-width:60px;}
+.ai{flex:1;min-width:55px;}
 .aname{font-size:13px;font-weight:700;color:#1A1A1A;}
 .atime{font-size:10px;color:#888780;background:#F0EDE8;padding:1px 5px;border-radius:5px;display:inline-block;margin-top:2px;}
-.seq-b{width:20px;height:20px;border-radius:50%;background:#E1F5EE;color:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.seq-b{width:19px;height:19px;border-radius:50%;background:#E1F5EE;color:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
 
-/* 코트 버튼 행 (참석자 페이지) */
+/* 게임수 표시 (+ - 없음) */
+.gcnt-only{min-width:28px;text-align:center;font-size:13px;font-weight:700;color:#1A1A1A;background:#F0EDE8;padding:3px 6px;border-radius:6px;flex-shrink:0;}
+
+/* 퇴소 버튼 */
+.btn-lv{background:#FAECE7;color:#993C1D;border:.5px solid #EFBCB0;padding:4px 7px;border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
+.btn-lv:active{opacity:.7;}
+
+/* 코트 버튼 행 */
 .court-btns{display:flex;gap:3px;width:100%;padding-top:4px;border-top:.5px solid #F0EDE8;margin-top:2px;}
-.cbtn{flex:1;padding:5px 2px;border-radius:7px;font-size:11px;font-weight:700;border:1.5px solid #D8D5CF;cursor:pointer;font-family:inherit;text-align:center;background:#F0EDE8;color:#888780;transition:all .12s;-webkit-appearance:none;}
+.cbtn{flex:1;padding:5px 2px;border-radius:7px;font-size:11px;font-weight:700;border:1.5px solid #D8D5CF;cursor:pointer;font-family:inherit;text-align:center;background:#F0EDE8;color:#888780;-webkit-appearance:none;}
 .cbtn:active{opacity:.75;}
 .cbtn.c1.on{background:#1D9E75;color:#fff;border-color:#1D9E75;}
 .cbtn.c2.on{background:#185FA5;color:#fff;border-color:#185FA5;}
 .cbtn.c3.on{background:#B25000;color:#fff;border-color:#B25000;}
 .cbtn.c4.on{background:#7B3FA0;color:#fff;border-color:#7B3FA0;}
-/* 꽉 찬 코트 버튼 */
-.cbtn.full-disabled{opacity:.38;cursor:not-allowed;}
-
-/* 게임 컨트롤 */
-.gc{display:flex;align-items:center;gap:3px;flex-shrink:0;}
-.gbtn{width:28px;height:28px;border-radius:50%;border:.5px solid #D0D0CC;background:#F0EDE8;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:inherit;line-height:1;-webkit-appearance:none;}
-.gbtn:active{background:#D8D5CF;}
-.gcnt{min-width:22px;text-align:center;font-size:14px;font-weight:700;color:#1A1A1A;}
-
-/* 퇴소 버튼 */
-.btn-lv{background:#FAECE7;color:#993C1D;border:.5px solid #EFBCB0;padding:5px 8px;border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
-.btn-lv:active{opacity:.7;}
+.cbtn.full-disabled{opacity:.35;cursor:not-allowed;}
 
 /* 시간대 그룹 */
-.tg{margin-bottom:10px;}
-.tg-hdr{font-size:11px;font-weight:700;background:#E1F5EE;color:#0F6E56;padding:5px 10px;border-radius:7px;margin-bottom:5px;}
+.tg{margin-bottom:9px;}
+.tg-hdr{font-size:11px;font-weight:700;background:#E1F5EE;color:#0F6E56;padding:4px 9px;border-radius:7px;margin-bottom:4px;}
 
 /* 퇴소 행 */
 .lrow{opacity:.6;}
 .lname{font-size:13px;font-weight:600;text-decoration:line-through;color:#888780;flex:1;}
 
 /* 빈 상태 */
-.empty{text-align:center;padding:50px 16px;color:#888780;font-size:13px;}
-.empty-icon{font-size:40px;margin-bottom:10px;}
+.empty{text-align:center;padding:44px 16px;color:#888780;font-size:13px;}
+.empty-icon{font-size:38px;margin-bottom:9px;}
 
-/* ══════════════════════════════════
-   코트 현황 페이지
-══════════════════════════════════ */
-.court-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 12px 6px;}
-
-/* 코트 카드 */
-.ct-card{border-radius:13px;overflow:hidden;border:1px solid #E0DFDB;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.07);}
-
-/* 코트 헤더 */
-.ct-hdr{padding:9px 10px;display:flex;align-items:center;gap:4px;position:relative;}
+/* ══ 코트 현황 ══ */
+.court-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:9px 11px 5px;}
+.ct-card{border-radius:12px;overflow:hidden;border:1px solid #E0DFDB;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.07);}
+.ct-hdr{padding:8px 9px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;}
 .ct-hdr.c1{background:#1D9E75;}.ct-hdr.c2{background:#185FA5;}
 .ct-hdr.c3{background:#B25000;}.ct-hdr.c4{background:#7B3FA0;}
 .ct-name{color:#fff;font-size:13px;font-weight:700;flex:1;}
 .ct-cnt{color:rgba(255,255,255,.85);font-size:10px;}
-/* 꽉 찬 X 뱃지 */
-.ct-full-badge{
-  background:rgba(0,0,0,.28);color:#fff;
-  font-size:12px;font-weight:900;
-  width:20px;height:20px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
-/* 코트 초기화 버튼 (헤더 안) */
-.ct-clear-btn{
-  background:rgba(255,255,255,.22);color:#fff;
-  border:1px solid rgba(255,255,255,.4);
-  border-radius:6px;padding:2px 7px;
-  font-size:10px;font-weight:700;cursor:pointer;
-  font-family:inherit;flex-shrink:0;
-  -webkit-appearance:none;
-}
-.ct-clear-btn:active{background:rgba(255,255,255,.4);}
-
-.ct-body{padding:7px 8px 8px;}
-
-/* 코트 슬롯 (탭으로 미배정 보내기) */
-.ct-slot{
-  display:flex;align-items:center;gap:5px;
-  padding:5px 7px;border-radius:8px;
-  background:#F5F4F1;margin-bottom:3px;
-  font-size:12px;font-weight:600;color:#1A1A1A;
-  cursor:pointer;transition:background .12s;
-  -webkit-tap-highlight-color:transparent;
-}
+.ct-full-badge{background:rgba(0,0,0,.28);color:#fff;font-size:11px;font-weight:900;width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+/* 헤더 버튼 공통 */
+.ct-hbtn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:2px 5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
+.ct-hbtn:active{background:rgba(255,255,255,.42);}
+/* 확정 버튼 - 강조 */
+.ct-confirm-btn{background:rgba(255,255,255,.9);color:#1A1A1A;border:1px solid rgba(255,255,255,.9);border-radius:6px;padding:2px 5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
+.ct-confirm-btn:active{background:rgba(255,255,255,.7);}
+.ct-body{padding:6px 7px 7px;}
+.ct-slot{display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:7px;background:#F5F4F1;margin-bottom:3px;font-size:11px;font-weight:600;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .ct-slot:active{background:#E8E5E0;}
-.ct-slot-hint{font-size:9px;color:#B8B5AF;margin-left:auto;white-space:nowrap;}
-.ct-empty{padding:5px 6px;border-radius:7px;border:1px dashed #D8D5CF;margin-bottom:3px;font-size:10px;color:#B8B5AF;text-align:center;}
-.ct-status{margin-top:4px;padding:4px 7px;border-radius:7px;font-size:10px;text-align:center;}
+.ct-slot-hint{font-size:8px;color:#B8B5AF;margin-left:auto;white-space:nowrap;}
+.ct-empty{padding:4px 5px;border-radius:6px;border:1px dashed #D8D5CF;margin-bottom:3px;font-size:9px;color:#B8B5AF;text-align:center;}
+.ct-status{margin-top:3px;padding:3px 6px;border-radius:6px;font-size:9px;text-align:center;}
 .ct-status.full{background:#FFF0E0;color:#B25000;font-weight:700;}
 .ct-status.wait{background:#F5F4F1;color:#888780;}
+.ct-status.confirmed{background:#E1F5EE;color:#0F6E56;font-weight:700;}
 
-/* 미배정 섹션 */
-.waiting-section{padding:0 12px 10px;}
-
-/* 미배정 순서 뱃지 */
-.wseq-b{
-  width:20px;height:20px;border-radius:50%;
-  background:#FFF3E0;color:#B25000;
-  display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:700;flex-shrink:0;
-}
+.waiting-section{padding:0 11px 8px;}
+.wseq-b{width:19px;height:19px;border-radius:50%;background:#FFF3E0;color:#B25000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
 
 /* 하단 버튼 */
-.bottom-btns{padding:8px 12px 6px;border-top:.5px solid #E0DFDB;flex-shrink:0;background:#fff;}
-.btn-reassign{width:100%;padding:10px;background:#EEF4FF;color:#185FA5;border:.5px solid #B5CFF5;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:6px;-webkit-appearance:none;display:block;}
+.bottom-btns{padding:7px 11px 5px;border-top:.5px solid #E0DFDB;flex-shrink:0;background:#fff;}
+.btn-reassign{width:100%;padding:9px;background:#EEF4FF;color:#185FA5;border:.5px solid #B5CFF5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:5px;-webkit-appearance:none;display:block;}
 .btn-reassign:active{opacity:.8;}
-.btn-reset{width:100%;padding:10px;background:#FFF3E0;color:#B25000;border:.5px solid #F5C98A;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-appearance:none;display:block;}
+.btn-reset{width:100%;padding:9px;background:#FFF3E0;color:#B25000;border:.5px solid #F5C98A;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-appearance:none;display:block;}
 .btn-reset:active{opacity:.8;}
-.bhint{font-size:10px;color:#888780;text-align:center;margin-top:4px;}
+.bhint{font-size:9px;color:#888780;text-align:center;margin-top:3px;}
 
 /* 토스트 */
-#toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%) translateY(8px);background:#2C2C2A;color:#fff;padding:9px 18px;border-radius:20px;font-size:12px;white-space:nowrap;z-index:600;pointer-events:none;opacity:0;transition:opacity .25s,transform .25s;max-width:90%;text-align:center;}
+#toast{position:fixed;bottom:106px;left:50%;transform:translateX(-50%) translateY(8px);background:#2C2C2A;color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;white-space:nowrap;z-index:600;pointer-events:none;opacity:0;transition:opacity .25s,transform .25s;max-width:92%;text-align:center;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 /* 모달 */
 #moverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:700;}
 #moverlay.show{display:flex;}
-.mbox{background:#fff;border-radius:16px;padding:24px 20px;max-width:300px;width:88%;box-shadow:0 12px 48px rgba(0,0,0,.22);}
-.mmsg{font-size:14px;color:#1A1A1A;line-height:1.7;white-space:pre-line;margin-bottom:20px;}
+.mbox{background:#fff;border-radius:16px;padding:22px 18px;max-width:300px;width:88%;box-shadow:0 12px 48px rgba(0,0,0,.22);}
+.mmsg{font-size:13px;color:#1A1A1A;line-height:1.7;white-space:pre-line;margin-bottom:18px;}
 .mbtns{display:flex;gap:8px;}
-.mcancel{flex:1;padding:11px;background:#F5F5F3;border:.5px solid #E0DFDB;border-radius:9px;font-size:13px;cursor:pointer;font-family:inherit;color:#1A1A1A;-webkit-appearance:none;}
-.mok{flex:1;padding:11px;background:#1D9E75;border:none;border-radius:9px;font-size:13px;cursor:pointer;font-family:inherit;color:#fff;font-weight:700;-webkit-appearance:none;}
+.mcancel{flex:1;padding:10px;background:#F5F5F3;border:.5px solid #E0DFDB;border-radius:9px;font-size:12px;cursor:pointer;font-family:inherit;color:#1A1A1A;-webkit-appearance:none;}
+.mok{flex:1;padding:10px;background:#1D9E75;border:none;border-radius:9px;font-size:12px;cursor:pointer;font-family:inherit;color:#fff;font-weight:700;-webkit-appearance:none;}
 </style>
 </head>
 <body>
 <div id="app">
   <div class="hdr">
     <div class="hdr-top">
-      <span style="font-size:20px">🎾</span>
+      <span style="font-size:19px">🎾</span>
       <span class="hdr-title">테니스 동호회</span>
       <span class="hdr-date" id="hdr-date"></span>
       <span class="hdr-clock" id="hdr-clock"></span>
     </div>
     <div class="stat-row">
-      <div class="sc" onclick="navToday(null)"><div class="sn" id="st0">0</div><div class="sl">오늘 참석 총</div></div>
+      <div class="sc" onclick="navToday(null)"><div class="sn" id="st0">0</div><div class="sl">참석 총</div></div>
       <div class="sc" onclick="navToday('m')"><div class="sn m" id="st1">0</div><div class="sl">남</div></div>
       <div class="sc" onclick="navToday('f')"><div class="sn f" id="st2">0</div><div class="sl">여</div></div>
+      <div class="sc" onclick="navToday(null)"><div class="sn lv" id="st3">0</div><div class="sl">퇴소</div></div>
     </div>
   </div>
-
   <div class="tab-bar">
     <button class="tab active" id="tab-members" onclick="showPage('members')"><span>👥</span>회원명부</button>
     <button class="tab" id="tab-today" onclick="showPage('today')"><span>📋</span>오늘 참석자</button>
     <button class="tab" id="tab-courts" onclick="showPage('courts')"><span>🎾</span>코트 현황</button>
   </div>
-
   <div class="content" id="content"></div>
   <div id="bottom-btns"></div>
 </div>
-
 <div id="toast"></div>
-
 <div id="moverlay">
   <div class="mbox">
     <div class="mmsg" id="mmsg"></div>
@@ -217,21 +171,80 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 </div>
 
 <script>
-/* ════════════════════════════════════════
-   데이터
-════════════════════════════════════════ */
+/* ════ 회원 데이터 (가나다순, 성별 표기) ════ */
 const MEMBERS=[
-  {id:1,name:'강도윤',gender:'m',level:'중급'},
-  {id:2,name:'김민준',gender:'m',level:'중급'},
-  {id:3,name:'박지호',gender:'m',level:'초급'},
-  {id:4,name:'오태양',gender:'m',level:'중급'},
-  {id:5,name:'윤기보',gender:'m',level:'고급'},
-  {id:6,name:'이서연',gender:'f',level:'고급'},
-  {id:7,name:'임채원',gender:'f',level:'고급'},
-  {id:8,name:'정현우',gender:'m',level:'고급'},
-  {id:9,name:'최유나',gender:'f',level:'중급'},
-  {id:10,name:'한수진',gender:'f',level:'초급'},
-  {id:11,name:'윤소희',gender:'f',level:'초급'},
+  {id:1, name:'강태욱',  gender:'m'},
+  {id:2, name:'고윤정',  gender:'f'},
+  {id:3, name:'권성렬',  gender:'m'},
+  {id:4, name:'권윤지',  gender:'f'},
+  {id:5, name:'김광숙',  gender:'f'},
+  {id:6, name:'김금수',  gender:'m'},
+  {id:7, name:'김남동',  gender:'m'},
+  {id:8, name:'김범수',  gender:'m'},
+  {id:9, name:'김성태',  gender:'m'},
+  {id:10,name:'김순옥',  gender:'f'},
+  {id:11,name:'김응덕',  gender:'m'},
+  {id:12,name:'김재연',  gender:'f'},
+  {id:13,name:'김정한',  gender:'m'},
+  {id:14,name:'김지윤',  gender:'f'},
+  {id:15,name:'김진일',  gender:'f'},
+  {id:16,name:'김철환',  gender:'m'},
+  {id:17,name:'김태경',  gender:'m'},
+  {id:18,name:'김태용',  gender:'m'},
+  {id:19,name:'김현범',  gender:'m'},
+  {id:20,name:'김현주',  gender:'m'},
+  {id:21,name:'김화영',  gender:'f'},
+  {id:22,name:'김희준',  gender:'m'},
+  {id:23,name:'남궁리',  gender:'f'},
+  {id:24,name:'박건식',  gender:'m'},
+  {id:25,name:'박규남',  gender:'m'},
+  {id:26,name:'박상환',  gender:'m'},
+  {id:27,name:'박성빈',  gender:'m'},
+  {id:28,name:'박세나',  gender:'f'},
+  {id:29,name:'박은정',  gender:'f'},
+  {id:30,name:'박진용',  gender:'m'},
+  {id:31,name:'박창훈',  gender:'m'},
+  {id:32,name:'백동현',  gender:'m'},
+  {id:33,name:'빈관기',  gender:'m'},
+  {id:34,name:'서현재',  gender:'m'},
+  {id:35,name:'성혜린',  gender:'f'},
+  {id:36,name:'송한헌',  gender:'m'},
+  {id:37,name:'신지원',  gender:'f'},
+  {id:38,name:'안영준',  gender:'m'},
+  {id:39,name:'안용진',  gender:'m'},
+  {id:40,name:'유재호',  gender:'m'},
+  {id:41,name:'윤기보',  gender:'m'},
+  {id:42,name:'이경희',  gender:'f'},
+  {id:43,name:'이광호',  gender:'m'},
+  {id:44,name:'이나연',  gender:'f'},
+  {id:45,name:'이범석',  gender:'m'},
+  {id:46,name:'이상현',  gender:'m'},
+  {id:47,name:'이서현',  gender:'f'},
+  {id:48,name:'이성로',  gender:'m'},
+  {id:49,name:'이정민',  gender:'m'},
+  {id:50,name:'이주화',  gender:'m'},
+  {id:51,name:'임윤미',  gender:'f'},
+  {id:52,name:'전용구',  gender:'m'},
+  {id:53,name:'전하리',  gender:'m'},
+  {id:54,name:'전하일',  gender:'m'},
+  {id:55,name:'조범진',  gender:'m'},
+  {id:56,name:'조현웅',  gender:'m'},
+  {id:57,name:'주영길',  gender:'m'},
+  {id:58,name:'진혜원',  gender:'f'},
+  {id:59,name:'천성인',  gender:'m'},
+  {id:60,name:'최경문',  gender:'m'},
+  {id:61,name:'최두희',  gender:'m'},
+  {id:62,name:'최명자',  gender:'f'},
+  {id:63,name:'최성희',  gender:'f'},
+  {id:64,name:'최주경',  gender:'m'},
+  {id:65,name:'한경수',  gender:'m'},
+  {id:66,name:'홍유철',  gender:'m'},
+  {id:67,name:'황병학',  gender:'m'},
+  {id:68,name:'황성인',  gender:'m'},
+  {id:69,name:'게스트1', gender:'m'},
+  {id:70,name:'게스트2', gender:'m'},
+  {id:71,name:'게스트3', gender:'m'},
+  {id:72,name:'게스트4', gender:'m'},
 ];
 const TBANDS=[
   {label:'17:30 ~ 18:00',s:17*60+30,e:18*60},
@@ -241,44 +254,44 @@ const TBANDS=[
 ];
 const CMAX=4;
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트'};
-const SK='tennis_v4',HK='tennis_hist';
+const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0'];
+const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD'];
+const SK='tennis_v5',HK='tennis_hist';
 
-/* ── 상태 ──────────────────────────────────
-   attendee: { id, name, gender, level, seq, games, time,
-               court: null|1|2|3|4,
-               courtFreeAt: null | "HH:MM"  (미배정 된 시각, null이면 한번도 배정 안됨) }
+/* ── 상태
+   attendee: { id,name,gender,seq,games,time,court,courtFreeAt,confirmed }
+   confirmed: 코트가 확정된 상태 (확정 버튼 누른 코트)
 */
 let S={attendees:[],leftMembers:[],seqCounter:0};
+// courtConfirmed[n] = true/false : 코트 n이 현재 확정 상태인지
+let courtConfirmed={1:false,2:false,3:false,4:false};
 let page='members',fGender=null;
 let autoFired=false,toastT=null,modalFn=null;
 
-/* ════════════════════════════════════════
-   유틸
-════════════════════════════════════════ */
+/* ════ 유틸 ════ */
 function pad(n){return String(n).padStart(2,'0');}
 function dateStr(d=new Date()){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
 function timeStr(d=new Date()){return`${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function tmins(s){if(!s)return 9999;const[h,m]=s.split(':').map(Number);return h*60+m;}
 function getBand(t){const m=tmins(t);return TBANDS.find(b=>m>=b.s&&m<b.e)||null;}
-function todayLbl(){
-  const d=new Date(),ds=['일','월','화','수','목','금','토'];
-  return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;
-}
+function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
 
-/* ════════════════════════════════════════
-   스토리지
-════════════════════════════════════════ */
+/* ════ 스토리지 ════ */
 function load(){
-  try{const r=localStorage.getItem(SK);if(!r)return;const o=JSON.parse(r);if(o.date===dateStr())S=o.state;}catch(e){}
+  try{
+    const r=localStorage.getItem(SK);if(!r)return;
+    const o=JSON.parse(r);
+    if(o.date===dateStr()){S=o.state;courtConfirmed=o.courtConfirmed||{1:false,2:false,3:false,4:false};}
+  }catch(e){}
 }
-function save(){try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S}));}catch(e){}}
+function save(){
+  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,courtConfirmed}));}catch(e){}
+}
 function archive(s,dt){
   try{const h=JSON.parse(localStorage.getItem(HK)||'[]');const f=h.filter(r=>r.date!==dt);f.push({date:dt,...JSON.parse(JSON.stringify(s))});localStorage.setItem(HK,JSON.stringify(f));}catch(e){}
 }
 
-/* ════════════════════════════════════════
-   토스트
-════════════════════════════════════════ */
+/* ════ 토스트 ════ */
 function toast(msg,dur=2400){
   const el=document.getElementById('toast');
   el.textContent=msg;el.classList.add('show');
@@ -286,215 +299,156 @@ function toast(msg,dur=2400){
   toastT=setTimeout(()=>el.classList.remove('show'),dur);
 }
 
-/* ════════════════════════════════════════
-   모달
-════════════════════════════════════════ */
-function openModal(msg,fn){
-  document.getElementById('mmsg').textContent=msg;
-  modalFn=fn;document.getElementById('moverlay').classList.add('show');
-}
+/* ════ 모달 ════ */
+function openModal(msg,fn){document.getElementById('mmsg').textContent=msg;modalFn=fn;document.getElementById('moverlay').classList.add('show');}
 function closeModal(){document.getElementById('moverlay').classList.remove('show');modalFn=null;}
 document.getElementById('mok').onclick=()=>{if(modalFn)modalFn();closeModal();};
 document.getElementById('moverlay').onclick=e=>{if(e.target.id==='moverlay')closeModal();};
 
-/* ════════════════════════════════════════
-   자동/수동 초기화
-════════════════════════════════════════ */
+/* ════ 자동/수동 초기화 ════ */
 function autoReset(now){
-  archive(S,dateStr(now));S={attendees:[],leftMembers:[],seqCounter:0};
+  archive(S,dateStr(now));
+  S={attendees:[],leftMembers:[],seqCounter:0};
+  courtConfirmed={1:false,2:false,3:false,4:false};
   save();page='members';fGender=null;render();
-  toast('🌙 자정 자동 초기화 완료 — 어제 데이터 저장됨',5000);
+  toast('🌙 자정 자동 초기화 완료',5000);
 }
 function manualReset(){
   openModal('오늘 데이터를 초기화하시겠습니까?\n(이력은 자동 보관됩니다)',()=>{
-    archive(S,dateStr());S={attendees:[],leftMembers:[],seqCounter:0};
-    save();page='members';fGender=null;render();toast('🔄 초기화 완료. 데이터 보관됨');
+    archive(S,dateStr());
+    S={attendees:[],leftMembers:[],seqCounter:0};
+    courtConfirmed={1:false,2:false,3:false,4:false};
+    save();page='members';fGender=null;render();toast('🔄 초기화 완료');
   });
 }
 
-/* ════════════════════════════════════════
-   시계
-════════════════════════════════════════ */
+/* ════ 시계 ════ */
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
 }
 
-/* ════════════════════════════════════════
-   출석
-════════════════════════════════════════ */
+/* ════ 출석 ════ */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
   if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 회원은 이미 출석 처리되었습니다`);navToday(null);return;}
   const t=timeStr();S.seqCounter++;
-  // courtFreeAt: 처음에는 출석시간을 미배정 기준시간으로 사용
-  S.attendees.push({id:m.id,name:m.name,gender:m.gender,level:m.level,
+  S.attendees.push({id:m.id,name:m.name,gender:m.gender,
     seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t});
   save();toast(`${m.name} 출석 ✓  ${t}`);navToday(null);
 }
 
-/* ════════════════════════════════════════
-   게임수
-════════════════════════════════════════ */
-function chGames(id,d){
-  const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  a.games=Math.max(0,a.games+d);save();render();
-}
-
-/* ════════════════════════════════════════
-   퇴소
-════════════════════════════════════════ */
+/* ════ 퇴소 ════ */
 function leave(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`,()=>{
     S.leftMembers.push({...a,leftAt:timeStr()});
     S.attendees=S.attendees.filter(x=>x.id!==id);
+    // 해당 코트 확정 상태 해제
+    if(a.court) courtConfirmed[a.court]=false;
     save();render();toast(`${a.name} 퇴소 처리됨`);
   });
 }
 
-/* ════════════════════════════════════════
-   코트 배정 토글 (참석자 페이지)
-════════════════════════════════════════ */
+/* ════ 코트 배정 토글 (참석자 페이지) ════ */
 function toggleCourt(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  if(a.court===n){
-    // 해제 → 미배정 시각 기록
-    a.court=null;a.courtFreeAt=timeStr();
-    save();render();return;
-  }
+  if(a.court===n){a.court=null;a.courtFreeAt=timeStr();save();render();return;}
   const cnt=S.attendees.filter(x=>x.court===n).length;
-  if(cnt>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 (최대 ${CMAX}명) ⚠️`);return;}
-  a.court=n;
-  save();render();
+  if(cnt>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
+  // 기존 코트에서 빠질 경우 그 코트 확정 해제
+  if(a.court) courtConfirmed[a.court]=false;
+  a.court=n;save();render();
 }
 
-/* ════════════════════════════════════════
-   코트 현황 페이지 — 슬롯 클릭으로 미배정
-════════════════════════════════════════ */
+/* ════ 코트 슬롯 탭으로 미배정 ════ */
 function removeFromCourt(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  if(a.court) courtConfirmed[a.court]=false;
   a.court=null;a.courtFreeAt=timeStr();
-  save();render();
-  toast(`${a.name} → 미배정으로 이동`);
+  save();render();toast(`${a.name} → 미배정 이동`);
 }
 
-/* ════════════════════════════════════════
-   코트 단일 초기화
-════════════════════════════════════════ */
+/* ════ 코트 해제 (구 초기화) — 게임수 유지 ════ */
 function clearCourt(n){
   const players=S.attendees.filter(x=>x.court===n);
   if(!players.length){toast(`${CNAMES[n]}에 배정된 인원이 없습니다`);return;}
-  openModal(`${CNAMES[n]} 배정 인원 ${players.length}명을\n모두 미배정으로 돌리시겠습니까?`,()=>{
+  openModal(`${CNAMES[n]} 배정 해제하시겠습니까?\n(게임수는 유지됩니다)`,()=>{
     const t=timeStr();
-    S.attendees.forEach(a=>{
-      if(a.court===n){a.court=null;a.courtFreeAt=t;}
-    });
-    save();render();toast(`${CNAMES[n]} 초기화 완료`);
+    S.attendees.forEach(a=>{if(a.court===n){a.court=null;a.courtFreeAt=t;}});
+    courtConfirmed[n]=false;
+    save();render();toast(`${CNAMES[n]} 해제 완료`);
   });
 }
 
-/* ════════════════════════════════════════
-   전체 재편성
-════════════════════════════════════════ */
+/* ════ 코트 확정 — 해당 코트 인원 게임수 +1 ════ */
+function confirmCourt(n){
+  const players=S.attendees.filter(x=>x.court===n);
+  if(!players.length){toast(`${CNAMES[n]}에 배정된 인원이 없습니다`);return;}
+  if(courtConfirmed[n]){toast(`${CNAMES[n]}은 이미 확정 상태입니다`);return;}
+  openModal(`${CNAMES[n]} 게임을 확정하시겠습니까?\n배정된 ${players.length}명의 게임수가 +1 됩니다.`,()=>{
+    players.forEach(a=>{a.games+=1;});
+    courtConfirmed[n]=true;
+    save();render();toast(`✅ ${CNAMES[n]} 확정 — ${players.length}명 게임수 +1`);
+  });
+}
+
+/* ════ 전체 재편성 ════ */
 function reassign(){
   openModal('코트 편성을 전체 초기화하시겠습니까?\n모든 코트 배정이 해제됩니다.',()=>{
     const t=timeStr();
     S.attendees.forEach(a=>{if(a.court!==null){a.court=null;a.courtFreeAt=t;}});
-    save();render();toast('🔄 전체 재편성 완료 — 모든 배정 해제됨');
+    courtConfirmed={1:false,2:false,3:false,4:false};
+    save();render();toast('🔄 전체 재편성 완료');
   });
 }
 
-/* ════════════════════════════════════════
-   미배정 순서 정렬
-   courtFreeAt(미배정 시각 or 출석시각) 오름차순
-════════════════════════════════════════ */
-function getSortedWaiting(){
-  return S.attendees
-    .filter(x=>x.court===null)
-    .sort((a,b)=>tmins(a.courtFreeAt)-tmins(b.courtFreeAt));
-}
-
-/* ════════════════════════════════════════
-   다음 1팀(4명) 추천
-   우선순위:
-   1) 대기시간 빠른 순(courtFreeAt)
-   2) 남자4 or 여자4 우선
-   3) 불가시 남2여2(대기순 혼합)
-════════════════════════════════════════ */
-function getRecommendedTeam(){
-  const waiting=getSortedWaiting();
-  if(waiting.length<1)return[];
-
-  const mW=waiting.filter(x=>x.gender==='m');
-  const fW=waiting.filter(x=>x.gender==='f');
-
-  // 남자 4명 가능
-  if(mW.length>=4) return mW.slice(0,4);
-  // 여자 4명 가능
-  if(fW.length>=4) return fW.slice(0,4);
-
-  // 남2여2 (대기순 상위 혼합)
-  const m2=mW.slice(0,2);
-  const f2=fW.slice(0,2);
-  const mixed=[...m2,...f2]
-    .sort((a,b)=>tmins(a.courtFreeAt)-tmins(b.courtFreeAt))
-    .slice(0,4);
-  return mixed;
-}
-
-/* ════════════════════════════════════════
-   추천팀을 특정 코트에 배정
-   - 기존 코트 인원은 미배정으로 내보내고
-     추천 4명을 새로 채움
-════════════════════════════════════════ */
-function assignTeamToCourt(courtNum, teamIds){
+/* ════ 추천팀 배정 ════ */
+function assignTeamToCourt(courtNum,teamIds){
   const t=timeStr();
-  // 해당 코트 기존 인원 → 미배정
-  S.attendees.forEach(a=>{
-    if(a.court===courtNum){a.court=null;a.courtFreeAt=t;}
-  });
-  // 추천팀 배정
-  teamIds.forEach(id=>{
-    const a=S.attendees.find(x=>x.id===id);
-    if(a){a.court=courtNum;}
-  });
-  save();render();
-  toast(`✅ ${CNAMES[courtNum]}에 ${teamIds.length}명 배정 완료`);
+  S.attendees.forEach(a=>{if(a.court===courtNum){a.court=null;a.courtFreeAt=t;}});
+  courtConfirmed[courtNum]=false;
+  teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a)a.court=courtNum;});
+  save();render();toast(`✅ ${CNAMES[courtNum]}에 ${teamIds.length}명 배정 완료`);
 }
 
-/* ════════════════════════════════════════
-   네비
-════════════════════════════════════════ */
+/* ════ 미배정 정렬 ════ */
+function getSortedWaiting(){
+  return S.attendees.filter(x=>x.court===null).sort((a,b)=>tmins(a.courtFreeAt)-tmins(b.courtFreeAt));
+}
+
+/* ════ 추천 1팀 ════ */
+function getRecommendedTeam(){
+  const w=getSortedWaiting();if(!w.length)return[];
+  const mW=w.filter(x=>x.gender==='m');
+  const fW=w.filter(x=>x.gender==='f');
+  if(mW.length>=4)return mW.slice(0,4);
+  if(fW.length>=4)return fW.slice(0,4);
+  return [...mW.slice(0,2),...fW.slice(0,2)].sort((a,b)=>tmins(a.courtFreeAt)-tmins(b.courtFreeAt)).slice(0,4);
+}
+
+/* ════ 네비 ════ */
 function showPage(p){
   page=p;if(p==='members')fGender=null;
-  ['members','today','courts'].forEach(k=>{
-    document.getElementById(`tab-${k}`).classList.toggle('active',p===k);
-  });
+  ['members','today','courts'].forEach(k=>{document.getElementById(`tab-${k}`).classList.toggle('active',p===k);});
   render();
 }
 function navToday(g){fGender=g;showPage('today');}
 function clearFilter(){fGender=null;render();}
 
-/* ════════════════════════════════════════
-   HTML 헬퍼
-════════════════════════════════════════ */
-function av(name,g,sm){return`<div class="av ${g}${sm?' sm':''}">${name[0]}</div>`;}
-function gt(g,sm){return`<span class="gt ${g}${sm?' sm':''}">${g==='m'?'남':'여'}</span>`;}
+/* ════ HTML 헬퍼 ════ */
+function gt(g,sm){return`<span class="gt ${g}${sm?' '+'sm':''}">${g==='m'?'남':'여'}</span>`;}
 function chip(c,t){return`<span class="chip ${c}">${t}</span>`;}
 
-/* ════════════════════════════════════════
-   통계
-════════════════════════════════════════ */
+/* ════ 통계 ════ */
 function renderStats(){
   document.getElementById('st0').textContent=S.attendees.length;
   document.getElementById('st1').textContent=S.attendees.filter(x=>x.gender==='m').length;
   document.getElementById('st2').textContent=S.attendees.filter(x=>x.gender==='f').length;
+  document.getElementById('st3').textContent=S.leftMembers.length;
 }
 
-/* ════════════════════════════════════════
-   회원명부
-════════════════════════════════════════ */
+/* ════ 회원명부 ════ */
 function renderMembers(){
   const aIds=new Set(S.attendees.map(x=>x.id));
   const lIds=new Set(S.leftMembers.map(x=>x.id));
@@ -502,68 +456,52 @@ function renderMembers(){
   MEMBERS.forEach(m=>{
     const a=aIds.has(m.id),l=lIds.has(m.id);
     const chips=[a&&!l?chip('g','참석중'):'',l?chip('r','퇴소'):''].join('');
-    const btn=l?`<span style="font-size:11px;color:#888780">퇴소</span>`
+    const btn=l?`<span style="font-size:10px;color:#888780">퇴소</span>`
       :a?`<button class="btn-att done" disabled>출석완료</button>`
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
     h+=`<div class="card">
-      ${av(m.name,m.gender)}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
           <span style="font-size:14px;font-weight:700;color:#1A1A1A">${m.name}</span>${gt(m.gender)}${chips}
         </div>
-        <div style="font-size:11px;color:#888780;margin-top:1px">${m.level}</div>
       </div>${btn}</div>`;
   });
   return h;
 }
 
-/* ════════════════════════════════════════
-   참석자 행 (코트 버튼 포함)
-════════════════════════════════════════ */
+/* ════ 참석자 행 ════ */
 function attendRow(a){
-  // 각 코트 만석 여부
-  const courtCounts={};
-  [1,2,3,4].forEach(n=>{courtCounts[n]=S.attendees.filter(x=>x.court===n).length;});
-
+  const counts={};[1,2,3,4].forEach(n=>{counts[n]=S.attendees.filter(x=>x.court===n).length;});
   const cBtns=[1,2,3,4].map(n=>{
     const on=a.court===n?' on':'';
-    const isFull=courtCounts[n]>=CMAX&&a.court!==n;
-    const disabledCls=isFull?' full-disabled':'';
-    return`<button class="cbtn c${n}${on}${disabledCls}" onclick="toggleCourt(${a.id},${n})">${n}코트</button>`;
+    const isFull=counts[n]>=CMAX&&a.court!==n;
+    return`<button class="cbtn c${n}${on}${isFull?' full-disabled':''}" onclick="toggleCourt(${a.id},${n})">${n}코트</button>`;
   }).join('');
-
+  const courtTag=a.court?`<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;background:${CBGS[a.court]};color:${CCOLORS[a.court]}">${CNAMES[a.court]}</span>`:'';
   return`<div class="card">
     <div class="seq-b">${a.seq}</div>
-    ${av(a.name,a.gender,true)}
     <div class="ai">
       <div style="display:flex;align-items:center;gap:4px">
-        <span class="aname">${a.name}</span>${gt(a.gender,true)}
-        ${a.court?`<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;background:${['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD'][a.court]};color:${['','#0F6E56','#185FA5','#B25000','#7B3FA0'][a.court]}">${CNAMES[a.court]}</span>`:''}
+        <span class="aname">${a.name}</span>${gt(a.gender,true)}${courtTag}
       </div>
       <div class="atime">🕐 ${a.time}</div>
     </div>
-    <div class="gc">
-      <button class="gbtn" onclick="chGames(${a.id},-1)">−</button>
-      <span class="gcnt">${a.games}</span>
-      <button class="gbtn" onclick="chGames(${a.id},+1)">+</button>
-    </div>
+    <span class="gcnt-only">${a.games}게임</span>
     <button class="btn-lv" onclick="leave(${a.id})">퇴소</button>
     <div class="court-btns">${cBtns}</div>
   </div>`;
 }
 
-/* ════════════════════════════════════════
-   오늘 참석자
-════════════════════════════════════════ */
+/* ════ 오늘 참석자 ════ */
 function renderToday(){
   const list=fGender?S.attendees.filter(x=>x.gender===fGender):S.attendees;
   const lbl=fGender==='m'?'남성 참석자':fGender==='f'?'여성 참석자':'전체 참석자';
-  let h=`<div style="display:flex;align-items:center;margin-bottom:8px">
+  let h=`<div style="display:flex;align-items:center;margin-bottom:7px">
     <div class="stitle" style="border:none;padding-bottom:0;margin:0">📋 ${lbl} (${list.length}명)</div>
-    ${fGender?`<button onclick="clearFilter()" style="margin-left:auto;font-size:11px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button>`:''}
+    ${fGender?`<button onclick="clearFilter()" style="margin-left:auto;font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button>`:''}
   </div>`;
   if(!list.length){
-    return h+`<div class="empty"><div class="empty-icon">🎾</div>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:5px">회원명부에서 출석 버튼을 눌러주세요</div></div>`;
+    return h+`<div class="empty"><div class="empty-icon">🎾</div>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div>`;
   }
   const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
   list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
@@ -576,164 +514,144 @@ function renderToday(){
   }
   const ls=fGender?S.leftMembers.filter(x=>x.gender===fGender):S.leftMembers;
   if(ls.length){
-    h+=`<div class="stitle" style="margin-top:10px">🚪 퇴소 (${ls.length}명)</div>`;
+    h+=`<div class="stitle" style="margin-top:8px">🚪 퇴소 (${ls.length}명)</div>`;
     ls.forEach(a=>{
       h+=`<div class="card lrow">
-        <span style="font-size:12px;color:#888780;font-weight:700;min-width:16px">${a.seq}.</span>
-        ${av(a.name,a.gender,true)}<span class="lname">${a.name}</span>${gt(a.gender,true)}
-        <span style="font-size:10px;color:#888780;margin-left:auto;white-space:nowrap">${a.games}게임 · ${a.leftAt}</span>
+        <span style="font-size:11px;color:#888780;font-weight:700;min-width:14px">${a.seq}.</span>
+        <span class="lname">${a.name}</span>${gt(a.gender,true)}
+        <span style="font-size:9px;color:#888780;margin-left:auto;white-space:nowrap">${a.games}게임 · ${a.leftAt}</span>
       </div>`;
     });
   }
   return h;
 }
 
-/* ════════════════════════════════════════
-   코트 현황
-════════════════════════════════════════ */
+/* ════ 코트 현황 ════ */
 function renderCourts(){
   let h='<div class="court-grid">';
   [1,2,3,4].forEach(n=>{
     const players=S.attendees.filter(x=>x.court===n);
     const cnt=players.length,full=cnt>=CMAX;
+    const confirmed=courtConfirmed[n];
 
-    // 슬롯 (클릭하면 미배정으로)
     let slots='';
     players.forEach(a=>{
       slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})">
-        ${av(a.name,a.gender,true)}
-        <span style="flex:1;font-size:12px;font-weight:600">${a.name}</span>
+        <span style="flex:1;font-size:11px;font-weight:600">${a.name}</span>
         ${gt(a.gender,true)}
-        <span class="ct-slot-hint">탭→해제</span>
+        <span class="ct-slot-hint">탭해제</span>
       </div>`;
     });
     for(let i=cnt;i<CMAX;i++) slots+=`<div class="ct-empty">— 빈 자리 —</div>`;
 
-    const statusHtml=full
-      ?`<div class="ct-status full">✅ 게임 중 (${cnt}/${CMAX})</div>`
-      :cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명 배정</div>`
-      :`<div class="ct-status wait">배정 없음</div>`;
+    const statusHtml=confirmed
+      ?`<div class="ct-status confirmed">✅ 게임 확정</div>`
+      :full
+        ?`<div class="ct-status full">🔴 꽉 참 (${cnt}/${CMAX})</div>`
+        :cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`
+        :`<div class="ct-status wait">배정 없음</div>`;
 
-    // 헤더: 꽉 찼으면 X 뱃지, 코트 초기화 버튼
-    const fullBadge=full?`<div class="ct-full-badge">✕</div>`:'';
+    const fullBadge=full&&!confirmed?`<div class="ct-full-badge">✕</div>`:'';
+
+    // 확정 버튼: 아직 확정 안됐을 때만
+    const confirmBtn=!confirmed&&cnt>0
+      ?`<button class="ct-confirm-btn" onclick="confirmCourt(${n})">확정</button>`:'';
+    // 해제 버튼: 항상
+    const clearBtn=`<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button>`;
 
     h+=`<div class="ct-card">
       <div class="ct-hdr c${n}">
         <span class="ct-name">${CNAMES[n]}</span>
         <span class="ct-cnt">${cnt}/${CMAX}</span>
         ${fullBadge}
-        <button class="ct-clear-btn" onclick="clearCourt(${n})">초기화</button>
+        ${confirmBtn}
+        ${clearBtn}
       </div>
       <div class="ct-body">${slots}${statusHtml}</div>
     </div>`;
   });
   h+='</div>';
 
-  /* 미배정 섹션 — 정렬된 순서로 표시 */
+  /* 미배정 섹션 */
   const waiting=getSortedWaiting();
   if(waiting.length){
     h+=`<div class="waiting-section">
-      <div class="stitle">⏳ 코트 미배정 대기 (${waiting.length}명)
-        <span style="font-size:10px;color:#B25000;margin-left:4px">· 배정 순서대로 표시</span>
+      <div class="stitle">⏳ 미배정 대기 (${waiting.length}명)
+        <span style="font-size:9px;color:#B25000;margin-left:4px">· 대기순</span>
       </div>`;
     waiting.forEach((a,idx)=>{
-      // 코트 버튼 (만석 코트 비활성)
       const cBtns=[1,2,3,4].map(n=>{
-        const cnt=S.attendees.filter(x=>x.court===n).length;
-        const isFull=cnt>=CMAX;
-        return`<button class="cbtn c${n}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}">${n}코트</button>`;
+        const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX;
+        return`<button class="cbtn c${n}${isFull?' full-disabled':''}" onclick="${isFull?'void 0':` toggleCourt(${a.id},${n})`}">${n}코트</button>`;
       }).join('');
       h+=`<div class="card">
         <div class="wseq-b">${idx+1}</div>
-        ${av(a.name,a.gender,true)}
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:4px">
             <span style="font-size:13px;font-weight:700;color:#1A1A1A">${a.name}</span>${gt(a.gender,true)}
           </div>
-          <div style="font-size:10px;color:#888780;margin-top:1px">대기 ${a.courtFreeAt||a.time}</div>
+          <div style="font-size:9px;color:#888780;margin-top:1px">대기 ${a.courtFreeAt||a.time}</div>
         </div>
         <div class="court-btns" style="border-top:none;padding-top:0;margin-top:0;width:auto;flex-shrink:0">${cBtns}</div>
       </div>`;
     });
     h+=`</div>`;
 
-    /* ── 다음 1팀 추천 + 코트 지정 ── */
+    /* 추천 1팀 */
     const team=getRecommendedTeam();
     if(team.length>0){
       const teamIds=team.map(a=>a.id);
       const teamIdsJson=JSON.stringify(teamIds);
-
-      // 팀원 카드
+      const mCnt=team.filter(x=>x.gender==='m').length;
+      const fCnt=team.filter(x=>x.gender==='f').length;
+      const gSummary=mCnt===4?'남자 4명':fCnt===4?'여자 4명':`남 ${mCnt}명·여 ${fCnt}명`;
       const memberCards=team.map(a=>`
-        <div style="display:flex;align-items:center;gap:5px;background:#fff;border:.5px solid #E0DFDB;border-radius:9px;padding:5px 8px;">
-          ${av(a.name,a.gender,true)}
+        <div style="display:flex;align-items:center;gap:4px;background:#fff;border:.5px solid #E0DFDB;border-radius:8px;padding:4px 7px;">
           <div>
             <div style="font-size:12px;font-weight:700;color:#1A1A1A">${a.name}</div>
-            <div style="font-size:9px;color:#888780">대기 ${a.courtFreeAt||a.time}</div>
+            <div style="font-size:8px;color:#888780">대기 ${a.courtFreeAt||a.time}</div>
           </div>
           ${gt(a.gender,true)}
         </div>`).join('');
-
-      // 성별 구성 요약
-      const mCnt=team.filter(x=>x.gender==='m').length;
-      const fCnt=team.filter(x=>x.gender==='f').length;
-      const genderSummary=mCnt===4?'남자 4명':fCnt===4?'여자 4명':`남 ${mCnt}명 · 여 ${fCnt}명`;
-
-      // 코트 배정 버튼 4개
-      const courtAssignBtns=[1,2,3,4].map(n=>{
-        const existing=S.attendees.filter(x=>x.court===n);
-        const isFull=existing.length>=CMAX;
-        const btnColor=['','#1D9E75','#185FA5','#B25000','#7B3FA0'][n];
-        const hint=existing.length>0?`(${existing.length}명 교체)`:'(빈 코트)';
-        return`<button
-          onclick="assignTeamToCourt(${n},${teamIdsJson})"
-          style="flex:1;padding:9px 4px;border-radius:9px;border:2px solid ${btnColor};
-            background:${btnColor};color:#fff;font-size:12px;font-weight:700;
-            cursor:pointer;font-family:inherit;display:flex;flex-direction:column;
-            align-items:center;gap:2px;-webkit-appearance:none;">
+      const assignBtns=[1,2,3,4].map(n=>{
+        const ex=S.attendees.filter(x=>x.court===n).length;
+        const hint=ex>0?`(${ex}명교체)`:'(빈코트)';
+        return`<button onclick="assignTeamToCourt(${n},${teamIdsJson})"
+          style="flex:1;padding:8px 2px;border-radius:8px;border:2px solid ${CCOLORS[n]};
+          background:${CCOLORS[n]};color:#fff;font-size:11px;font-weight:700;
+          cursor:pointer;font-family:inherit;display:flex;flex-direction:column;
+          align-items:center;gap:1px;-webkit-appearance:none;">
           <span>${CNAMES[n]}</span>
-          <span style="font-size:9px;opacity:.85">${hint}</span>
+          <span style="font-size:8px;opacity:.85">${hint}</span>
         </button>`;
       }).join('');
-
-      h+=`<div style="padding:0 12px 12px">
+      h+=`<div style="padding:0 11px 10px">
         <div class="stitle">📌 다음 게임 추천 1팀
-          <span style="font-size:10px;color:#B25000;margin-left:4px">· ${genderSummary}</span>
+          <span style="font-size:9px;color:#B25000;margin-left:3px">· ${gSummary}</span>
         </div>
-        <!-- 팀원 목록 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
-          ${memberCards}
-        </div>
-        <!-- 코트 지정 안내 -->
-        <div style="font-size:11px;color:#888780;margin-bottom:6px;text-align:center">
-          아래 코트를 눌러 바로 배정하세요 (기존 인원은 미배정으로 이동)
-        </div>
-        <!-- 코트 배정 버튼 -->
-        <div style="display:flex;gap:6px">${courtAssignBtns}</div>
-      </div>`;}
-
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">${memberCards}</div>
+        <div style="font-size:10px;color:#888780;margin-bottom:5px;text-align:center">코트를 눌러 바로 배정 (기존 인원은 미배정으로)</div>
+        <div style="display:flex;gap:5px">${assignBtns}</div>
+      </div>`;
+    }
   }
   return h;
 }
 
-/* ════════════════════════════════════════
-   하단 버튼
-════════════════════════════════════════ */
+/* ════ 하단 버튼 ════ */
 function renderBottom(){
   const el=document.getElementById('bottom-btns');
   let h='<div class="bottom-btns">';
   if(page==='courts'){
     h+=`<button class="btn-reassign" onclick="reassign()">🔄 전체 재편성 (모든 코트 배정 초기화)</button>
-        <div class="bhint" style="margin-bottom:6px">모든 코트 배정을 해제합니다</div>`;
+        <div class="bhint" style="margin-bottom:5px">모든 코트 배정을 해제합니다</div>`;
   }
   h+=`<button class="btn-reset" onclick="manualReset()">♻️ 수동 초기화 (데이터 보관 후 초기화)</button>
       <div class="bhint">매일 23:59 자동 초기화 · 이력 자동 보관</div></div>`;
   el.innerHTML=h;
 }
 
-/* ════════════════════════════════════════
-   메인 렌더
-════════════════════════════════════════ */
+/* ════ 메인 렌더 ════ */
 function render(){
   renderStats();
   const el=document.getElementById('content');
@@ -743,9 +661,7 @@ function render(){
   renderBottom();
 }
 
-/* ════════════════════════════════════════
-   시작
-════════════════════════════════════════ */
+/* ════ 시작 ════ */
 load();
 document.getElementById('hdr-date').textContent=todayLbl();
 setInterval(tick,1000);tick();render();
