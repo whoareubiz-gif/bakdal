@@ -11,7 +11,7 @@ const DATA_FILE = path.join(__dirname, 'tennis_data.json');
 
 app.use(express.json());
 app.use(cors()); // 외부 접근 허용
-app.use(express.static(path.join(__dirname, 'public'))); // 프론트엔드 정적 파일 서빙
+app.use(express.static(__dirname)); // 프론트엔드 정적 파일 서빙
 
 // 데이터 초기화 및 로드 함수
 function readData() {
@@ -48,7 +48,7 @@ app.post('/', (req, res) => {
 
 // 메인 페이지 서빙 (public/index.html)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
