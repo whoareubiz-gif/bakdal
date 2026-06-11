@@ -192,57 +192,80 @@ const db = firebase.database();
 const REF = db.ref('tennis/' + new Date().toISOString().slice(0,10)); // 날짜별 분리
 
 let syncPushTimer = null;
-let myLastPush = 0;   // 내가 push한 updatedAt
-let isPushing = false; // push 진행 중 여부
+let amIPushing = false; // 내가 push 중인지
+let localSeq = 0;       // 내가 보낸 시퀀스
+let lastSeenSeq = -1;   // 마지막으로 화면에 반영한 시퀀스
 
 function setSyncDot(st){
   const d=document.getElementById('sync-dot');
   if(d){d.className='sync-dot'+(st?' '+st:'');}
 }
 
-/* 서버로 push (debounce 1.5초) */
+/* Firebase 데이터 정규화 (배열↔객체 변환) */
+function normalizeFirebase(d){
+  if(!d) return;
+  if(d.state){
+    // attendees: Firebase 객체→배열
+    if(d.state.attendees && !Array.isArray(d.state.attendees))
+      d.state.attendees = Object.values(d.state.attendees);
+    // leftMembers: Firebase 객체→배열
+    if(d.state.leftMembers && !Array.isArray(d.state.leftMembers))
+      d.state.leftMembers = Object.values(d.state.leftMembers);
+    // attendees 내부 nextCourt1/2 null 처리
+    if(Array.isArray(d.state.attendees)){
+      d.state.attendees.forEach(a=>{
+        if(a.nextCourt1===undefined) a.nextCourt1=null;
+        if(a.nextCourt2===undefined) a.nextCourt2=null;
+      });
+    }
+  }
+  // CC 숫자키 정규화
+  if(d.CC){
+    d.CC = {
+      1:!!(d.CC['1']||d.CC[1]),2:!!(d.CC['2']||d.CC[2]),
+      3:!!(d.CC['3']||d.CC[3]),4:!!(d.CC['4']||d.CC[4]),
+      5:!!(d.CC['5']||d.CC[5]),6:!!(d.CC['6']||d.CC[6]),
+    };
+  }
+  return d;
+}
+
+/* 서버로 push (debounce 1초) */
 function syncPush(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   setSyncDot('busy');
   syncPushTimer = setTimeout(()=>{
-    const ts = Date.now();
-    myLastPush = ts;
-    isPushing = true;
-    REF.set({state:S, CC, updatedAt:ts})
-      .then(()=>{ setSyncDot('ok'); isPushing=false; })
-      .catch(()=>{ setSyncDot('err'); isPushing=false; });
-  }, 1500);
+    localSeq++;
+    const seq = localSeq;
+    amIPushing = true;
+    const payload = {state:S, CC, seq, updatedAt:Date.now()};
+    REF.set(payload)
+      .then(()=>{
+        amIPushing = false;
+        lastSeenSeq = seq; // 내가 보낸 seq는 이미 반영된 것으로 표시
+        setSyncDot('ok');
+      })
+      .catch(()=>{ amIPushing=false; setSyncDot('err'); });
+  }, 1000);
 }
 
 /* 서버에서 실시간 listen */
 function syncListen(){
   REF.on('value', snap=>{
-    const d = snap.val();
-    if(!d) return;
+    const raw = snap.val();
+    if(!raw) return;
     setSyncDot('ok');
-    // 내가 방금 push한 데이터면 무시 (300ms 이내)
-    if(d.updatedAt && Math.abs(d.updatedAt - myLastPush) < 300) return;
-    // push 진행 중이면 무시
-    if(isPushing) return;
-    // CC 키 정규화 (Firebase가 숫자키를 문자열로 저장)
+
+    const d = normalizeFirebase(raw);
+
+    // 내 push가 seq로 돌아온 경우 → 화면 재렌더 불필요
+    if(d.seq !== undefined && d.seq === lastSeenSeq) return;
+    lastSeenSeq = d.seq || 0;
+
+    // 상태 적용
     if(d.state) S = d.state;
-    if(d.CC){
-      CC = {
-        1:!!(d.CC['1']||d.CC[1]),
-        2:!!(d.CC['2']||d.CC[2]),
-        3:!!(d.CC['3']||d.CC[3]),
-        4:!!(d.CC['4']||d.CC[4]),
-        5:!!(d.CC['5']||d.CC[5]),
-        6:!!(d.CC['6']||d.CC[6]),
-      };
-    }
-    // attendees 배열 정규화 (Firebase 배열→객체 변환 대응)
-    if(S.attendees && !Array.isArray(S.attendees)){
-      S.attendees = Object.values(S.attendees);
-    }
-    if(S.leftMembers && !Array.isArray(S.leftMembers)){
-      S.leftMembers = Object.values(S.leftMembers);
-    }
+    if(d.CC)    CC = d.CC;
+
     renderAll();
   });
 }
