@@ -237,15 +237,12 @@ function syncPush(){
   syncPushTimer = setTimeout(()=>{
     localSeq++;
     const seq = localSeq;
-    amIPushing = true;
+    // push 직전 seq 기록 → 수신 시 무시 처리
+    lastSeenSeq = seq;
     const payload = {state:S, CC, seq, updatedAt:Date.now()};
     REF.set(payload)
-      .then(()=>{
-        amIPushing = false;
-        lastSeenSeq = seq; // 내가 보낸 seq는 이미 반영된 것으로 표시
-        setSyncDot('ok');
-      })
-      .catch(()=>{ amIPushing=false; setSyncDot('err'); });
+      .then(()=>{ setSyncDot('ok'); })
+      .catch(()=>{ setSyncDot('err'); });
   }, 1000);
 }
 
@@ -256,13 +253,12 @@ function syncListen(){
     if(!raw) return;
     setSyncDot('ok');
 
+    // seq가 내가 마지막으로 push한 것과 같으면 내 데이터 → 무시
+    if(raw.seq !== undefined && raw.seq === lastSeenSeq) return;
+    // seq 갱신
+    lastSeenSeq = raw.seq !== undefined ? raw.seq : lastSeenSeq;
+
     const d = normalizeFirebase(raw);
-
-    // 내 push가 seq로 돌아온 경우 → 화면 재렌더 불필요
-    if(d.seq !== undefined && d.seq === lastSeenSeq) return;
-    lastSeenSeq = d.seq || 0;
-
-    // 상태 적용
     if(d.state) S = d.state;
     if(d.CC)    CC = d.CC;
 
