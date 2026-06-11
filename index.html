@@ -558,8 +558,8 @@ function attendRow(a){
     return`<button class="cbtn c${n}${on}${isFull?' full-disabled':''}" onclick="toggleCourt(${a.id},${n})">${n}코트</button>`;
   }).join('');
   const courtTag=a.court?`<span style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px;background:${CBGS[a.court]};color:${CCOLORS[a.court]}">${CNAMES[a.court]}</span>`:'';
-  // 출석시간 + 미배정시각 표시
-  const timeLabel=a.courtFreeAt&&a.courtFreeAt!==a.time
+  // 코트 배정 중이면 출석시간만, 미배정일 때만 미배정 시각 추가
+  const timeLabel=(!a.court && a.courtFreeAt && a.courtFreeAt!==a.time)
     ?`출석 ${a.time} · 미배정 ${a.courtFreeAt}`
     :`출석 ${a.time}`;
   return`<div class="acard">
