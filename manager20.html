@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎾 박달브라운 테니스 클럽</title>
+<title>🎾 박달브라운 테니스 클럽 — 회원</title>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -312,7 +312,7 @@ const TBANDS=[
   {label:'20:00~21:00',s:20*60,e:21*60},
 ];
 const CMAX=4;
-const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례',6:'다음차례2'};
+const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
 const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0','#2E7D9E','#6B7280'];
 const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD','#E0F2F7','#F0F0F0'];
 const NEXT_COURTS=[5,6];
@@ -423,6 +423,17 @@ function markAttend(id){
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);goTab(1);
 }
+function restoreAttendee(id){
+  const idx=S.leftMembers.findIndex(x=>x.id===id);
+  if(idx===-1)return;
+  const a=S.leftMembers[idx];
+  const t=timeStr();const ts=nowTs();
+  S.leftMembers.splice(idx,1);
+  S.seqCounter++;
+  S.attendees.push({id:a.id,name:a.name,gender:a.gender,seq:S.seqCounter,games:a.games,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false,nextCourt1:null,nextCourt2:null});
+  save();renderAll();toast(`${a.name} 복구 완료 (${t})`);
+}
+
 function leave(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`,()=>{
@@ -464,29 +475,23 @@ function removeFromCourt(id){
 function clearCourt(n){
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
-  openModal(`${CNAMES[n]} 배정 해제?\n(게임수 유지)`,()=>{
-    const t=timeStr();const baseTs=nowTs();
-    shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-    CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
-  });
+  const t=timeStr();const baseTs=nowTs();
+  shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
+  CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmCourt(n){
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
-  openModal(`${CNAMES[n]} 게임 확정?\n${pl.length}명 게임수 +1`,()=>{
-    pl.forEach(a=>{a.games+=1;});CC[n]=true;save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
-  });
+  pl.forEach(a=>{a.games+=1;});CC[n]=true;save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
   const nc=n===5?'nextCourt1':'nextCourt2';
   const pl=S.attendees.filter(x=>x[nc]);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
-  openModal(`${CNAMES[n]} 배정 해제?\n(게임수 유지)`,()=>{
-    const t=timeStr();const baseTs=nowTs();
-    shuffle(pl.slice()).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
-    CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
-  });
+  const t=timeStr();const baseTs=nowTs();
+  shuffle(pl.slice()).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
+  CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmNextCourt(n){
   const nc=n===5?'nextCourt1':'nextCourt2';
@@ -610,13 +615,12 @@ function renderMembers(){
 function attendRow(a){
   const counts={};[1,2,3,4].forEach(n=>{counts[n]=S.attendees.filter(x=>x.court===n).length;});
   const cBtns=[1,2,3,4].map(n=>{
-    const on=a.court===n?' on':'';const isFull=counts[n]>=CMAX&&a.court!==n;
-    return`<button class="cbtn c${n}${on}${isFull?' full-disabled':''}" onclick="toggleCourt(${a.id},${n})">${n}코트</button>`;
+    const on=a.court===n?' on':'';
+    // 회원 뷰: 클릭 비활성화, 보여주기만
+    return`<button class="cbtn c${n}${on}" disabled style="cursor:default;opacity:${on?'1':'0.4'}">${n}코트</button>`;
   }).join('');
   const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
-  const nc1full=S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1;
-  const nc2full=S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2;
-  const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;padding:3px 3px">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;padding:3px 3px">다2</button>`;
+  const ncBtns=`<button class="cbtn c5${nc1on}" disabled style="cursor:default;opacity:${nc1on?'1':'0.4'};font-size:9px;padding:3px 3px">다1</button><button class="cbtn c6${nc2on}" disabled style="cursor:default;opacity:${nc2on?'1':'0.4'};font-size:9px;padding:3px 3px">다2</button>`;
   const courtTag=a.court?`<span style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px;background:${CBGS[a.court]};color:${CCOLORS[a.court]}">${CNAMES[a.court]}</span>`:'';
   const timeLabel=`출석 ${a.time}`;
   return`<div class="acard"><div class="seq-b">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap"><span class="aname">${a.name}</span>${gt(a.gender,true)}${courtTag}</div><div class="atime-row">🕐 ${timeLabel}</div></div><div class="cbtn-wrap">${cBtns}${ncBtns}</div><span class="gcnt-only">${a.games}게임</span><button class="btn-lv" onclick="leave(${a.id})">퇴소</button></div>`;
@@ -627,7 +631,7 @@ function renderToday(){
   if(leftOnly){
     const ls=S.leftMembers;let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!ls.length){h+=`<div class="empty">🚪<br>퇴소한 회원이 없습니다.</div></div>`;return h;}
-    ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span></div>`;});
+    ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;});
     h+=`</div>`;return h;
   }
   if(todayGender){
@@ -656,7 +660,7 @@ function renderCourts(){
   let h='<div class="court-grid">';
   [1,2,3,4].forEach(n=>{
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="flex:1;font-size:10px;font-weight:600">${a.name}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;});
+    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" style="cursor:default"><span style="flex:1;font-size:10px;font-weight:600">${a.name}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -668,11 +672,14 @@ function renderCourts(){
   h+=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트</div></div><div class="court-grid" style="padding-top:0">`;
   [5,6].forEach(n=>{
     const ncKey=n===5?'nextCourt1':'nextCourt2';
-    const players=S.attendees.filter(x=>x[ncKey]);const cnt=players.length,full=cnt>=CMAX,conf=CC[n];
+    const players=S.attendees.filter(x=>x[ncKey]);const cnt=players.length,full=cnt>=CMAX;
+    // 인원이 없는데 확정 상태면 자동 초기화
+    if(cnt===0&&CC[n]){CC[n]=false;save();}
+    const conf=CC[n];
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="flex:1;font-size:10px;font-weight:600">${a.name}${cb}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" style="cursor:default"><span style="flex:1;font-size:10px;font-weight:600">${a.name}${cb}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -681,54 +688,12 @@ function renderCourts(){
     h+=`<div class="ct-card"><div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   h+=`</div>`;
-  // 참석자 배정 현황
-  const waiting=getSortedWaiting();
-  const inCourt=S.attendees.filter(x=>x.court&&!NEXT_COURTS.includes(x.court)).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
-  const allSorted=[...waiting,...inCourt];
-  if(allSorted.length){
-    function courtAllCard(a){
-      const isWaiting=!a.court||NEXT_COURTS.includes(a.court);
-      const cBtns=[1,2,3,4].map(n=>{
-        const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX&&a.court!==n;
-        const isOn=a.court===n?' on':'';
-        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">${n}</button>`;
-      }).join('');
-      const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
-      const nc1full=S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1;
-      const nc2full=S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2;
-      const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">다2</button>`;
-      const divider=!isWaiting&&allSorted.indexOf(a)===waiting.length?`<div style="font-size:10px;color:#888780;padding:4px 0 2px;font-weight:600">─── 코트 배정 중 ───</div>`:'';
-      return`${divider}<div style="background:${isWaiting?'#fff':'#F5F4F0'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px"><span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span><div style="display:flex;gap:1px;flex-shrink:0">${cBtns}${ncBtns}</div></div>`;
-    }
-    const mSorted=allSorted.filter(x=>x.gender==='m');const fSorted=allSorted.filter(x=>x.gender==='f');
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 참석자 배정 현황 (${S.attendees.length}명)<span style="font-size:8px;color:#B25000;margin-left:4px">미배정(${waiting.length})·코트배정(${inCourt.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
-  }
-  // 추천팀
-  const recTeams=buildRecommendedTeams();
-  if(recTeams.length){
-    function recCourtBtns(tIds){
-      return[1,2,3,4].map(n=>{const ex=S.attendees.filter(x=>x.court===n).length;return`<button class="assign-btn" onclick="assignTeam(${n},${tIds})" style="background:${CCOLORS[n]}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${ex===0?'빈코트':`${ex}/${CMAX}`}</span></button>`;}).join('');
-    }
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div>`;
-    recTeams.forEach(({label,color,badge,team})=>{
-      if(!team.length)return;
-      const tIds=JSON.stringify(team.map(a=>a.id));
-      const members=team.map(a=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member"><span class="rec-name">${a.name}</span>${gt(a.gender,true)}${cb}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
-      const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:8px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:1px;-webkit-appearance:none;"><span style="font-size:10px;font-weight:700">다음차례</span><span style="font-size:8px;opacity:.9">(자동배정)</span></button>`;
-      h+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div style="font-size:9px;color:#888780;margin-bottom:5px;text-align:center">코트를 눌러 바로 배정 · 기존 인원은 미배정으로</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
-    });
-    h+=`</div>`;
-  }
   return h;
 }
 
-/* ── 하단 버튼 ── */
+/* ── 하단 버튼 (회원 뷰: 없음) ── */
 function renderBottom(){
-  const el=document.getElementById('bottom-btns');
-  let h='<div class="bottom-btns">';
-  if(curTab===2)h+=`<button class="btn-reassign" onclick="reassign()">🔄 전체 재편성 (모든 코트 배정 초기화)</button><div class="bhint" style="margin-bottom:4px">모든 코트 배정 해제</div>`;
-  h+=`<button class="btn-reset" onclick="manualReset()">♻️ 수동 초기화 (데이터 보관 후 초기화)</button><div class="bhint">매일 23:59 자동 초기화 · 이력 자동 보관</div></div>`;
-  el.innerHTML=h;
+  document.getElementById('bottom-btns').innerHTML='';
 }
 
 /* ── 전체 렌더 ── */
@@ -747,5 +712,6 @@ setInterval(tick,1000);tick();
 renderAll();
 syncListen(); // Firebase 실시간 수신 시작
 </script>
+
 </body>
 </html>
