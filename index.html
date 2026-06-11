@@ -847,38 +847,74 @@ function renderCourts(){
   });
   h+=`</div>`;
 
-  /* ── 미배정 남/여 분할 ── */
+  /* ── 전체 참석자 목록: 미배정 먼저(대기순) → 코트 배정 중 ── */
   const waiting=getSortedWaiting();
-  if(waiting.length){
-    const mW=waiting.filter(x=>x.gender==='m');
-    const fW=waiting.filter(x=>x.gender==='f');
-    function waitCard(a){
+  const inCourt=S.attendees.filter(x=>x.court&&![5,6].includes(x.court))
+    .sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+  const allSorted=[...waiting,...inCourt];
+
+  if(allSorted.length){
+    function courtAllCard(a){
+      const isWaiting=!a.court||[5,6].includes(a.court);
+      const rank=isWaiting?waiting.indexOf(a)+1:null;
+
+      // 현재 코트 상태 배지
+      let statusBadge='';
+      if(a.court&&![5,6].includes(a.court)){
+        statusBadge=`<span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:5px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};flex-shrink:0">${CNAMES[a.court]}</span>`;
+      }
+      if(a.nextCourt1){
+        statusBadge+=`<span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:5px;background:${CBGS[5]};color:${CCOLORS[5]};flex-shrink:0">다음차례</span>`;
+      }
+      if(a.nextCourt2){
+        statusBadge+=`<span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:5px;background:${CBGS[6]};color:${CCOLORS[6]};flex-shrink:0">다음차례2</span>`;
+      }
+
+      // 1~4 코트 버튼
       const cBtns=[1,2,3,4].map(n=>{
-        const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX;
-        return`<button class="cbtn c${n}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">${n}</button>`;
+        const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX&&a.court!==n;
+        const isOn=a.court===n?' on':'';
+        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">${n}</button>`;
       }).join('');
-      const rank=waiting.indexOf(a)+1;
-      return`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 6px;display:flex;align-items:center;gap:3px">
-        <div class="wseq-b" style="flex-shrink:0">${rank}</div>
-        <div style="flex:1;min-width:0;overflow:hidden">
-          <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden">
-            <span style="font-size:12px;font-weight:700;color:#1A1A1A;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
-            <span style="font-size:8px;color:#B8B5AF;flex-shrink:0">${a.courtFreeAt||a.time}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:2px;flex-shrink:0">${cBtns}</div>
+
+      // 다1, 다2 버튼
+      const nc1on=a.nextCourt1?' on':'';
+      const nc2on=a.nextCourt2?' on':'';
+      const nc1full=S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1;
+      const nc2full=S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2;
+      const ncBtns=
+        `<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">다1</button>`+
+        `<button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">다2</button>`;
+
+      // 구분선: 미배정→코트배정 경계
+      const isDivider=rank===null&&waiting.length>0&&allSorted.indexOf(a)===waiting.length;
+      const divider=isDivider?`<div style="font-size:10px;color:#888780;padding:4px 0 2px;font-weight:600">─── 코트 배정 중 ───</div>`:'';
+
+      // 왼쪽: 순번 or 코트배지, 오른쪽: 이름 + 버튼
+      const leftBadge=rank
+        ?`<div class="wseq-b" style="flex-shrink:0">${rank}</div>`
+        :`<div style="width:18px;flex-shrink:0"></div>`;
+      return`${divider}<div style="background:${isWaiting?'#fff':'#F5F4F0'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 6px;display:flex;align-items:center;gap:3px">
+        ${leftBadge}
+        <span style="font-size:12px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
+        <div style="display:flex;gap:2px;flex-shrink:0">${cBtns}${ncBtns}</div>
       </div>`;
     }
+
+    const mSorted=allSorted.filter(x=>x.gender==='m');
+    const fSorted=allSorted.filter(x=>x.gender==='f');
     h+=`<div class="pg-inner" style="padding-top:0">
-      <div class="stitle">⏳ 미배정 대기 (${waiting.length}명)<span style="font-size:8px;color:#B25000;margin-left:4px">·대기순</span></div>
+      <div class="stitle">👥 참석자 배정 현황 (${S.attendees.length}명)
+        <span style="font-size:8px;color:#B25000;margin-left:4px">미배정(${waiting.length}) · 코트배정(${inCourt.length})</span>
+      </div>
       <div class="split-wrap">
         <div class="split-col lcol" style="padding:0 4px 10px 0">
-          <div class="split-hdr m" style="font-size:10px">👨 남 (${mW.length})</div>
-          ${mW.map(waitCard).join('')}
+          <div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>
+          ${mSorted.map(courtAllCard).join('')}
         </div>
         <div class="split-col" style="padding:0 0 10px 4px">
-          <div class="split-hdr f" style="font-size:10px">👩 여 (${fW.length})</div>
-          ${fW.map(waitCard).join('')}
+          <div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>
+          ${fSorted.map(courtAllCard).join('')}
         </div>
       </div>
     </div>`;
