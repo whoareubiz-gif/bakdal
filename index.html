@@ -90,6 +90,8 @@ body{
 .cbtn.c2.on{background:#185FA5;color:#fff;border-color:#185FA5;}
 .cbtn.c3.on{background:#B25000;color:#fff;border-color:#B25000;}
 .cbtn.c4.on{background:#7B3FA0;color:#fff;border-color:#7B3FA0;}
+.cbtn.c5.on{background:#2E7D9E;color:#fff;border-color:#2E7D9E;}
+.cbtn.c6.on{background:#6B7280;color:#fff;border-color:#6B7280;}
 .cbtn.full-disabled{opacity:.35;cursor:not-allowed;}
 
 /* ── 게임수 / 퇴소버튼 ── */
@@ -114,6 +116,7 @@ body{
 .ct-hdr{padding:7px 8px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;}
 .ct-hdr.c1{background:#1D9E75;}.ct-hdr.c2{background:#185FA5;}
 .ct-hdr.c3{background:#B25000;}.ct-hdr.c4{background:#7B3FA0;}
+.ct-hdr.c5{background:#2E7D9E;}.ct-hdr.c6{background:#6B7280;}
 .ct-name{color:#fff;font-size:12px;font-weight:700;flex:1;}
 .ct-cnt{color:rgba(255,255,255,.85);font-size:9px;}
 .ct-full-badge{background:rgba(0,0,0,.28);color:#fff;font-size:10px;font-weight:900;width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -130,9 +133,9 @@ body{
 .ct-status.confirmed{background:#E1F5EE;color:#0F6E56;font-weight:700;}
 
 /* ── 코트 배정 버튼 (추천팀→코트) ── */
-.assign-btn{flex:1;padding:9px 3px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;-webkit-appearance:none;border:none;color:#fff;}
-.assign-btn .ab-label{font-size:11px;font-weight:700;}
-.assign-btn .ab-sub{font-size:10px;opacity:.9;}
+.assign-btn{flex:1;padding:8px 2px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:1px;-webkit-appearance:none;border:none;color:#fff;}
+.assign-btn .ab-label{font-size:10px;font-weight:700;}
+.assign-btn .ab-sub{font-size:9px;opacity:.9;}
 
 /* ── 미배정 ── */
 .wseq-b{width:17px;height:17px;border-radius:50%;background:#FFF3E0;color:#B25000;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;}
@@ -144,7 +147,7 @@ body{
 .rec-member{display:flex;align-items:center;gap:3px;background:#fff;border:.5px solid #E0DFDB;border-radius:7px;padding:4px 6px;}
 .rec-name{font-size:11px;font-weight:700;color:#1A1A1A;flex:1;}
 .rec-time{font-size:8px;color:#888780;}
-.assign-row{display:flex;gap:4px;}
+.assign-row{display:flex;gap:3px;flex-wrap:nowrap;}
 
 /* ── 하단버튼 ── */
 .bottom-btns{padding:7px 11px 10px;border-top:.5px solid #E0DFDB;flex-shrink:0;background:#fff;}
@@ -268,13 +271,14 @@ const TBANDS=[
   {label:'20:00~21:00',s:20*60,e:21*60},
 ];
 const CMAX=4;
-const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트'};
-const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0'];
-const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD'];
+const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례',6:'다음차례2'};
+const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0','#2E7D9E','#6B7280'];
+const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD','#E0F2F7','#F0F0F0'];
+const NEXT_COURTS=[5,6]; // 다음차례 코트 번호
 const SK='tennis_v6',HK='tennis_hist';
 
 let S={attendees:[],leftMembers:[],seqCounter:0};
-let CC={1:false,2:false,3:false,4:false};
+let CC={1:false,2:false,3:false,4:false,5:false,6:false};
 let curTab=0, leftOnly=false, todayGender=null;
 let autoFired=false, toastT=null, modalFn=null;
 
@@ -292,7 +296,7 @@ function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Mat
 function load(){
   try{const r=localStorage.getItem(SK);if(!r)return;
     const o=JSON.parse(r);
-    if(o.date===dateStr()){S=o.state;CC=o.CC||{1:false,2:false,3:false,4:false};}
+    if(o.date===dateStr()){S=o.state;CC=o.CC||{1:false,2:false,3:false,4:false,5:false,6:false};}
   }catch(e){}
 }
 function save(){
@@ -359,12 +363,12 @@ function showGender(g){todayGender=g;leftOnly=false;
 
 /* ══ 초기화 ══ */
 function autoReset(now){
-  archive(S,dateStr(now));S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false};
+  archive(S,dateStr(now));S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
   save();curTab=0;leftOnly=false;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
 function manualReset(){
   openModal('오늘 데이터를 초기화하시겠습니까?\n(이력은 자동 보관됩니다)',()=>{
-    archive(S,dateStr());S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false};
+    archive(S,dateStr());S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
     save();curTab=0;leftOnly=false;renderAll();toast('🔄 초기화 완료');
   });
 }
@@ -383,6 +387,20 @@ function markAttend(id){
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);goTab(1);
 }
+function toggleNextCourt(id,which){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  const nc=which===1?'nextCourt1':'nextCourt2';
+  const n=which===1?5:6;
+  if(a[nc]){
+    // 해제
+    a[nc]=null;save();renderAll();return;
+  }
+  if(S.attendees.filter(x=>x[nc]).length>=CMAX){
+    toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;
+  }
+  a[nc]=n;save();renderAll();
+}
+
 function leave(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`,()=>{
@@ -398,8 +416,17 @@ function toggleCourt(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();save();renderAll();return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
-  if(a.court)CC[a.court]=false;
-  a.court=n;a.hasCourt=true;save();renderAll();
+  // 다음차례 코트는 기존 코트 유지 (중복 배정 가능)
+  if(!NEXT_COURTS.includes(n)){
+    if(a.court&&!NEXT_COURTS.includes(a.court))CC[a.court]=false;
+    a.court=n;
+  } else {
+    // 다음차례: nextCourt 필드 사용
+    const nc=n===5?'nextCourt1':'nextCourt2';
+    a[nc]=a[nc]===n?null:n;
+    save();renderAll();return;
+  }
+  a.hasCourt=true;save();renderAll();
 }
 function removeFromCourt(id){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
@@ -428,15 +455,124 @@ function confirmCourt(n){
     pl.forEach(a=>{a.games+=1;});CC[n]=true;save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
   });
 }
+function confirmNextCourt(n){
+  const nc=n===5?'nextCourt1':'nextCourt2';
+  const pl=S.attendees.filter(x=>x[nc]);
+  if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
+  if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
+
+  // 1~4코트 중 빈 자리 있는 코트 찾기
+  const availCourts=[];
+  for(let cn=1;cn<=4;cn++){
+    const cur=S.attendees.filter(x=>x.court===cn).length;
+    if(cur<CMAX) availCourts.push({cn,cur,free:CMAX-cur});
+  }
+  // 전부 꽉 찬 경우
+  if(availCourts.length===0){
+    toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);
+    return;
+  }
+
+  // 배정 가능한 코트 목록 텍스트
+  const availTxt=availCourts.map(c=>`${CNAMES[c.cn]}(${c.cur}/${CMAX})`).join(', ');
+
+  openModal(`${CNAMES[n]} 확정 → 코트 이동\n\n배정 가능 코트: ${availTxt}\n\n${pl.length}명을 빈 코트로 순서대로 배정합니다.`,()=>{
+    const t=timeStr(); const baseTs=nowTs();
+    CC[n]=true;
+
+    // 다음차례 인원을 빈 코트에 순서대로 배정
+    // (빈 자리 많은 코트 우선)
+    availCourts.sort((a,b)=>b.free-a.free);
+    let pi=0;
+    for(const {cn,free} of availCourts){
+      let filled=0;
+      while(pi<pl.length && filled<free){
+        const a=pl[pi];
+        if(!a.court){
+          // 미배정 인원 → 코트 배정
+          a.court=cn;
+          a.hasCourt=true;
+        } else {
+          // 이미 코트 있는 인원 → 해당 코트 유지, 자리 소비 없이 건너뜀
+          // (빈 자리 카운트 차감 안 함)
+          filled--; // 보정
+        }
+        a[nc]=null; // 다음차례에서 무조건 해제
+        pi++;filled++;
+      }
+      if(pi>=pl.length)break;
+    }
+    // 남은 인원 처리
+    while(pi<pl.length){
+      const a=pl[pi];
+      a[nc]=null; // 다음차례 해제
+      if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+pi;}
+      pi++;
+    }
+
+    save();renderAll();
+    toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
+  });
+}
+function clearNextCourt(n){
+  const nc=n===5?'nextCourt1':'nextCourt2';
+  const pl=S.attendees.filter(x=>x[nc]);
+  if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
+  openModal(`${CNAMES[n]} 배정 해제?\n(게임수 유지)`,()=>{
+    const t=timeStr();const baseTs=nowTs();
+    const shuffled=shuffle(pl.slice());
+    shuffled.forEach((a,i)=>{
+      a[nc]=null;
+      // 미배정 상태인 인원만 courtFreeTs 갱신
+      if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}
+    });
+    CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  });
+}
+
 function reassign(){
   openModal('전체 코트 편성 초기화?\n모든 배정 해제됩니다.',()=>{
     const t=timeStr();const baseTs=nowTs();
-    // 코트에 있는 인원 전체를 랜덤 순서로 섞어서 courtFreeTs 부여
     const inCourt=shuffle(S.attendees.filter(a=>a.court!==null));
     inCourt.forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-    CC={1:false,2:false,3:false,4:false};save();renderAll();toast('🔄 전체 재편성 완료');
+    // nextCourt1/2도 초기화
+    S.attendees.forEach(a=>{a.nextCourt1=null;a.nextCourt2=null;});
+    CC={1:false,2:false,3:false,4:false,5:false,6:false};save();renderAll();toast('🔄 전체 재편성 완료');
   });
 }
+function assignNextTeam(which,teamIds){
+  const t=timeStr();const baseTs=nowTs();
+
+  // 다음차례1이 꽉 찼으면 자동으로 다음차례2로
+  const nc1count=S.attendees.filter(a=>a.nextCourt1).length;
+  const nc2count=S.attendees.filter(a=>a.nextCourt2).length;
+
+  let targetWhich=which;
+  if(which===1 && nc1count>=CMAX){
+    // 다음차례1 꽉참 → 다음차례2로
+    if(nc2count>=CMAX){
+      toast('⚠️ 다음차례1, 2 모두 꽉 찼습니다. 해제 후 배정해주세요.',3000);
+      return;
+    }
+    targetWhich=2;
+    toast(`다음차례가 꽉 차 있어 다음차례2에 배정합니다.`,2500);
+  }
+
+  const nc=targetWhich===1?'nextCourt1':'nextCourt2';
+  const n=targetWhich===1?5:6;
+
+  // 기존 배정 해제
+  const prev=shuffle(S.attendees.filter(a=>a[nc]));
+  prev.forEach((a,i)=>{
+    a[nc]=null;
+    if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}
+  });
+  CC[n]=false;
+  // 새 팀 배정
+  teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a)a[nc]=n;});
+  save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
+}
+
 function assignTeam(cn,teamIds){
   const t=timeStr();const baseTs=nowTs();
   // 기존 코트 인원 랜덤 순서로 해제
@@ -467,48 +603,63 @@ function getSortedWaiting(){
 }
 
 /* ══ 추천 로직 ══
-   핵심 규칙 (getSortedWaiting = courtFreeTs 오름차순):
-   M명 대기 중 n명 선택 시 → 탈락 가능 최대 2명
-   상위 max(0, M-2)명 무조건 고정, 나머지 랜덤
-   팀1:남자4, 팀2:여자4, 팀3:남2여2
+   추천1팀: 남자4, 추천2팀: 여자4, 추천3팀: 남2여2
+   후보 우선순위:
+     1) 미배정 대기자 (court===null) 중 대기순
+     2) 부족하면 코트 배정 중 인원(1~4코트)으로 보충
+   탈락 가능 최대 2명 보장
 */
 function buildRecommendedTeams(){
-  const waiting=getSortedWaiting();
-  if(!waiting.length)return[];
+  const waiting=getSortedWaiting(); // courtFreeTs 오름차순
 
-  const mAll=waiting.filter(x=>x.gender==='m');
-  const fAll=waiting.filter(x=>x.gender==='f');
-
-  function pick(n,gList){
-    const M=gList.length;
-    if(M===0)return[];
-    if(M<=n)return shuffle(gList).slice(0,n);
-    // 탈락 가능 최대 2명 → 상위 (M-2)명 고정
-    const fixedCount=Math.min(Math.max(0,M-2),n);
-    const fixed=gList.slice(0,fixedCount);
-    const pool=gList.slice(fixedCount);
-    const remaining=n-fixedCount;
-    const rPick=shuffle(pool).slice(0,remaining);
-    return [...fixed,...rPick];
+  /* 성별별 후보 풀 구성:
+     미배정 대기자 우선, 부족하면 코트 배정 중 인원 추가
+     이미 getSortedWaiting 순서 유지 */
+  function buildPool(gender){
+    const w=waiting.filter(x=>x.gender===gender);           // 미배정 대기
+    const c=S.attendees.filter(x=>x.gender===gender         // 코트 배정 중
+      &&x.court&&![5,6].includes(x.court))
+      .sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+    return{w,c,all:[...w,...c]};
   }
+
+  /* pick(n, pool):
+     pool.w = 미배정 대기자 (courtFreeTs 오름차순)
+     pool.c = 코트 배정 중 인원 (attendTs 오름차순)
+     pool.all = 합친 풀
+     탈락 최대 2명 */
+  function pick(n, pool){
+    const all=pool.all;
+    const M=all.length;
+    if(M===0)return[];
+    if(M<=n)return shuffle(all).slice(0,n);
+    const fixedCount=Math.min(Math.max(0,M-2),n);
+    const fixed=all.slice(0,fixedCount);
+    const rest=shuffle(all.slice(fixedCount)).slice(0,n-fixedCount);
+    return[...fixed,...rest];
+  }
+
+  const mp=buildPool('m');
+  const fp=buildPool('f');
 
   const teams=[];
-  if(mAll.length>=1){
-    const t=pick(4,mAll);
+  if(mp.all.length>=1){
+    const t=pick(4,mp);
     if(t.length>0)teams.push({label:'추천1팀 — 남자',color:'#185FA5',badge:'👨',team:t});
   }
-  if(fAll.length>=1){
-    const t=pick(4,fAll);
+  if(fp.all.length>=1){
+    const t=pick(4,fp);
     if(t.length>0)teams.push({label:'추천2팀 — 여자',color:'#993556',badge:'👩',team:t});
   }
-  if(mAll.length>=1&&fAll.length>=1){
-    const tm=pick(2,mAll);
-    const tf=pick(2,fAll);
+  if(mp.all.length>=1&&fp.all.length>=1){
+    const tm=pick(2,mp);
+    const tf=pick(2,fp);
     const t=[...tm,...tf];
     if(t.length>=2)teams.push({label:'추천3팀 — 혼성(남2여2)',color:'#7B3FA0',badge:'👫',team:t});
   }
   return teams;
 }
+
 /* ══ HTML 헬퍼 ══ */
 function gt(g,sm){return`<span class="gt ${g}${sm?' sm':''}">${g==='m'?'남':'여'}</span>`;}
 function chip(c,t){return`<span class="chip ${c}">${t}</span>`;}
@@ -557,11 +708,15 @@ function attendRow(a){
     const isFull=counts[n]>=CMAX&&a.court!==n;
     return`<button class="cbtn c${n}${on}${isFull?' full-disabled':''}" onclick="toggleCourt(${a.id},${n})">${n}코트</button>`;
   }).join('');
+  // 다음차례 버튼
+  const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
+  const nc1full=S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1;
+  const nc2full=S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2;
+  const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="toggleNextCourt(${a.id},1)" style="font-size:9px;padding:3px 3px">다1</button>`
+    +`<button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="toggleNextCourt(${a.id},2)" style="font-size:9px;padding:3px 3px">다2</button>`;
   const courtTag=a.court?`<span style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px;background:${CBGS[a.court]};color:${CCOLORS[a.court]}">${CNAMES[a.court]}</span>`:'';
-  // 코트 배정 중이면 출석시간만, 미배정일 때만 미배정 시각 추가
-  const timeLabel=(!a.court && a.courtFreeAt && a.courtFreeAt!==a.time)
-    ?`출석 ${a.time} · 미배정 ${a.courtFreeAt}`
-    :`출석 ${a.time}`;
+  // 출석시간 고정 표시 (코트 배정/해제에 따라 변동 없음)
+  const timeLabel=`출석 ${a.time}`;
   return`<div class="acard">
     <div class="seq-b">${a.seq}</div>
     <div class="ainfo">
@@ -570,7 +725,7 @@ function attendRow(a){
       </div>
       <div class="atime-row">🕐 ${timeLabel}</div>
     </div>
-    <div class="cbtn-wrap">${cBtns}</div>
+    <div class="cbtn-wrap">${cBtns}${ncBtns}</div>
     <span class="gcnt-only">${a.games}게임</span>
     <button class="btn-lv" onclick="leave(${a.id})">퇴소</button>
   </div>`;
@@ -660,6 +815,38 @@ function renderCourts(){
   });
   h+=`</div>`;
 
+  /* ── 다음차례 코트 (5,6) — 1~4코트와 동일 스타일 ── */
+  h+=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트</div></div>`;
+  h+=`<div class="court-grid" style="padding-top:0">`;
+  [5,6].forEach(n=>{
+    const ncKey=n===5?'nextCourt1':'nextCourt2';
+    const players=S.attendees.filter(x=>x[ncKey]);
+    const cnt=players.length,full=cnt>=CMAX,conf=CC[n];
+    let slots='';
+    players.forEach(a=>{
+      const inCourt=a.court&&![5,6].includes(a.court);
+      const cBadge=inCourt?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})">
+        <span style="flex:1;font-size:10px;font-weight:600">${a.name}${cBadge}</span>
+        ${gt(a.gender,true)}<span class="ct-slot-hint">해제</span>
+      </div>`;
+    });
+    for(let i=cnt;i<CMAX;i++) slots+=`<div class="ct-empty">— 빈자리 —</div>`;
+    const status=conf
+      ?`<div class="ct-status confirmed">✅ 게임 확정</div>`
+      :full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`
+      :cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`
+      :`<div class="ct-status wait">배정없음</div>`;
+    const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
+    const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmNextCourt(${n})">확정</button>`:'';
+    const clearBtn=`<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button>`;
+    h+=`<div class="ct-card">
+      <div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}${clearBtn}</div>
+      <div class="ct-body">${slots}${status}</div>
+    </div>`;
+  });
+  h+=`</div>`;
+
   /* ── 미배정 남/여 분할 ── */
   const waiting=getSortedWaiting();
   if(waiting.length){
@@ -715,19 +902,32 @@ function renderCourts(){
     recTeams.forEach(({label,color,badge,team})=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
-      const members=team.map(a=>`
-        <div class="rec-member">
-          <span class="rec-name">${a.name}</span>${gt(a.gender,true)}
+      const members=team.map(a=>{
+        const inCourt=a.court&&![5,6].includes(a.court);
+        const cBadge=inCourt?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';
+        return`<div class="rec-member">
+          <span class="rec-name">${a.name}</span>${gt(a.gender,true)}${cBadge}
           <span class="rec-time">${a.courtFreeAt||a.time}</span>
-        </div>`).join('');
+        </div>`;
+      }).join('');
+
+      // 1~4코트 버튼
+      const courtBtns=recCourtBtns(tIds);
+      // 다음차례 버튼
+      const nextBtn=`<button onclick="assignNextTeam(1,${tIds})"
+        style="flex:1;padding:9px 3px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;-webkit-appearance:none;">
+        <span style="font-size:10px;font-weight:700">다음차례</span>
+        <span style="font-size:8px;opacity:.9">(자동배정)</span>
+      </button>`;
+
       h+=`<div class="rec-card">
         <div class="rec-title">
           <span style="font-size:14px">${badge}</span>
           <span style="color:${color}">${label}</span>
         </div>
         <div class="rec-members">${members}</div>
-        <div style="font-size:9px;color:#888780;margin-bottom:5px;text-align:center">코트를 눌러 바로 배정 (기존 인원은 미배정으로)</div>
-        <div class="assign-row">${recCourtBtns(tIds)}</div>
+        <div style="font-size:9px;color:#888780;margin-bottom:5px;text-align:center">코트를 눌러 바로 배정 · 기존 인원은 미배정으로</div>
+        <div class="assign-row">${courtBtns}${nextBtn}</div>
       </div>`;
     });
     h+=`</div>`;
