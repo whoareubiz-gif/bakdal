@@ -192,42 +192,44 @@ const db = firebase.database();
 const REF = db.ref('tennis/' + new Date().toISOString().slice(0,10)); // 날짜별 분리
 
 let syncPushTimer = null;
-let amIPushing = false; // 내가 push 중인지
-let localSeq = 0;       // 내가 보낸 시퀀스
-let lastSeenSeq = -1;   // 마지막으로 화면에 반영한 시퀀스
+let localSeq = 0;     // 내가 push한 seq
+let lastSeenSeq = -1; // 마지막으로 처리한 seq
 
 function setSyncDot(st){
   const d=document.getElementById('sync-dot');
   if(d){d.className='sync-dot'+(st?' '+st:'');}
 }
 
-/* Firebase 데이터 정규화 (배열↔객체 변환) */
-function normalizeFirebase(d){
-  if(!d) return;
-  if(d.state){
-    // attendees: Firebase 객체→배열
-    if(d.state.attendees && !Array.isArray(d.state.attendees))
-      d.state.attendees = Object.values(d.state.attendees);
-    // leftMembers: Firebase 객체→배열
-    if(d.state.leftMembers && !Array.isArray(d.state.leftMembers))
-      d.state.leftMembers = Object.values(d.state.leftMembers);
-    // attendees 내부 nextCourt1/2 null 처리
-    if(Array.isArray(d.state.attendees)){
-      d.state.attendees.forEach(a=>{
-        if(a.nextCourt1===undefined) a.nextCourt1=null;
-        if(a.nextCourt2===undefined) a.nextCourt2=null;
-      });
-    }
+/* Firebase 객체/배열 정규화
+   Firebase는 JS 배열을 {"0":{...},"1":{...}} 객체로 저장함
+   → 받아올 때 반드시 Array로 복원해야 filter/find/map 동작함 */
+function toArr(v){
+  if(!v) return [];
+  if(Array.isArray(v)) return v;
+  return Object.values(v);
+}
+function normalizeS(raw){
+  if(!raw) return;
+  const s = raw.state;
+  if(s){
+    s.attendees  = toArr(s.attendees).map(a=>({
+      ...a,
+      court:      a.court      ?? null,
+      nextCourt1: a.nextCourt1 ?? null,
+      nextCourt2: a.nextCourt2 ?? null,
+      hasCourt:   a.hasCourt   ?? false,
+    }));
+    s.leftMembers = toArr(s.leftMembers);
+    S = s;
   }
-  // CC 숫자키 정규화
-  if(d.CC){
-    d.CC = {
-      1:!!(d.CC['1']||d.CC[1]),2:!!(d.CC['2']||d.CC[2]),
-      3:!!(d.CC['3']||d.CC[3]),4:!!(d.CC['4']||d.CC[4]),
-      5:!!(d.CC['5']||d.CC[5]),6:!!(d.CC['6']||d.CC[6]),
+  if(raw.CC){
+    const c = raw.CC;
+    CC = {
+      1:!!(c['1']||c[1]), 2:!!(c['2']||c[2]),
+      3:!!(c['3']||c[3]), 4:!!(c['4']||c[4]),
+      5:!!(c['5']||c[5]), 6:!!(c['6']||c[6]),
     };
   }
-  return d;
 }
 
 /* 서버로 push (debounce 1초) */
@@ -236,13 +238,10 @@ function syncPush(){
   setSyncDot('busy');
   syncPushTimer = setTimeout(()=>{
     localSeq++;
-    const seq = localSeq;
-    // push 직전 seq 기록 → 수신 시 무시 처리
-    lastSeenSeq = seq;
-    const payload = {state:S, CC, seq, updatedAt:Date.now()};
-    REF.set(payload)
-      .then(()=>{ setSyncDot('ok'); })
-      .catch(()=>{ setSyncDot('err'); });
+    lastSeenSeq = localSeq; // 내가 보낸 seq 미리 기록
+    REF.set({state:S, CC, seq:localSeq, updatedAt:Date.now()})
+      .then(()=>setSyncDot('ok'))
+      .catch(()=>setSyncDot('err'));
   }, 1000);
 }
 
@@ -250,18 +249,14 @@ function syncPush(){
 function syncListen(){
   REF.on('value', snap=>{
     const raw = snap.val();
-    if(!raw) return;
+    if(!raw){ setSyncDot('err'); return; }
     setSyncDot('ok');
-
-    // seq가 내가 마지막으로 push한 것과 같으면 내 데이터 → 무시
-    if(raw.seq !== undefined && raw.seq === lastSeenSeq) return;
-    // seq 갱신
-    lastSeenSeq = raw.seq !== undefined ? raw.seq : lastSeenSeq;
-
-    const d = normalizeFirebase(raw);
-    if(d.state) S = d.state;
-    if(d.CC)    CC = d.CC;
-
+    // 내가 push한 데이터가 돌아온 것 → 무시
+    const incomingSeq = raw.seq ?? 0;
+    if(incomingSeq === lastSeenSeq) return;
+    lastSeenSeq = incomingSeq;
+    // 데이터 정규화 후 반영
+    normalizeS(raw);
     renderAll();
   });
 }
@@ -341,7 +336,15 @@ function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Mat
 function load(){
   try{const r=localStorage.getItem(SK);if(!r)return;
     const o=JSON.parse(r);
-    if(o.date===dateStr()){S=o.state;CC=o.CC||{1:false,2:false,3:false,4:false,5:false,6:false};}
+    if(o.date===dateStr()){
+      // 로컬 데이터도 정규화 (혹시 오염된 경우 대비)
+      if(o.state){
+        o.state.attendees  = toArr(o.state.attendees).map(a=>({...a,court:a.court??null,nextCourt1:a.nextCourt1??null,nextCourt2:a.nextCourt2??null,hasCourt:a.hasCourt??false}));
+        o.state.leftMembers= toArr(o.state.leftMembers);
+      }
+      S =o.state;
+      CC=o.CC||{1:false,2:false,3:false,4:false,5:false,6:false};
+    }
   }catch(e){}
 }
 function save(){
