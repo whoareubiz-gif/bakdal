@@ -891,13 +891,9 @@ function renderCourts(){
       const divider=isDivider?`<div style="font-size:10px;color:#888780;padding:4px 0 2px;font-weight:600">─── 코트 배정 중 ───</div>`:'';
 
       // 왼쪽: 순번 or 코트배지, 오른쪽: 이름 + 버튼
-      const leftBadge=rank
-        ?`<div class="wseq-b" style="flex-shrink:0">${rank}</div>`
-        :`<div style="width:18px;flex-shrink:0"></div>`;
-      return`${divider}<div style="background:${isWaiting?'#fff':'#F5F4F0'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 6px;display:flex;align-items:center;gap:3px">
-        ${leftBadge}
-        <span style="font-size:12px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
-        <div style="display:flex;gap:2px;flex-shrink:0">${cBtns}${ncBtns}</div>
+      return`${divider}<div style="background:${isWaiting?'#fff':'#F5F4F0'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px">
+        <span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
+        <div style="display:flex;gap:1px;flex-shrink:0">${cBtns}${ncBtns}</div>
       </div>`;
     }
 
