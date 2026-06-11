@@ -668,16 +668,18 @@ function renderCourts(){
     function waitCard(a){
       const cBtns=[1,2,3,4].map(n=>{
         const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX;
-        return`<button class="cbtn c${n}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:9px;padding:3px 2px">${n}코트</button>`;
+        return`<button class="cbtn c${n}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">${n}</button>`;
       }).join('');
       const rank=waiting.indexOf(a)+1;
-      return`<div class="acard" style="padding:5px 6px;margin-bottom:4px;gap:4px">
-        <div class="wseq-b">${rank}</div>
-        <div class="ainfo" style="min-width:0">
-          <div style="display:flex;align-items:center;gap:2px"><span style="font-size:12px;font-weight:700;color:#1A1A1A">${a.name}</span></div>
-          <div class="atime-row" style="font-size:8px">🕐 ${a.courtFreeAt||a.time}</div>
+      return`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 6px;display:flex;align-items:center;gap:3px">
+        <div class="wseq-b" style="flex-shrink:0">${rank}</div>
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden">
+            <span style="font-size:12px;font-weight:700;color:#1A1A1A;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
+            <span style="font-size:8px;color:#B8B5AF;flex-shrink:0">${a.courtFreeAt||a.time}</span>
+          </div>
         </div>
-        <div class="cbtn-wrap" style="flex-shrink:0">${cBtns}</div>
+        <div style="display:flex;gap:2px;flex-shrink:0">${cBtns}</div>
       </div>`;
     }
     h+=`<div class="pg-inner" style="padding-top:0">
