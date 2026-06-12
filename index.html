@@ -89,7 +89,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .ct-hbtn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
 .ct-confirm-btn{background:rgba(255,255,255,.9);color:#1A1A1A;border:none;border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
 .ct-body{padding:5px 6px 7px;}
-.ct-slot{display:flex;align-items:center;gap:4px;padding:4px 5px;border-radius:6px;background:#F5F4F1;margin-bottom:2px;font-size:10px;font-weight:600;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.ct-slot{display:flex;align-items:center;gap:4px;padding:4px 5px;border-radius:6px;background:#F5F4F1;margin-bottom:2px;font-size:13px;font-weight:700;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .ct-slot:active{background:#E0DFDB;}
 .ct-slot-hint{font-size:7px;color:#B8B5AF;margin-left:auto;}
 .ct-empty{padding:3px 4px;border-radius:5px;border:1px dashed #D8D5CF;margin-bottom:2px;font-size:8px;color:#B8B5AF;text-align:center;}
@@ -102,7 +102,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .rec-title{font-size:11px;font-weight:700;color:#1A1A1A;margin-bottom:6px;display:flex;align-items:center;gap:5px;}
 .rec-members{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:7px;}
 .rec-member{display:flex;align-items:center;gap:3px;background:#fff;border:.5px solid #E0DFDB;border-radius:7px;padding:4px 6px;}
-.rec-name{font-size:11px;font-weight:700;color:#1A1A1A;flex:1;}
+.rec-name{font-size:14px;font-weight:700;color:#1A1A1A;flex:1;}
 .rec-time{font-size:8px;color:#888780;}
 .assign-row{display:flex;gap:3px;flex-wrap:nowrap;}
 .assign-btn{flex:1;padding:8px 2px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:1px;-webkit-appearance:none;border:none;color:#fff;}
@@ -483,6 +483,7 @@ function confirmCourt(n){
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
+  if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   pl.forEach(a=>{a.games+=1;});CC[n]=true;save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
@@ -498,6 +499,7 @@ function confirmNextCourt(n){
   const pl=S.attendees.filter(x=>x[nc]);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
+  if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   const availCourts=[];
   for(let cn=1;cn<=4;cn++){const cur=S.attendees.filter(x=>x.court===cn).length;if(cur<CMAX)availCourts.push({cn,cur,free:CMAX-cur});}
   if(!availCourts.length){toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);return;}
@@ -602,8 +604,8 @@ function renderMembers(){
   const fAtt=females.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
   function card(m){
     const a=aIds.has(m.id),l=lIds.has(m.id);
-    const chips=(a&&!l?chip('g','✓'):'')+(l?chip('r','퇴'):'');
-    const btn=l?`<span style="font-size:8px;color:#888780">퇴소</span>`
+    const chips=(a&&!l?chip('g','✓'):'');
+    const btn=l?`<button class="btn-att" style="background:#FAECE7;color:#993C1D;cursor:default;border:.5px solid #EFBCB0" disabled>퇴소</button>`
       :a?`<button class="btn-att done" disabled>완료</button>`
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
     return`<div class="scard"><span class="sname">${m.name}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
@@ -660,7 +662,7 @@ function renderCourts(){
   let h='<div class="court-grid">';
   [1,2,3,4].forEach(n=>{
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" style="cursor:default"><span style="flex:1;font-size:10px;font-weight:600">${a.name}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;});
+    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" style="cursor:default"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -679,7 +681,7 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" style="cursor:default"><span style="flex:1;font-size:10px;font-weight:600">${a.name}${cb}</span>${gt(a.gender,true)}<span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" style="cursor:default"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
