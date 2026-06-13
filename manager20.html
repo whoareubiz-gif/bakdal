@@ -851,16 +851,13 @@ let statDetailDate='';
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
   const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
-  // Firebase 병합 (비동기, 완료 후 재렌더)
   try{
     firebase.database().ref('tennis_stats').once('value',snap=>{
       const fbData=snap.val(); if(!fbData)return;
       const localDates=new Set(st.map(x=>x.date));
       let changed=false;
       Object.values(fbData).forEach(entry=>{
-        if(entry&&entry.date&&!localDates.has(entry.date)){
-          st.push(entry);localDates.add(entry.date);changed=true;
-        }
+        if(entry&&entry.date&&!localDates.has(entry.date)){st.push(entry);localDates.add(entry.date);changed=true;}
       });
       if(changed){localStorage.setItem(STKEY,JSON.stringify(st));document.getElementById('pg3').innerHTML=renderStatPage();}
     });
@@ -870,7 +867,6 @@ function renderStatPage(){
   const todayStr=dateStr();
   const allDates=[...new Set(st.map(x=>x.date))].sort((a,b)=>b.localeCompare(a));
 
-  // 기간 계산
   let fromDate='',toDate='';
   if(statCustomFrom&&statCustomTo){fromDate=statCustomFrom;toDate=statCustomTo;}
   else{
@@ -880,29 +876,24 @@ function renderStatPage(){
     else{fromDate='2000-01-01';toDate='2099-12-31';}
   }
   function inRange(ds){return ds>=fromDate&&ds<=toDate;}
+  function isWeekend(ds){const d=new Date(ds+'T00:00:00');return d.getDay()===0||d.getDay()===6;}
   const filtered=st.filter(x=>inRange(x.date));
-  const filteredCh=ch.filter(x=>inRange(x.date));
-  const TOTAL_MEMBERS=MEMBERS.length;
+  const REGULAR=MEMBERS.filter(m=>!m.name.includes('게스트')).length;
+  const ALL=st;
 
-  // 기간 버튼
   const pBtns=['day','week','month','all'].map(p=>{
     const lbl={day:'오늘',week:'1주',month:'이번달',all:'전체'}[p];
     const on=statPeriod===p&&!statCustomFrom;
     return`<button onclick="statPeriod='${p}';statCustomFrom='';statCustomTo='';document.getElementById('pg3').innerHTML=renderStatPage();" style="padding:5px 10px;border-radius:7px;border:1.5px solid ${on?'#1D9E75':'#D8D5CF'};background:${on?'#1D9E75':'#fff'};color:${on?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${lbl}</button>`;
   }).join('');
 
-  // 뷰 버튼
-  const vBtns=[
-    {k:'attend',l:'📅 참석률'},{k:'games',l:'🎾 게임수'},
-    {k:'together',l:'👫 같이한 인원'},{k:'daily',l:'📆 일별 현황'},
-  ].map(v=>{
+  const vBtns=[{k:'attend',l:'📅 참석률'},{k:'games',l:'🎾 게임수'},{k:'together',l:'👫 같이한 인원'}].map(v=>{
     const on=statView===v.k;
     return`<button onclick="statView='${v.k}';document.getElementById('pg3').innerHTML=renderStatPage();" style="padding:5px 10px;border-radius:7px;border:1.5px solid ${on?'#185FA5':'#D8D5CF'};background:${on?'#185FA5':'#fff'};color:${on?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">${v.l}</button>`;
   }).join('');
 
-  // 기간 설정 박스 (달력은 별도 함수로 처리)
   const rangeBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-    <div class="stitle" style="margin-bottom:8px">📅 조회 기간 설정</div>
+    <div class="stitle" style="margin-bottom:6px">📅 조회 기간 설정 <span style="font-size:9px;color:#888780;font-weight:400">※ 일자별 상세조회에만 적용</span></div>
     <div style="display:flex;align-items:center;gap:6px">
       <input type="date" id="stat-from" value="${fromDate}" style="flex:1;padding:6px 8px;border:.5px solid #D8D5CF;border-radius:7px;font-size:12px;font-family:inherit" onchange="statCustomFrom=this.value;statCustomTo=document.getElementById('stat-to').value||this.value;statPeriod='';document.getElementById('pg3').innerHTML=renderStatPage();">
       <span style="font-size:12px;color:#888780">~</span>
@@ -910,170 +901,275 @@ function renderStatPage(){
     </div>
   </div>`;
 
-  // 평균 참석률 박스
+  // 전체 평균 참석률 박스 (누적일수/총게임 제거)
   let avgBox='';
-  if(filtered.length>0){
-    const totalDays=filtered.length;
-    // 게스트 제외한 실제 정회원 참석 평균
-    const avgAttend=(filtered.reduce((s,d)=>{
-      const noGuest=[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).length;
-      return s+noGuest;
-    },0)/totalDays).toFixed(1);
-    const REGULAR=MEMBERS.filter(m=>!m.name.includes('게스트')).length;
+  if(ALL.length>0){
+    const avgAttend=(ALL.reduce((s,d)=>{
+      return s+[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).length;
+    },0)/ALL.length).toFixed(1);
     const pct=Math.round(parseFloat(avgAttend)/REGULAR*100);
     avgBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-      <div class="stitle" style="margin-bottom:8px">✅ 선택 기간내 회원 평균 참석률 (정회원 기준)</div>
-      <div style="background:#F0EDE8;border-radius:10px;height:42px;overflow:hidden;margin-bottom:8px">
+      <div class="stitle" style="margin-bottom:8px">✅ 전체기간 회원 평균 참석률</div>
+      <div style="background:#F0EDE8;border-radius:10px;height:42px;overflow:hidden">
         <div style="width:${Math.min(pct,100)}%;background:#1D9E75;height:100%;border-radius:10px;display:flex;align-items:center;padding-left:10px;min-width:120px">
           <span style="font-size:13px;color:#fff;font-weight:700;white-space:nowrap">${pct}% &nbsp;(일평균 ${avgAttend}명 / 총 ${REGULAR}명)</span>
         </div>
       </div>
-      <div style="display:flex;gap:10px;font-size:11px;color:#666">
-        <span>📅 조회일수: ${totalDays}일</span>
-        <span>🎾 총 게임: ${filtered.reduce((s,d)=>s+(d.totalGames||0),0)}회</span>
+    </div>`;
+  }
+
+  // 일자별 상세 (최대 15일, 가로 한 줄 테이블 형식)
+  const inRangeDates=allDates.filter(d=>inRange(d));
+  const showDates=inRangeDates.slice(0,15); // 최대 15일
+  const DAYS_OF_WEEK=['일','월','화','수','목','금','토'];
+  let detailBox='';
+  if(showDates.length){
+    // 헤더 행
+    const hdr=`<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr 1fr;gap:3px;margin-bottom:3px;padding:0 2px">
+      <span style="font-size:9px;color:#888780;font-weight:700;text-align:center">날짜</span>
+      <span style="font-size:9px;color:#888780;font-weight:700;text-align:center">총참석</span>
+      <span style="font-size:9px;color:#185FA5;font-weight:700;text-align:center">남자</span>
+      <span style="font-size:9px;color:#993556;font-weight:700;text-align:center">여자</span>
+      <span style="font-size:9px;color:#1D9E75;font-weight:700;text-align:center">참석률</span>
+    </div>`;
+    const rows=showDates.map(date=>{
+      const dd=st.find(x=>x.date===date);
+      if(!dd)return'';
+      const all=[...(dd.attendees||[]),...(dd.leftMembers||[])];
+      const mCnt=all.filter(x=>x.gender==='m').length;
+      const fCnt=all.filter(x=>x.gender==='f').length;
+      const total=all.length;
+      const pct=Math.round(total/REGULAR*100);
+      const d=new Date(date+'T00:00:00');
+      const dow=DAYS_OF_WEEK[d.getDay()];
+      const isWe=d.getDay()===0||d.getDay()===6;
+      const dowColor=isWe?'#C0392B':'#1A1A1A';
+      // 날짜 표시: 06-13(토)
+      const dateLabel=date.slice(5)+'('+dow+')';
+      const rowBg=isWe?'#FFF8F8':'#fff';
+      return`<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr 1fr;gap:3px;margin-bottom:3px;background:${rowBg};border:.5px solid #E0DFDB;border-radius:8px;padding:5px 6px;align-items:center">
+        <span style="font-size:11px;font-weight:700;color:${dowColor};white-space:nowrap">${dateLabel}</span>
+        <span style="text-align:center;font-size:13px;font-weight:700;color:#1A1A1A">${total}명</span>
+        <span style="text-align:center;font-size:13px;font-weight:700;color:#185FA5">${mCnt}</span>
+        <span style="text-align:center;font-size:13px;font-weight:700;color:#993556">${fCnt}</span>
+        <span style="text-align:center;font-size:13px;font-weight:700;color:#1D9E75">${pct}</span>
+      </div>`;
+    }).join('');
+    const moreNote=inRangeDates.length>15?`<div style="font-size:10px;color:#888780;text-align:center;margin-top:4px">※ 최근 15일만 표시 (전체 ${inRangeDates.length}일)</div>`:'';
+    detailBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+      <div class="stitle" style="margin-bottom:8px">🔍 일자별 상세조회 <span style="font-size:9px;color:#888780;font-weight:400">· ${fromDate} ~ ${toDate}</span></div>
+      ${hdr}${rows}${moreNote}
+    </div>`;
+  } else {
+    detailBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+      <div class="stitle" style="margin-bottom:4px">🔍 일자별 상세조회</div>
+      <div style="font-size:12px;color:#888780;text-align:center;padding:10px">선택 기간에 데이터가 없습니다.</div>
+    </div>`;
+  }
+
+  const divider=`<div style="margin:14px 0 10px;border-top:2px dashed #D8D5CF;position:relative">
+    <span style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#f8f7f4;padding:0 8px;font-size:10px;color:#888780;font-weight:700">※ 아래 통계는 전체 누적 데이터 기준입니다</span>
+  </div>`;
+
+  function threeBoxes(allVal,mVal,fVal,unit){
+    return`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:10px">
+      <div style="text-align:center;background:#E1F5EE;border-radius:9px;padding:8px 4px">
+        <div style="font-size:16px;font-weight:700;color:#0F6E56">${allVal}${unit}</div>
+        <div style="font-size:9px;color:#888780;margin-top:1px">전체 평균</div>
+      </div>
+      <div style="text-align:center;background:#E6F1FB;border-radius:9px;padding:8px 4px">
+        <div style="font-size:16px;font-weight:700;color:#185FA5">${mVal}${unit}</div>
+        <div style="font-size:9px;color:#888780;margin-top:1px">남자 평균</div>
+      </div>
+      <div style="text-align:center;background:#FBEAF0;border-radius:9px;padding:8px 4px">
+        <div style="font-size:16px;font-weight:700;color:#993556">${fVal}${unit}</div>
+        <div style="font-size:9px;color:#888780;margin-top:1px">여자 평균</div>
       </div>
     </div>`;
   }
 
-  // 일자별 카드
-  let detailBox='';
-  const inRangeDates=allDates.filter(d=>inRange(d));
-  if(inRangeDates.length){
-    const cards=inRangeDates.map(date=>{
-      const dd=st.find(x=>x.date===date); if(!dd)return'';
-      const all=[...(dd.attendees||[]),...(dd.leftMembers||[])];
-      const mCnt=all.filter(x=>x.gender==='m').length;
-      const fCnt=all.filter(x=>x.gender==='f').length;
-      const totalG=all.reduce((s,a)=>s+(a.games||0),0);
-      return`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:8px 10px;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:700;color:#1A1A1A;margin-bottom:8px">${date}</div>
-        <div style="display:flex;gap:6px">
-          <div style="flex:1;text-align:center;background:#F0EDE8;border-radius:8px;padding:8px 4px">
-            <div style="font-size:20px;font-weight:700;color:#1D9E75">${all.length}명</div>
-            <div style="font-size:9px;color:#888780;margin-top:1px">총 참석</div>
-          </div>
-          <div style="flex:1;text-align:center;background:#E6F1FB;border-radius:8px;padding:8px 4px">
-            <div style="font-size:20px;font-weight:700;color:#185FA5">${mCnt}명</div>
-            <div style="font-size:9px;color:#888780;margin-top:1px">남자</div>
-          </div>
-          <div style="flex:1;text-align:center;background:#FBEAF0;border-radius:8px;padding:8px 4px">
-            <div style="font-size:20px;font-weight:700;color:#993556">${fCnt}명</div>
-            <div style="font-size:9px;color:#888780;margin-top:1px">여자</div>
-          </div>
-          <div style="flex:1;text-align:center;background:#FFF0E0;border-radius:8px;padding:8px 4px">
-            <div style="font-size:20px;font-weight:700;color:#B25000">${totalG}</div>
-            <div style="font-size:9px;color:#888780;margin-top:1px">총 게임</div>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-    detailBox=`<div style="margin-bottom:10px">
-      <div class="stitle" style="margin-bottom:8px">🔍 일자별 상세조회</div>${cards}</div>`;
+  // 구분 헤더 (전체 | 평일 | 주말)
+  function colHeader(){
+    return`<div style="display:grid;grid-template-columns:56px 1fr 1fr 1fr;gap:2px;margin-bottom:4px;padding:0 4px">
+      <span></span>
+      <span style="text-align:center;font-size:9px;color:#1D9E75;font-weight:700;background:#E1F5EE;border-radius:4px;padding:2px">전체</span>
+      <span style="text-align:center;font-size:9px;color:#185FA5;font-weight:700;background:#E6F1FB;border-radius:4px;padding:2px">평일</span>
+      <span style="text-align:center;font-size:9px;color:#7B3FA0;font-weight:700;background:#F3E8FD;border-radius:4px;padding:2px">주말</span>
+    </div>`;
   }
 
-  // 통계 본문
   let body='';
+
   if(statView==='attend'){
-    const map={};
-    filtered.forEach(d=>{
-      [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).forEach(a=>{
-        if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,cnt:0};
-        map[a.id].cnt++;
+    const wdF=ALL.filter(d=>!isWeekend(d.date));
+    const weF=ALL.filter(d=>isWeekend(d.date));
+    function buildMap(days){
+      const map={};
+      days.forEach(d=>{
+        [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).forEach(a=>{
+          if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,cnt:0};
+          map[a.id].cnt++;
+        });
       });
-    });
-    const list=Object.values(map).sort((a,b)=>b.cnt-a.cnt);
-    const maxCnt=list[0]?.cnt||1;
-    const totalDays=filtered.length||1;
-    // 전체 평균 참석률
-    const avgAll=list.length?( list.reduce((s,m)=>s+m.cnt,0)/list.length ).toFixed(1):'0';
-    const avgPct=list.length?Math.round(parseFloat(avgAll)/totalDays*100):0;
-    body=`<div class="stitle">📅 회원별 참석 현황 (${filtered.length}일 기준)</div>`;
-    if(!list.length){body+=`<div class="empty" style="padding:20px">데이터가 없습니다.<br><small>📥 데이터 저장만 버튼을 눌러주세요</small></div>`;}
-    else{
-      body+=`<div style="background:#E1F5EE;border-radius:9px;padding:8px 10px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12px;font-weight:700;color:#0F6E56">전체 평균 참석률</span>
-        <span style="font-size:14px;font-weight:700;color:#0F6E56">${avgAll}회 / ${avgPct}%</span>
+      return map;
+    }
+    const mapAll=buildMap(ALL),mapWd=buildMap(wdF),mapWe=buildMap(weF);
+    const tAll=ALL.length||1,tWd=wdF.length||1,tWe=weF.length||1;
+    const allIds=[...new Set([...Object.keys(mapAll),...Object.keys(mapWd),...Object.keys(mapWe)])];
+    const males=allIds.filter(id=>(mapAll[id]||mapWd[id]||mapWe[id])?.gender==='m').sort((a,b)=>(mapAll[b]?.cnt||0)-(mapAll[a]?.cnt||0));
+    const females=allIds.filter(id=>(mapAll[id]||mapWd[id]||mapWe[id])?.gender==='f').sort((a,b)=>(mapAll[b]?.cnt||0)-(mapAll[a]?.cnt||0));
+    const avgAll=allIds.length?Math.round(allIds.reduce((s,id)=>s+(mapAll[id]?.cnt||0),0)/allIds.length/tAll*100):0;
+    const avgM=males.length?Math.round(males.reduce((s,id)=>s+(mapAll[id]?.cnt||0),0)/males.length/tAll*100):0;
+    const avgF=females.length?Math.round(females.reduce((s,id)=>s+(mapAll[id]?.cnt||0),0)/females.length/tAll*100):0;
+
+    function memberRow(id, bg){
+      const m=mapAll[id]||mapWd[id]||mapWe[id];
+      const pAll=Math.round((mapAll[id]?.cnt||0)/tAll*100);
+      const pWd=wdF.length?Math.round((mapWd[id]?.cnt||0)/tWd*100):null;
+      const pWe=weF.length?Math.round((mapWe[id]?.cnt||0)/tWe*100):null;
+      const col=m.gender==='m'?'#185FA5':'#993556';
+      return`<div style="display:grid;grid-template-columns:52px 1fr 1fr 1fr;gap:2px;margin-bottom:3px;background:${bg};border-radius:7px;padding:4px 5px;align-items:center">
+        <span style="font-size:11px;font-weight:700;color:${col};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</span>
+        <span style="text-align:center;font-size:12px;font-weight:700;color:#1A1A1A">${pAll}</span>
+        <span style="text-align:center;font-size:12px;font-weight:700;color:#1A1A1A">${pWd!==null?pWd:'-'}</span>
+        <span style="text-align:center;font-size:12px;font-weight:700;color:#1A1A1A">${pWe!==null?pWe:'-'}</span>
       </div>`;
-      body+=list.map(m=>`
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
-          <span style="font-size:11px;font-weight:700;color:#1A1A1A;min-width:58px;white-space:nowrap">${m.name}</span>
-          <div style="flex:1;background:#F0EDE8;border-radius:6px;height:18px;overflow:hidden">
-            <div style="width:${Math.round(m.cnt/maxCnt*100)}%;background:${m.gender==='m'?'#185FA5':'#993556'};height:100%;border-radius:6px;display:flex;align-items:center;padding-left:5px">
-              <span style="font-size:9px;color:#fff;font-weight:700;white-space:nowrap">${m.cnt}회</span>
-            </div>
+    }
+
+    const top5m=males.slice(0,5);
+    const top5f=females.slice(0,5);
+    const bot5m=[...males].reverse().slice(0,5);
+    const bot5f=[...females].reverse().slice(0,5);
+
+    body=`<div class="stitle">📅 개인별 참석률 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적 기준 · ${tAll}일(평일${wdF.length}/주말${weF.length})</span></div>`;
+    body+=threeBoxes(avgAll,avgM,avgF,'');
+
+    if(!allIds.length){body+=`<div class="empty" style="padding:20px">데이터가 없습니다.<br><small>📥 데이터 저장만 버튼을 눌러주세요</small></div>`;}
+    else{
+      // 상위5 남/여 2열
+      body+=`<div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#0F6E56;margin-bottom:6px">🏆 상위 5명</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div>
+            <div style="text-align:center;background:#E6F1FB;color:#185FA5;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👨 남자</div>
+            ${colHeader()}
+            ${top5m.map(id=>memberRow(id,'#E1F5EE')).join('')}
           </div>
-          <span style="font-size:10px;color:#888780;min-width:32px;text-align:right">${Math.round(m.cnt/totalDays*100)}%</span>
-        </div>`).join('');
+          <div>
+            <div style="text-align:center;background:#FBEAF0;color:#993556;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👩 여자</div>
+            ${colHeader()}
+            ${top5f.map(id=>memberRow(id,'#E1F5EE')).join('')}
+          </div>
+        </div>
+      </div>`;
+      // 하위5 남/여 2열
+      body+=`<div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:#993C1D;margin-bottom:6px">📉 하위 5명</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div>
+            <div style="text-align:center;background:#E6F1FB;color:#185FA5;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👨 남자</div>
+            ${colHeader()}
+            ${bot5m.map(id=>memberRow(id,'#FAECE7')).join('')}
+          </div>
+          <div>
+            <div style="text-align:center;background:#FBEAF0;color:#993556;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👩 여자</div>
+            ${colHeader()}
+            ${bot5f.map(id=>memberRow(id,'#FAECE7')).join('')}
+          </div>
+        </div>
+      </div>`;
+      // 전체 명단
+      body+=`<div style="font-size:10px;font-weight:700;color:#555;margin-bottom:5px">📋 전체 명단</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div>
+          <div style="text-align:center;background:#E6F1FB;color:#185FA5;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👨 남 (${males.length})</div>
+          ${colHeader()}
+          ${males.map(id=>memberRow(id,'#EEF4FF')).join('')}
+        </div>
+        <div>
+          <div style="text-align:center;background:#FBEAF0;color:#993556;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👩 여 (${females.length})</div>
+          ${colHeader()}
+          ${females.map(id=>memberRow(id,'#FDF0F5')).join('')}
+        </div>
+      </div>`;
     }
   }
+
   else if(statView==='games'){
     const map={};
-    filtered.forEach(d=>{
+    ALL.forEach(d=>{
       [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).forEach(a=>{
-        if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,cnt:0};
-        map[a.id].games+=a.games||0; map[a.id].cnt++;
+        if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,minutes:0};
+        map[a.id].games+=a.games||0;
+        const [ih,im]=(a.time||'18:00').split(':').map(Number);
+        const [oh,om]=(a.leftAt||'21:00').split(':').map(Number);
+        const mins=(oh*60+om)-(ih*60+im); if(mins>0)map[a.id].minutes+=mins;
       });
     });
-    const list=Object.values(map).sort((a,b)=>b.games-a.games);
-    const maxG=list[0]?.games||1;
-    body=`<div class="stitle">🎾 회원별 누적 게임수</div>`;
+    const list=Object.values(map);
+    const gph=m=>m.minutes>0?(m.games/(m.minutes/60)).toFixed(1):'0.0';
+    const males=list.filter(m=>m.gender==='m').sort((a,b)=>parseFloat(gph(b))-parseFloat(gph(a)));
+    const females=list.filter(m=>m.gender==='f').sort((a,b)=>parseFloat(gph(b))-parseFloat(gph(a)));
+    const calcAvg=arr=>arr.length?(arr.reduce((s,m)=>s+parseFloat(gph(m)),0)/arr.length).toFixed(1):'-';
+
+    function gRow(m, bg){
+      const col=m.gender==='m'?'#185FA5':'#993556';
+      return`<div style="display:flex;align-items:center;justify-content:space-between;background:${bg};border-radius:7px;padding:4px 8px;margin-bottom:3px">
+        <span style="font-size:11px;font-weight:700;color:${col};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">${m.name}</span>
+        <span style="font-size:13px;font-weight:700;color:#B25000;white-space:nowrap;margin-left:6px">${gph(m)}회</span>
+      </div>`;
+    }
+
+    body=`<div class="stitle">🎾 개인별 시간당 게임수 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적 기준</span></div>`;
+    body+=threeBoxes(calcAvg(list),calcAvg(males),calcAvg(females),'회');
     if(!list.length){body+=`<div class="empty" style="padding:20px">데이터가 없습니다.</div>`;}
-    else body+=list.map(m=>`
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
-        <span style="font-size:11px;font-weight:700;color:#1A1A1A;min-width:58px;white-space:nowrap">${m.name}</span>
-        <div style="flex:1;background:#F0EDE8;border-radius:6px;height:18px;overflow:hidden">
-          <div style="width:${Math.round(m.games/maxG*100)}%;background:${m.gender==='m'?'#1D9E75':'#B25000'};height:100%;border-radius:6px;display:flex;align-items:center;padding-left:5px">
-            <span style="font-size:9px;color:#fff;font-weight:700">${m.games}게임</span>
-          </div>
+    else{
+      body+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div>
+          <div style="text-align:center;background:#E6F1FB;color:#185FA5;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👨 남 (${males.length})</div>
+          ${males.map(m=>gRow(m,'#EEF4FF')).join('')}
         </div>
-        <span style="font-size:10px;color:#888780;min-width:36px;text-align:right">${m.cnt}회참</span>
-      </div>`).join('');
+        <div>
+          <div style="text-align:center;background:#FBEAF0;color:#993556;font-size:10px;font-weight:700;padding:3px;border-radius:6px;margin-bottom:4px">👩 여 (${females.length})</div>
+          ${females.map(m=>gRow(m,'#FDF0F5')).join('')}
+        </div>
+      </div>`;
+    }
   }
+
   else if(statView==='together'){
     const pairMap={};
-    filteredCh.forEach(entry=>{
-      const nonGuest=entry.members.filter(m=>!m.name.includes('게스트'));
-      if(nonGuest.length<2)return;
-      const ids=nonGuest.map(m=>m.id);
-      const names={};nonGuest.forEach(m=>{names[m.id]=m.name;});
-      for(let i=0;i<ids.length;i++){
-        for(let j=i+1;j<ids.length;j++){
-          const key=[ids[i],ids[j]].sort().join('-');
-          if(!pairMap[key])pairMap[key]={names:[names[ids[i]],names[ids[j]]],cnt:0};
-          pairMap[key].cnt++;
-        }
+    ch.forEach(entry=>{
+      const ng=entry.members.filter(m=>!m.name.includes('게스트'));
+      if(ng.length<2)return;
+      const ids=ng.map(m=>m.id),names={};ng.forEach(m=>{names[m.id]=m.name;});
+      for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+        const key=[ids[i],ids[j]].sort().join('-');
+        if(!pairMap[key])pairMap[key]={ids:[ids[i],ids[j]],names:[names[ids[i]],names[ids[j]]],cnt:0};
+        pairMap[key].cnt++;
       }
     });
-    const list=Object.values(pairMap).sort((a,b)=>b.cnt-a.cnt).slice(0,20);
-    const maxC=list[0]?.cnt||1;
-    body=`<div class="stitle">👫 자주 같이 게임한 조합 (상위 20)</div>`;
-    if(!list.length){body+=`<div class="empty" style="padding:20px">코트 확정 기록이 없습니다.</div>`;}
-    else body+=list.map((p,i)=>`
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
-        <span style="font-size:10px;color:#888780;min-width:16px">${i+1}</span>
-        <span style="font-size:11px;font-weight:700;color:#1A1A1A;min-width:100px;white-space:nowrap">${p.names[0]} & ${p.names[1]}</span>
-        <div style="flex:1;background:#F0EDE8;border-radius:6px;height:16px;overflow:hidden">
-          <div style="width:${Math.round(p.cnt/maxC*100)}%;background:#7B3FA0;height:100%;border-radius:6px;display:flex;align-items:center;padding-left:5px">
-            <span style="font-size:9px;color:#fff;font-weight:700">${p.cnt}회</span>
-          </div>
-        </div>
-      </div>`).join('');
-  }
-  else if(statView==='daily'){
-    body=`<div class="stitle">📆 일별 참석/게임 현황</div>`;
-    const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date));
-    if(!sorted.length){body+=`<div class="empty" style="padding:20px">데이터가 없습니다.</div>`;}
-    else body+=sorted.map(d=>{
-      const total=(d.attendees||[]).length+(d.leftMembers||[]).length;
-      const games=(d.attendees||[]).reduce((s,a)=>s+(a.games||0),0)+(d.leftMembers||[]).reduce((s,a)=>s+(a.games||0),0);
-      const mCnt=[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>a.gender==='m').length;
-      return`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:9px;padding:8px 10px;margin-bottom:6px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;font-weight:700;color:#1A1A1A">${d.date}</span>
-          <span style="font-size:11px;color:#1D9E75;font-weight:700">참석 ${total}명</span>
-        </div>
-        <div style="display:flex;gap:8px;font-size:10px;color:#666">
-          <span>👨남 ${mCnt}</span><span>👩여 ${total-mCnt}</span><span>🎾게임 ${games}회</span>
+    const personMap={};
+    Object.values(pairMap).forEach(pair=>{
+      pair.ids.forEach((id,idx)=>{
+        if(!personMap[id])personMap[id]={name:pair.names[idx],pairs:[]};
+        personMap[id].pairs.push({name:pair.names[1-idx],cnt:pair.cnt});
+      });
+    });
+    const persons=Object.values(personMap).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+    body=`<div class="stitle">👫 개인별 같이 게임한 인원 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적 · 상위2/하위2</span></div>`;
+    if(!persons.length){body+=`<div class="empty" style="padding:20px">코트 확정 기록이 없습니다.</div>`;}
+    else body+=persons.map(p=>{
+      const sorted=p.pairs.sort((a,b)=>b.cnt-a.cnt);
+      const top=sorted.slice(0,2);
+      const bot=[...sorted].reverse().filter(x=>!top.find(t=>t.name===x.name)).slice(0,2);
+      const topHtml=top.map(x=>`<span style="background:#E1F5EE;color:#0F6E56;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">${x.name} ${x.cnt}회</span>`).join(' ');
+      const botHtml=bot.map(x=>`<span style="background:#FAECE7;color:#993C1D;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">${x.name} ${x.cnt}회</span>`).join(' ');
+      return`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:9px;padding:7px 10px;margin-bottom:5px">
+        <div style="font-size:12px;font-weight:700;color:#1A1A1A;margin-bottom:4px">${p.name}</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span style="font-size:9px;color:#888780;min-width:24px">최다</span>${topHtml}</div>
+          ${bot.length?`<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span style="font-size:9px;color:#888780;min-width:24px">최소</span>${botHtml}</div>`:''}
         </div>
       </div>`;
     }).join('');
@@ -1082,9 +1178,7 @@ function renderStatPage(){
   return`<div class="pg-inner">
     <div class="stitle">📊 통계 <span style="font-size:9px;color:#888780;margin-left:4px">📥 저장 버튼으로 누적</span></div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
-    ${rangeBox}
-    ${avgBox}
-    ${detailBox}
+    ${rangeBox}${avgBox}${detailBox}${divider}
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>
     <div>${body}</div>
   </div>`;
