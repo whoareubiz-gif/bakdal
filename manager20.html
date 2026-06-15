@@ -433,6 +433,32 @@ function manualReset(){
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 저장 후 초기화 완료');
   });
 }
+function deleteTodayDB(){
+  openModal('⚠️ 당일 데이터를 완전 삭제하시겠습니까?\n(참석자·통계·Firebase 모두 삭제, 복구 불가)',()=>{
+    const today=dateStr();
+    // localStorage 참석 데이터 초기화
+    S={attendees:[],leftMembers:[],seqCounter:0};
+    CC={1:false,2:false,3:false,4:false,5:false,6:false};
+    // localStorage 통계에서 당일 삭제
+    try{
+      const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+      localStorage.setItem(STKEY,JSON.stringify(st.filter(x=>x.date!==today)));
+    }catch(e){}
+    // localStorage 코트 히스토리에서 당일 삭제
+    try{
+      const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+      localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==today)));
+    }catch(e){}
+    // Firebase 당일 데이터 삭제
+    try{
+      firebase.database().ref('tennis/'+today).remove();
+      firebase.database().ref('tennis_stats/'+today).remove();
+    }catch(e){}
+    save();curTab=0;leftOnly=false;todayGender=null;renderAll();
+    toast('🗑 당일 데이터 완전 삭제 완료',3000);
+  });
+}
+
 function manualResetNoSave(){
   // 데이터 저장 없이 초기화
   openModal('오늘 데이터를 저장하지 않고 초기화하시겠습니까?\n(이력에 보관되지 않습니다)',()=>{
@@ -821,10 +847,11 @@ function renderBottom(){
     <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">🔄 전체 재편성</button>
     <button class="btn-reassign" onclick="restorePrevState()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">↩️ 이전으로 복구</button>
   </div>`;
-  h+=`<div style="display:flex;gap:5px">
-    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:9px 4px;font-size:12px">💾 저장후 초기화</button>
-    <button class="btn-reset" onclick="manualResetNoSave()" style="flex:1;padding:9px 4px;font-size:12px;background:#FFF0F0;color:#C0392B;border-color:#F5A0A0">🗑 저장없이</button>
-    <button class="btn-reset" onclick="saveStatHistory();toast('✅ 저장 완료');" style="flex:1;padding:9px 4px;font-size:12px;background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB">📥 저장만</button>
+  h+=`<div style="display:flex;gap:4px">
+    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:9px 2px;font-size:11px">💾 저장후 초기화</button>
+    <button class="btn-reset" onclick="manualResetNoSave()" style="flex:1;padding:9px 2px;font-size:11px;background:#FFF0F0;color:#C0392B;border-color:#F5A0A0">🗑 저장없이</button>
+    <button class="btn-reset" onclick="saveStatHistory();toast('✅ 저장 완료');" style="flex:1;padding:9px 2px;font-size:11px;background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB">📥 저장만</button>
+    <button class="btn-reset" onclick="deleteTodayDB()" style="flex:1;padding:9px 2px;font-size:11px;background:#2C2C2A;color:#fff;border-color:#1A1A1A">🗑 당일DB삭제</button>
   </div></div>`;
   el.innerHTML=h;
 }
