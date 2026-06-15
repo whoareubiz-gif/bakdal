@@ -13,8 +13,8 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html{height:100%;}
 body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;background:#E8E5E0;height:100%;overflow:hidden;display:flex;justify-content:center;}
-#app{width:100%;max-width:480px;height:100vh;display:flex;flex-direction:column;background:#f8f7f4;overflow:hidden;}
-.hdr{background:#1D9E75;padding:10px 13px 9px;flex-shrink:0;}
+#app{width:100%;max-width:480px;height:100vh;display:flex;flex-direction:column;background:#f8f7f4;}
+.hdr{background:#1D9E75;padding:7px 13px 7px;flex-shrink:0;}
 .hdr-top{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
 .hdr-title{color:#fff;font-size:15px;font-weight:700;flex:1;}
 .hdr-meta{display:flex;align-items:center;gap:5px;}
@@ -26,18 +26,18 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .sync-dot.busy{background:#FFD580;animation:blink .6s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .stat-row{display:flex;gap:4px;}
-.sc{flex:1;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:5px 2px;text-align:center;cursor:pointer;user-select:none;}
+.sc{flex:1;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:4px 2px;text-align:center;cursor:pointer;user-select:none;}
 .sc:active{background:rgba(255,255,255,.35);}
-.sn{font-size:17px;font-weight:700;color:#fff;line-height:1.1;}
+.sn{font-size:16px;font-weight:700;color:#fff;line-height:1.0;}
 .sn.m{color:#B5D4F4;}.sn.f{color:#F4C0D1;}.sn.lv{color:#FFD580;}
 .sl{font-size:9px;color:rgba(255,255,255,.76);margin-top:1px;}
 .tab-bar{display:flex;background:#fff;border-bottom:1px solid #E0DFDB;flex-shrink:0;}
-.tab{flex:1;padding:9px 3px;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:10px;color:#888780;font-weight:500;display:flex;flex-direction:column;align-items:center;gap:1px;border-bottom:2.5px solid transparent;}
+.tab{flex:1;padding:5px 3px;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:12px;color:#888780;font-weight:500;display:flex;flex-direction:column;align-items:center;gap:1px;border-bottom:2.5px solid transparent;}
 .tab span{font-size:17px;}
 .tab.active{color:#1D9E75;font-weight:700;border-bottom-color:#1D9E75;}
 .slide-wrap{flex:1;overflow:hidden;position:relative;min-height:0;}
 .slide-track{display:flex;width:400%;height:100%;transition:transform .3s cubic-bezier(.4,0,.2,1);}
-.slide-page{width:calc(100% / 4);flex-shrink:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 0 20px;}
+.slide-page{width:calc(100% / 4);flex-shrink:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 0 110px;}
 .stitle{display:flex;align-items:center;gap:5px;font-size:11px;color:#888780;font-weight:600;padding-bottom:5px;border-bottom:.5px solid #E0DFDB;margin-bottom:7px;margin-top:3px;}
 .split-wrap{display:grid;grid-template-columns:1fr 1fr;}
 .split-col{padding:7px 6px 60px;}
@@ -108,10 +108,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .assign-btn{flex:1;padding:4px 2px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;border:none;color:#fff;}
 .assign-btn .ab-label{font-size:12px;font-weight:700;}
 .assign-btn .ab-sub{font-size:12px;font-weight:700;opacity:.95;}
-.bottom-btns{padding:8px 11px 8px;border-top:1px solid #D0CECC;flex-shrink:0;background:#fff;box-shadow:0 -2px 8px rgba(0,0,0,.06);}
-.btn-reassign{width:100%;padding:10px;background:#EEF4FF;color:#185FA5;border:.5px solid #B5CFF5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:0;-webkit-appearance:none;display:block;text-align:center;}
+.bottom-btns{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;padding:5px 11px 8px;border-top:1.5px solid #D0CECC;background:#fff;box-shadow:0 -3px 10px rgba(0,0,0,.12);z-index:200;}
+.btn-reassign{width:100%;padding:7px;background:#EEF4FF;color:#185FA5;border:.5px solid #B5CFF5;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:0;-webkit-appearance:none;display:block;text-align:center;}
 .btn-reassign:active{opacity:.8;}
-.btn-reset{width:100%;padding:10px;background:#FFF3E0;color:#B25000;border:.5px solid #F5C98A;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-appearance:none;display:block;text-align:center;}
+.btn-reset{width:100%;padding:7px;background:#FFF3E0;color:#B25000;border:.5px solid #F5C98A;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-appearance:none;display:block;text-align:center;}
 .btn-reset:active{opacity:.8;}
 .bhint{font-size:8px;color:#888780;text-align:center;margin-top:2px;}
 #toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(8px);background:#2C2C2A;color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;white-space:nowrap;z-index:600;pointer-events:none;opacity:0;transition:opacity .25s,transform .25s;max-width:90%;text-align:center;}
@@ -159,8 +159,8 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       <div class="slide-page" id="pg3"></div>
     </div>
   </div>
-  <div id="bottom-btns"></div>
 </div>
+<div id="bottom-btns"></div>
 <div id="toast"></div>
 <div id="moverlay">
   <div class="mbox">
@@ -403,15 +403,33 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 })();
 
 /* ── 초기화 ── */
+/* 저장 전 전원 퇴소 처리 (퇴소시간 기록) */
+function leaveAllForSave(){
+  const t=timeStr();
+  // 현재 참석자 중 퇴소 안 한 인원 전원 퇴소 처리
+  const remaining=[...S.attendees];
+  remaining.forEach(a=>{
+    S.leftMembers.push({...a,leftAt:t});
+  });
+  S.attendees=[];
+  // 코트 초기화
+  CC={1:false,2:false,3:false,4:false,5:false,6:false};
+}
+
 function autoReset(now){
-  saveStatHistory();archive(S,dateStr(now));S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
+  leaveAllForSave();
+  saveStatHistory();
+  archive(S,dateStr(now));
+  S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
 function manualReset(){
-  // 데이터 저장 후 초기화
-  openModal('오늘 데이터를 저장하고 초기화하시겠습니까?\n(이력에 보관 후 초기화)',()=>{
-    saveStatHistory();
-    archive(S,dateStr());S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
+  openModal('오늘 데이터를 저장하고 초기화하시겠습니까?\n(참석 중인 회원 전원 퇴소 처리 후 저장)',()=>{
+    leaveAllForSave();   // ① 전원 퇴소 처리 (퇴소시간 기록)
+    saveStatHistory();   // ② 통계 저장 (퇴소시간 포함)
+    archive(S,dateStr());// ③ 이력 보관
+    S={attendees:[],leftMembers:[],seqCounter:0};
+    CC={1:false,2:false,3:false,4:false,5:false,6:false};
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 저장 후 초기화 완료');
   });
 }
@@ -660,7 +678,20 @@ function attendRow(a){
   const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;padding:3px 3px">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;padding:3px 3px">다2</button>`;
   const courtTag='';
   const timeLabel=`출석 ${a.time}`;
-  return`<div class="acard"><div class="seq-b">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap"><span class="aname">${a.name}</span>${gt(a.gender,true)}${courtTag}</div><div class="atime-row">🕐 ${timeLabel}</div></div><div class="cbtn-wrap">${cBtns}${ncBtns}</div><span class="gcnt-only">${a.games}게임</span><button class="btn-lv" onclick="leave(${a.id})">퇴소</button></div>`;
+  return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px">
+    <div style="display:flex;align-items:center;gap:4px">
+      <div class="seq-b" style="flex-shrink:0">${a.seq}</div>
+      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
+      ${gt(a.gender,true)}${courtTag}
+      <span style="flex:1"></span>
+      <span class="atime-row" style="margin-top:0;flex-shrink:0">🕐 ${timeLabel}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:3px">
+      <div class="cbtn-wrap" style="flex:1">${cBtns}${ncBtns}</div>
+      <span class="gcnt-only">${a.games}게임</span>
+      <button class="btn-lv" onclick="leave(${a.id})">퇴소</button>
+    </div>
+  </div>`;
 }
 
 /* ── 오늘 참석자 ── */
@@ -784,15 +815,16 @@ function renderCourts(){
 /* ── 하단 버튼 ── */
 function renderBottom(){
   const el=document.getElementById('bottom-btns');
+  if(curTab!==2){el.innerHTML='';return;}
   let h='<div class="bottom-btns">';
-  if(curTab===2)h+=`<div style="display:flex;gap:4px;margin-bottom:4px">
-    <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0">🔄 전체 재편성</button>
-    <button class="btn-reassign" onclick="restorePrevState()" style="flex:1;margin-bottom:0" id="restore-btn">↩️ 재편성 클릭 이전으로 복구</button>
+  h+=`<div style="display:flex;gap:5px;margin-bottom:5px">
+    <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">🔄 전체 재편성</button>
+    <button class="btn-reassign" onclick="restorePrevState()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">↩️ 이전으로 복구</button>
   </div>`;
-  h+=`<div style="display:flex;gap:4px">
-    <button class="btn-reset" onclick="manualReset()" style="flex:1">💾 저장 후 초기화</button>
-    <button class="btn-reset" onclick="manualResetNoSave()" style="flex:1;background:#FFF0F0;color:#C0392B;border-color:#F5A0A0">🗑 저장 없이 초기화</button>
-    <button class="btn-reset" onclick="saveStatHistory();toast('✅ 데이터 저장 완료');" style="flex:1;background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB">📥 데이터 저장만</button>
+  h+=`<div style="display:flex;gap:5px">
+    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:9px 4px;font-size:12px">💾 저장후 초기화</button>
+    <button class="btn-reset" onclick="manualResetNoSave()" style="flex:1;padding:9px 4px;font-size:12px;background:#FFF0F0;color:#C0392B;border-color:#F5A0A0">🗑 저장없이</button>
+    <button class="btn-reset" onclick="saveStatHistory();toast('✅ 저장 완료');" style="flex:1;padding:9px 4px;font-size:12px;background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB">📥 저장만</button>
   </div></div>`;
   el.innerHTML=h;
 }
@@ -821,22 +853,49 @@ function saveStatHistory(){
   try{
     const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
     const today=dateStr();
-    const filtered=st.filter(x=>x.date!==today);
     const allToday=[...S.attendees,...S.leftMembers];
-    if(!allToday.length) return; // 참석자 없으면 저장 안 함
+    if(!allToday.length) return;
+
+    // 기존 오늘 데이터 찾기
+    const existingIdx=st.findIndex(x=>x.date===today);
+    const existing=existingIdx>=0?st[existingIdx]:null;
+
+    // 회원별 병합: 기존에 있던 회원은 최신 데이터로 업데이트, 없는 회원은 신규 추가
+    function mergeMembers(existList, newList){
+      const map={};
+      // 기존 데이터 먼저 등록
+      (existList||[]).forEach(a=>{ map[a.id]=a; });
+      // 신규/업데이트 데이터로 덮어쓰기
+      newList.forEach(a=>{ map[a.id]=a; });
+      return Object.values(map);
+    }
+
+    const mergedAttendees=mergeMembers(
+      existing?.attendees||[],
+      S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
+    );
+    const mergedLeftMembers=mergeMembers(
+      existing?.leftMembers||[],
+      S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
+    );
+    const allMerged=[...mergedAttendees,...mergedLeftMembers];
+
     const entry={
       date:today,
-      attendees:S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time})),
-      leftMembers:S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt})),
-      totalAttend:allToday.length,
-      totalGames:allToday.reduce((s,a)=>s+(a.games||0),0),
+      attendees:mergedAttendees,
+      leftMembers:mergedLeftMembers,
+      totalAttend:allMerged.length,
+      totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
     };
-    filtered.push(entry);
-    localStorage.setItem(STKEY,JSON.stringify(filtered));
-    // Firebase에도 통계 저장
+
+    // 기존 항목 교체 또는 신규 추가
+    if(existingIdx>=0) st[existingIdx]=entry;
+    else st.push(entry);
+
+    localStorage.setItem(STKEY,JSON.stringify(st));
+    // Firebase에도 저장
     try{
-      const statRef=firebase.database().ref('tennis_stats/'+today);
-      statRef.set(entry);
+      firebase.database().ref('tennis_stats/'+today).set(entry);
     }catch(e){}
   }catch(e){console.error('saveStatHistory error:',e);}
 }
