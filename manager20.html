@@ -878,52 +878,46 @@ function recordCourtGame(n){
 /* 오늘 데이터를 통계 히스토리에 저장 */
 function saveStatHistory(){
   try{
-    const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
     const today=dateStr();
     const allToday=[...S.attendees,...S.leftMembers];
     if(!allToday.length) return;
 
-    // 기존 오늘 데이터 찾기
-    const existingIdx=st.findIndex(x=>x.date===today);
-    const existing=existingIdx>=0?st[existingIdx]:null;
-
-    // 회원별 병합: 기존에 있던 회원은 최신 데이터로 업데이트, 없는 회원은 신규 추가
-    function mergeMembers(existList, newList){
-      const map={};
-      // 기존 데이터 먼저 등록
-      (existList||[]).forEach(a=>{ map[a.id]=a; });
-      // 신규/업데이트 데이터로 덮어쓰기
-      newList.forEach(a=>{ map[a.id]=a; });
-      return Object.values(map);
-    }
-
-    const mergedAttendees=mergeMembers(
-      existing?.attendees||[],
-      S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
-    );
-    const mergedLeftMembers=mergeMembers(
-      existing?.leftMembers||[],
-      S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
-    );
-    const allMerged=[...mergedAttendees,...mergedLeftMembers];
-
-    const entry={
-      date:today,
-      attendees:mergedAttendees,
-      leftMembers:mergedLeftMembers,
-      totalAttend:allMerged.length,
-      totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
-    };
-
-    // 기존 항목 교체 또는 신규 추가
-    if(existingIdx>=0) st[existingIdx]=entry;
-    else st.push(entry);
-
-    localStorage.setItem(STKEY,JSON.stringify(st));
-    // Firebase에도 저장
-    try{
-      firebase.database().ref('tennis_stats/'+today).set(entry);
-    }catch(e){}
+    // Firebase에서 기존 오늘 데이터 읽어서 병합 후 저장
+    const statRef=firebase.database().ref('tennis_stats/'+today);
+    statRef.once('value').then(snap=>{
+      const existing=snap.val();
+      function mergeMembers(existList, newList){
+        const map={};
+        (existList||[]).forEach(a=>{ map[a.id]=a; });
+        newList.forEach(a=>{ map[a.id]=a; });
+        return Object.values(map);
+      }
+      const mergedAtt=mergeMembers(
+        existing?.attendees||[],
+        S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
+      );
+      const mergedLeft=mergeMembers(
+        existing?.leftMembers||[],
+        S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
+      );
+      const allMerged=[...mergedAtt,...mergedLeft];
+      const entry={
+        date:today,
+        attendees:mergedAtt,
+        leftMembers:mergedLeft,
+        totalAttend:allMerged.length,
+        totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
+      };
+      // Firebase에만 저장 (기기 공통)
+      statRef.set(entry);
+      // localStorage도 동기화
+      try{
+        const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+        const idx=st.findIndex(x=>x.date===today);
+        if(idx>=0) st[idx]=entry; else st.push(entry);
+        localStorage.setItem(STKEY,JSON.stringify(st));
+      }catch(e){}
+    }).catch(e=>console.error('saveStatHistory error:',e));
   }catch(e){console.error('saveStatHistory error:',e);}
 }
 
@@ -937,15 +931,22 @@ let statDetailDate='';
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
   const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+  // Firebase 우선: 전체 통계 가져와서 localStorage 덮어쓰기 후 재렌더
   try{
     firebase.database().ref('tennis_stats').once('value',snap=>{
       const fbData=snap.val(); if(!fbData)return;
-      const localDates=new Set(st.map(x=>x.date));
+      const fbList=Object.values(fbData).filter(x=>x&&x.date);
       let changed=false;
-      Object.values(fbData).forEach(entry=>{
-        if(entry&&entry.date&&!localDates.has(entry.date)){st.push(entry);localDates.add(entry.date);changed=true;}
+      fbList.forEach(entry=>{
+        const idx=st.findIndex(x=>x.date===entry.date);
+        if(idx>=0){
+          if(JSON.stringify(st[idx])!==JSON.stringify(entry)){st[idx]=entry;changed=true;}
+        } else {st.push(entry);changed=true;}
       });
-      if(changed){localStorage.setItem(STKEY,JSON.stringify(st));document.getElementById('pg3').innerHTML=renderStatPage();}
+      if(changed){
+        localStorage.setItem(STKEY,JSON.stringify(st));
+        document.getElementById('pg3').innerHTML=renderStatPage();
+      }
     });
   }catch(e){}
 
