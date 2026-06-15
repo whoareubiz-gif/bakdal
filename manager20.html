@@ -990,16 +990,16 @@ function renderStatPage(){
 
   // 전체 평균 참석률 박스 (누적일수/총게임 제거)
   let avgBox='';
-  if(ALL.length>0){
-    const avgAttend=(ALL.reduce((s,d)=>{
+  if(filtered.length>0){
+    const avgAttend=(filtered.reduce((s,d)=>{
       return s+[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).length;
-    },0)/ALL.length).toFixed(1);
+    },0)/filtered.length).toFixed(1);
     const pct=Math.round(parseFloat(avgAttend)/REGULAR*100);
     avgBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-      <div class="stitle" style="margin-bottom:8px">✅ 전체기간 회원 평균 참석률</div>
+      <div class="stitle" style="margin-bottom:8px">✅ 해당기간 회원 평균 참석률</div>
       <div style="background:#F0EDE8;border-radius:10px;height:42px;overflow:hidden">
         <div style="width:${Math.min(pct,100)}%;background:#1D9E75;height:100%;border-radius:10px;display:flex;align-items:center;padding-left:10px;min-width:120px">
-          <span style="font-size:13px;color:#fff;font-weight:700;white-space:nowrap">${pct}% &nbsp;(일평균 ${avgAttend}명 / 총 ${REGULAR}명)</span>
+          <span style="font-size:13px;color:#1A1A1A;font-weight:700;white-space:nowrap">${pct}% &nbsp;(일평균 ${avgAttend}명 / 총 ${REGULAR}명)</span>
         </div>
       </div>
     </div>`;
