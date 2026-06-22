@@ -307,6 +307,157 @@ const MEMBERS=[
   {id:73,name:'게스트1',gender:'f'},{id:74,name:'게스트2',gender:'f'},
   {id:75,name:'게스트3',gender:'f'},{id:76,name:'게스트4',gender:'f'},
 ];
+
+/* ── 추가 회원 (localStorage + Firebase 동기화) ── */
+const EXTRA_MEMBERS_KEY='tennis_extra_members';
+function loadExtraMembers(){
+  try{
+    const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+    extra.forEach(m=>{ if(!MEMBERS.find(x=>x.id===m.id)) MEMBERS.push(m); });
+  }catch(e){}
+}
+function syncExtraMembersFromFirebase(){
+  try{
+    firebase.database().ref('tennis_extra_members').once('value',snap=>{
+      const fbExtra=snap.val();
+      if(!fbExtra)return;
+      const list=Object.values(fbExtra);
+      let changed=false;
+      list.forEach(m=>{
+        if(!MEMBERS.find(x=>x.id===m.id)){ MEMBERS.push(m); changed=true; }
+      });
+      if(changed){
+        localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(MEMBERS.filter(x=>x.id>=1000)));
+        renderAll();
+      }
+    });
+  }catch(e){}
+}
+function addNewMember(name, gender){
+  name=(name||'').trim();
+  if(!name){ toast('이름을 입력해주세요'); return false; }
+  if(MEMBERS.find(x=>x.name===name && x.gender===gender)){
+    toast(`${name} 회원이 이미 존재합니다`); return false;
+  }
+  const newId = 1000 + Date.now()%1000000; // 충돌 방지용 큰 ID
+  const m={id:newId, name, gender};
+  MEMBERS.push(m);
+  // localStorage 저장
+  try{
+    const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+    extra.push(m);
+    localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra));
+  }catch(e){}
+  // Firebase 동기화
+  try{ firebase.database().ref('tennis_extra_members/'+newId).set(m); }catch(e){}
+  toast(`✅ ${name}(${gender==='m'?'남':'여'}) 회원 추가 완료`);
+  renderAll();
+  return true;
+}
+
+/* ── 회원 수정 ── */
+function renderMemberSearchResults(){
+  const el=document.getElementById('member-search-results');
+  if(!el) return;
+  const kw=(statMemberSearch||'').trim();
+  if(!kw){
+    el.innerHTML='<div style="font-size:10px;color:#888780;text-align:center;padding:6px">이름을 입력하면 검색 결과가 표시됩니다.</div>';
+    return;
+  }
+  const results=MEMBERS.filter(m=>m.name.includes(kw));
+  if(!results.length){
+    el.innerHTML=`<div style="font-size:11px;color:#888780;text-align:center;padding:10px">"${kw}" 검색 결과가 없습니다.</div>`;
+    return;
+  }
+  el.innerHTML=results.map(m=>{
+    const gc=m.gender==='m'?'#185FA5':'#993556';
+    const gbg=m.gender==='m'?'#E6F1FB':'#FBEAF0';
+    const inputId=`edit-name-${m.id}`;
+    return`<div style="display:flex;align-items:center;gap:5px;background:${gbg};border-radius:8px;padding:6px 8px;margin-bottom:5px">
+      <input type="text" id="${inputId}" value="${m.name}"
+        style="flex:1;padding:5px 7px;border:.5px solid #D8D5CF;border-radius:6px;font-size:12px;font-family:inherit;font-weight:700;color:${gc}">
+      <span style="font-size:9px;font-weight:700;color:${gc};white-space:nowrap">${m.gender==='m'?'남':'여'}</span>
+      <button onclick="const v=document.getElementById('${inputId}').value;editMemberName(${m.id},v);"
+        style="padding:5px 9px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">수정</button>
+      <button onclick="deleteMember(${m.id})"
+        style="padding:5px 9px;background:#C0392B;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">삭제</button>
+    </div>`;
+  }).join('');
+}
+
+function editMemberName(id, newName){
+  newName=(newName||'').trim();
+  if(!newName){ toast('이름을 입력해주세요'); return false; }
+  const m=MEMBERS.find(x=>x.id===id);
+  if(!m){ toast('회원을 찾을 수 없습니다'); return false; }
+  const oldName=m.name;
+  m.name=newName;
+  // 오늘 출석/퇴소 데이터에도 이름 동기화
+  S.attendees.forEach(a=>{ if(a.id===id) a.name=newName; });
+  S.leftMembers.forEach(a=>{ if(a.id===id) a.name=newName; });
+  save();
+  // localStorage 추가회원 목록 업데이트
+  try{
+    const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+    const idx=extra.findIndex(x=>x.id===id);
+    if(idx>=0){ extra[idx].name=newName; localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra)); }
+  }catch(e){}
+  // Firebase 동기화 (id>=1000인 추가 회원만 별도 노드 보유)
+  try{
+    if(id>=1000) firebase.database().ref('tennis_extra_members/'+id).update({name:newName});
+  }catch(e){}
+  toast(`✅ "${oldName}" → "${newName}" 으로 수정 완료`);
+  renderAll();
+  renderMemberSearchResults();
+  return true;
+}
+
+/* ── 회원 삭제 (해당 회원의 모든 데이터 삭제) ── */
+function deleteMember(id){
+  const m=MEMBERS.find(x=>x.id===id);
+  if(!m){ toast('회원을 찾을 수 없습니다'); return; }
+  openModal(`⚠️ "${m.name}" 회원을 완전히 삭제하시겠습니까?\n(오늘 출석/퇴소 기록 + 통계 이력 + 회원정보 모두 삭제, 복구 불가)`,()=>{
+    // 1. MEMBERS 배열에서 제거
+    const idx=MEMBERS.findIndex(x=>x.id===id);
+    if(idx>=0) MEMBERS.splice(idx,1);
+    // 2. 오늘 출석/퇴소 데이터에서 제거
+    S.attendees=S.attendees.filter(a=>a.id!==id);
+    S.leftMembers=S.leftMembers.filter(a=>a.id!==id);
+    save();
+    // 3. localStorage 통계 이력에서 해당 회원 제거
+    try{
+      const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+      st.forEach(entry=>{
+        if(entry.attendees) entry.attendees=entry.attendees.filter(a=>a.id!==id);
+        if(entry.leftMembers) entry.leftMembers=entry.leftMembers.filter(a=>a.id!==id);
+      });
+      localStorage.setItem(STKEY, JSON.stringify(st));
+      // Firebase 통계에서도 제거
+      st.forEach(entry=>{
+        try{ firebase.database().ref('tennis_stats/'+entry.date).set(entry); }catch(e){}
+      });
+    }catch(e){}
+    // 4. 코트 히스토리(같이한 인원 기록)에서 해당 회원 제거
+    try{
+      const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+      const filtered=ch.map(entry=>({
+        ...entry,
+        members:entry.members.filter(mm=>mm.id!==id)
+      })).filter(entry=>entry.members.length>=2);
+      localStorage.setItem('tennis_court_hist', JSON.stringify(filtered));
+    }catch(e){}
+    // 5. localStorage 추가회원 목록에서 제거 + Firebase 추가회원 노드 제거
+    try{
+      const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+      localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra.filter(x=>x.id!==id)));
+    }catch(e){}
+    try{ firebase.database().ref('tennis_extra_members/'+id).remove(); }catch(e){}
+    toast(`🗑 "${m.name}" 회원 및 모든 데이터 삭제 완료`);
+    renderAll();
+    renderMemberSearchResults();
+  });
+}
+
 const TBANDS=[
   {label:'17:30~18:00',s:17*60+30,e:18*60},
   {label:'18:00~19:00',s:18*60,e:19*60},
@@ -374,7 +525,7 @@ document.getElementById('moverlay').onclick=e=>{if(e.target.id==='moverlay')clos
 function goTab(idx){
   curTab=idx;leftOnly=false;todayGender=null;
   // 통계 탭 클릭 시: 오늘/참석률 기본값 + 현재 데이터 자동 저장
-  if(idx===3){statPeriod='day';statView='attend';saveStatHistory();}
+  if(idx===3){statPeriod='day';statView='attend';saveStatHistory();setTimeout(renderMemberSearchResults,0);}
   ['tab0','tab1','tab2','tab3'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===idx));
   document.getElementById('slide-track').style.transform=`translateX(${-idx*100/4}%)`;
   renderAll();
@@ -677,9 +828,20 @@ function renderStats(){
 /* ── 회원명부 ── */
 function renderMembers(){
   const aIds=new Set(S.attendees.map(x=>x.id));const lIds=new Set(S.leftMembers.map(x=>x.id));
-  const males=MEMBERS.filter(x=>x.gender==='m');const females=MEMBERS.filter(x=>x.gender==='f');
-  const mAtt=males.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
-  const fAtt=females.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
+  // 게스트 제외한 정회원만 카운트/표시
+  // 회원명부에는 게스트도 표시, 단 (00명) 카운트는 정회원만 집계
+  // 게스트는 항상 맨 아래로 정렬
+  function sortGuestLast(arr){
+    const regular=arr.filter(x=>!x.name.includes('게스트'));
+    const guest=arr.filter(x=>x.name.includes('게스트'));
+    return [...regular, ...guest];
+  }
+  const males=sortGuestLast(MEMBERS.filter(x=>x.gender==='m'));
+  const females=sortGuestLast(MEMBERS.filter(x=>x.gender==='f'));
+  const malesRegular=males.filter(x=>!x.name.includes('게스트'));
+  const femalesRegular=females.filter(x=>!x.name.includes('게스트'));
+  const mAtt=malesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
+  const fAtt=femalesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
   function card(m){
     const a=aIds.has(m.id),l=lIds.has(m.id);
     const chips=(a&&!l?chip('g','✓'):'');
@@ -688,7 +850,7 @@ function renderMembers(){
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
     return`<div class="scard"><span class="sname">${m.name}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
   }
-  return`<div class="split-wrap"><div class="split-col lcol"><div class="split-hdr m">👨 남자 (${mAtt}/${males.length})</div>${males.map(card).join('')}</div><div class="split-col"><div class="split-hdr f">👩 여자 (${fAtt}/${females.length})</div>${females.map(card).join('')}</div></div>`;
+  return`<div class="split-wrap"><div class="split-col lcol"><div class="split-hdr m">👨 남자 (${mAtt}/${malesRegular.length})</div>${males.map(card).join('')}</div><div class="split-col"><div class="split-hdr f">👩 여자 (${fAtt}/${femalesRegular.length})</div>${females.map(card).join('')}</div></div>`;
 }
 
 /* ── 참석자 행 ── */
@@ -927,6 +1089,7 @@ let statView='attend';
 let statCustomFrom='';
 let statCustomTo='';
 let statDetailDate='';
+let statMemberSearch='';
 
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
@@ -1262,12 +1425,41 @@ function renderStatPage(){
     }).join('');
   }
 
+  // 회원 추가 박스
+  const addMemberBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+    <div class="stitle" style="margin-bottom:8px">➕ 회원 추가</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" id="new-member-name" placeholder="이름 입력"
+        style="flex:1;padding:7px 9px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit">
+      <select id="new-member-gender" style="padding:7px 6px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit;background:#fff">
+        <option value="m">남자</option>
+        <option value="f">여자</option>
+      </select>
+      <button onclick="const n=document.getElementById('new-member-name').value;const g=document.getElementById('new-member-gender').value;if(addNewMember(n,g)){document.getElementById('new-member-name').value='';}"
+        style="padding:7px 14px;background:#1D9E75;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">추가</button>
+    </div>
+  </div>`;
+
+  // 회원 검색/수정/삭제 박스
+  const searchKw=(statMemberSearch||'').trim();
+
+  // 검색 입력란은 고정, 결과만 별도 div(member-search-results)로 갱신 (한글 IME 조합 보호)
+  const searchBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+    <div class="stitle" style="margin-bottom:8px">🔍 회원 검색·수정·삭제</div>
+    <input type="text" id="member-search-input" placeholder="회원 이름 검색" value="${searchKw}"
+      oninput="statMemberSearch=this.value;renderMemberSearchResults();"
+      style="width:100%;padding:7px 9px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
+    <div id="member-search-results"></div>
+  </div>`;
+
   return`<div class="pg-inner">
     <div class="stitle">📊 통계 <span style="font-size:9px;color:#888780;margin-left:4px">📥 저장 버튼으로 누적</span></div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
     ${rangeBox}${avgBox}${detailBox}${divider}
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>
     <div>${body}</div>
+    ${addMemberBox}
+    ${searchBox}
   </div>`;
 }
 
@@ -1291,11 +1483,13 @@ function renderAll(){
 }
 
 /* ── 시작 ── */
+loadExtraMembers();
 load();
 document.getElementById('hdr-date').textContent=todayLbl();
 setInterval(tick,1000);tick();
 renderAll();
 syncListen(); // Firebase 실시간 수신 시작
+syncExtraMembersFromFirebase(); // 추가 회원 동기화
 </script>
 </body>
 </html>
