@@ -127,7 +127,24 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 </style>
 </head>
 <body>
-<div id="app">
+<div id="login-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#1D9E75;padding:20px;">
+  <div style="background:#fff;border-radius:18px;padding:32px 26px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,.18);">
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="font-size:40px;margin-bottom:8px">🎾</div>
+      <div style="font-size:18px;font-weight:700;color:#1A1A1A">박달브라운 테니스 클럽</div>
+      <div style="font-size:12px;color:#888780;margin-top:4px">이름을 입력하고 출석해주세요</div>
+    </div>
+    <input type="text" id="login-name-input" placeholder="이름 입력"
+      style="width:100%;padding:13px 14px;border:1.5px solid #D8D5CF;border-radius:10px;font-size:16px;font-family:inherit;margin-bottom:10px;box-sizing:border-box"
+      onkeydown="if(event.key==='Enter')doLogin();">
+    <div id="login-error" style="color:#C0392B;font-size:12px;text-align:center;margin-bottom:10px;min-height:16px"></div>
+    <button onclick="doLogin()"
+      style="width:100%;padding:13px;background:#1D9E75;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+      출석하기
+    </button>
+  </div>
+</div>
+<div id="app" style="display:none;">
   <div class="hdr">
     <div class="hdr-top">
       <span style="font-size:19px">🎾</span>
@@ -145,16 +162,16 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       <div class="sc" onclick="showLeft()"><div class="sn lv" id="st3">0</div><div class="sl">퇴소</div></div>
     </div>
   </div>
+  <div id="my-status-banner"></div>
+  <div id="next-court-banner"></div>
   <div class="tab-bar">
-    <button class="tab active" id="tab0" onclick="goTab(0)"><span>👥</span>회원명부</button>
-    <button class="tab" id="tab1" onclick="goTab(1)"><span>📋</span>오늘 참석자</button>
+    <button class="tab active" id="tab1" onclick="goTab(1)"><span>📋</span>오늘 참석자</button>
     <button class="tab" id="tab2" onclick="goTab(2)"><span>🎾</span>코트 현황</button>
   </div>
   <div class="slide-wrap" id="slide-wrap">
-    <div class="slide-track" id="slide-track">
-      <div class="slide-page" id="pg0"></div>
-      <div class="slide-page" id="pg1"></div>
-      <div class="slide-page" id="pg2"></div>
+    <div class="slide-track" id="slide-track" style="width:200%">
+      <div class="slide-page" id="pg1" style="width:calc(100% / 2)"></div>
+      <div class="slide-page" id="pg2" style="width:calc(100% / 2)"></div>
     </div>
   </div>
   <div id="bottom-btns"></div>
@@ -192,8 +209,8 @@ const db = firebase.database();
 const REF = db.ref('tennis/' + new Date().toISOString().slice(0,10)); // 날짜별 분리
 
 let syncPushTimer = null;
-let localSeq = 0;     // 내가 push한 seq
-let lastSeenSeq = -1; // 마지막으로 처리한 seq
+const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
+let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 
 function setSyncDot(st){
   const d=document.getElementById('sync-dot');
@@ -237,9 +254,9 @@ function syncPush(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   setSyncDot('busy');
   syncPushTimer = setTimeout(()=>{
-    localSeq++;
-    lastSeenSeq = localSeq; // 내가 보낸 seq 미리 기록
-    REF.set({state:S, CC, seq:localSeq, updatedAt:Date.now()})
+    const token = DEVICE_ID+'-'+Date.now(); // 기기+시간 조합으로 전역 고유성 보장
+    lastSentToken = token;
+    REF.set({state:S, CC, seq:token, updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 1000);
@@ -251,11 +268,10 @@ function syncListen(){
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
     setSyncDot('ok');
-    // 내가 push한 데이터가 돌아온 것 → 무시
-    const incomingSeq = raw.seq ?? 0;
-    if(incomingSeq === lastSeenSeq) return;
-    lastSeenSeq = incomingSeq;
-    // 데이터 정규화 후 반영
+    // 내가 방금 보낸 토큰과 동일하면 (내 데이터가 그대로 돌아온 것) 무시
+    const incomingToken = raw.seq ?? '';
+    if(incomingToken && incomingToken === lastSentToken) return;
+    // 다른 기기(관리자 포함)에서 온 변경사항 → 반드시 반영
     normalizeS(raw);
     renderAll();
   });
@@ -320,7 +336,7 @@ const SK='tennis_v7',HK='tennis_hist';
 
 let S={attendees:[],leftMembers:[],seqCounter:0};
 let CC={1:false,2:false,3:false,4:false,5:false,6:false};
-let curTab=0,leftOnly=false,todayGender=null;
+let curTab=1,leftOnly=false,todayGender=null;
 let autoFired=false,toastT=null,modalFn=null;
 
 function pad(n){return String(n).padStart(2,'0');}
@@ -369,26 +385,28 @@ document.getElementById('moverlay').onclick=e=>{if(e.target.id==='moverlay')clos
 
 /* ── 탭 & 스와이프 ── */
 function goTab(idx){
+  // idx: 1=오늘참석자, 2=코트현황 (0=회원명부는 더이상 사용 안 함)
   curTab=idx;leftOnly=false;todayGender=null;
-  ['tab0','tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===idx));
-  document.getElementById('slide-track').style.transform=`translateX(${-idx*100/3}%)`;
+  ['tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',(i+1)===idx));
+  const slot=idx-1; // 0 또는 1
+  document.getElementById('slide-track').style.transform=`translateX(${-slot*100/2}%)`;
   renderAll();
 }
 function showLeft(){leftOnly=true;todayGender=null;curTab=1;
-  ['tab0','tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
-  document.getElementById('slide-track').style.transform=`translateX(${-100/3}%)`;
+  ['tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',(i+1)===1));
+  document.getElementById('slide-track').style.transform=`translateX(0%)`;
   renderAll();
 }
 function showGender(g){todayGender=g;leftOnly=false;curTab=1;
-  ['tab0','tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
-  document.getElementById('slide-track').style.transform=`translateX(${-100/3}%)`;
+  ['tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',(i+1)===1));
+  document.getElementById('slide-track').style.transform=`translateX(0%)`;
   renderAll();
 }
 (function(){
   const wrap=document.getElementById('slide-wrap');
   let sx=0,dragging=false,moved=false;
   function start(x){sx=x;dragging=true;moved=false;}
-  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(2,curTab+(dx<0?1:-1))));}
+  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(1,Math.min(2,curTab+(dx<0?1:-1))));}
   wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX);},{passive:true});
   wrap.addEventListener('touchmove',e=>{if(dragging&&Math.abs(e.touches[0].clientX-sx)>5)moved=true;},{passive:true});
   wrap.addEventListener('touchend',e=>{end(e.changedTouches[0].clientX);});
@@ -418,7 +436,8 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);goTab(1);return;}
+  // ID 기준 + 이름 기준 모두 체크 (동명이인 ID 꼬임 대비 이중 안전장치)
+  if(S.attendees.find(x=>x.id===id || x.name===m.name)){toast(`${m.name} 이미 출석`);goTab(1);return;}
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);goTab(1);
@@ -623,7 +642,7 @@ function attendRow(a){
   }).join('');
   const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
   const ncBtns=`<button class="cbtn c5${nc1on}" disabled style="cursor:default;opacity:${nc1on?'1':'0.4'};font-size:9px;padding:3px 3px">다1</button><button class="cbtn c6${nc2on}" disabled style="cursor:default;opacity:${nc2on?'1':'0.4'};font-size:9px;padding:3px 3px">다2</button>`;
-  const courtTag=a.court?`<span style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px;background:${CBGS[a.court]};color:${CCOLORS[a.court]}">${CNAMES[a.court]}</span>`:'';
+  const courtTag='';
   const timeLabel=`출석 ${a.time}`;
   return`<div class="acard"><div class="seq-b">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap"><span class="aname">${a.name}</span>${gt(a.gender,true)}${courtTag}</div><div class="atime-row">🕐 ${timeLabel}</div></div><div class="cbtn-wrap">${cBtns}${ncBtns}</div><span class="gcnt-only">${a.games}게임</span><button class="btn-lv" onclick="leave(${a.id})">퇴소</button></div>`;
 }
@@ -659,10 +678,15 @@ function renderToday(){
 
 /* ── 코트 현황 ── */
 function renderCourts(){
+  const me=getCurrentMember();
   let h='<div class="court-grid">';
   [1,2,3,4].forEach(n=>{
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" style="cursor:default"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
+    let slots='';pl.forEach(a=>{
+      const isMe=me&&a.id===me.id;
+      const nameStyle=isMe?'font-size:13px;font-weight:900;color:#0D5FBF;text-decoration:underline':'font-size:13px;font-weight:700';
+      slots+=`<div class="ct-slot" style="cursor:default${isMe?';background:#E3F0FF':''}"><span style="${nameStyle}">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+    });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -681,7 +705,9 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" style="cursor:default"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      const isMe=me&&a.id===me.id;
+      const nameStyle=isMe?'font-size:13px;font-weight:900;color:#0D5FBF;text-decoration:underline':'font-size:13px;font-weight:700';
+      slots+=`<div class="ct-slot" style="cursor:default${isMe?';background:#E3F0FF':''}"><span style="${nameStyle}">${a.name}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -701,10 +727,160 @@ function renderBottom(){
 /* ── 전체 렌더 ── */
 function renderAll(){
   renderStats();
-  document.getElementById('pg0').innerHTML=renderMembers();
+  renderMyStatusBanner();
+  renderNextCourtBanner();
   document.getElementById('pg1').innerHTML=renderToday();
   document.getElementById('pg2').innerHTML=renderCourts();
   renderBottom();
+}
+
+/* ── 로그인 처리 ── */
+const LOGIN_KEY='tennis_login_member';
+
+function getCurrentMember(){
+  try{
+    const saved=sessionStorage.getItem(LOGIN_KEY);
+    if(saved) return JSON.parse(saved);
+  }catch(e){}
+  return null;
+}
+
+/* 본인 상태 배너: 코트1~4 / 다음차례 / 대기중 표시 (탭바 위 고정 영역) */
+function renderMyStatusBanner(){
+  const el=document.getElementById('my-status-banner');
+  if(!el) return;
+  const me=getCurrentMember();
+  if(!me){ el.innerHTML=''; return; }
+  const a=S.attendees.find(x=>x.id===me.id);
+  if(!a){ el.innerHTML=''; return; } // 아직 출석 전이면 표시 안 함
+
+  let label='', bg='#F0EDE8', tc='#555', icon='⏳';
+  if(a.court && !NEXT_COURTS.includes(a.court)){
+    const confirmed=!!CC[a.court];
+    label=confirmed?`${CNAMES[a.court]} 배정완료(확정)`:`${CNAMES[a.court]} 배정중(미확정)`;
+    bg=CBGS[a.court]; tc=CCOLORS[a.court]; icon=confirmed?'✅':'🎾';
+  } else if(a.nextCourt1){
+    const confirmed=!!CC[5];
+    label=confirmed?'다음차례1 배정완료(확정)':'다음차례1 배정중(미확정)';
+    bg=CBGS[5]; tc=CCOLORS[5]; icon=confirmed?'✅':'⏭';
+  } else if(a.nextCourt2){
+    const confirmed=!!CC[6];
+    label=confirmed?'다음차례2 배정완료(확정)':'다음차례2 배정중(미확정)';
+    bg=CBGS[6]; tc=CCOLORS[6]; icon=confirmed?'✅':'⏭';
+  } else {
+    label='미배정 대기중';
+    bg='#EFEDE8'; tc='#6B6862'; icon='⏳';
+  }
+
+  el.innerHTML=`<div style="margin:10px 11px;padding:14px 16px;border-radius:14px;background:${bg};display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+    <span style="font-size:26px;flex-shrink:0">${icon}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;color:${tc};opacity:.75;font-weight:600">${me.name}님의 현재 상태</div>
+      <div style="font-size:18px;font-weight:900;color:${tc};margin-top:1px">${label}</div>
+    </div>
+  </div>`;
+}
+
+/* 다음차례1·2 배정 인원 현황 배너 */
+function renderNextCourtBanner(){
+  const el=document.getElementById('next-court-banner');
+  if(!el) return;
+  const me=getCurrentMember();
+  if(!me){ el.innerHTML=''; return; }
+
+  function buildCol(n){
+    const ncKey=n===5?'nextCourt1':'nextCourt2';
+    const players=S.attendees.filter(x=>x[ncKey]);
+    const confirmed=!!CC[n];
+    const names=players.length
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${players.map(a=>`<span style="display:block;text-align:center;background:${CBGS[n]};color:${CCOLORS[n]};padding:5px 4px;border-radius:7px;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>`).join('')}</div>`
+      : '<span style="font-size:12px;color:#aaa">배정 없음</span>';
+    return`<div style="flex:1;min-width:0">
+      <div style="font-size:12px;color:${CCOLORS[n]};opacity:.8;font-weight:700;margin-bottom:5px">${CNAMES[n]} ${confirmed?'✅확정':`(${players.length}/${CMAX})`}</div>
+      ${names}
+    </div>`;
+  }
+
+  el.innerHTML=`<div style="margin:6px 11px 10px;padding:12px 16px;border-radius:14px;background:#F4F6F7;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="font-size:18px">⏭</span>
+      <span style="font-size:12px;font-weight:700;color:#666">다음차례 배정 현황</span>
+    </div>
+    <div style="display:flex;gap:14px">
+      ${buildCol(5)}
+      <div style="width:1px;background:#D8D5CF;flex-shrink:0"></div>
+      ${buildCol(6)}
+    </div>
+  </div>`;
+}
+
+let loginInProgress=false;
+function doLogin(){
+  if(loginInProgress) return; // 중복 클릭 방지
+  const nameInput=document.getElementById('login-name-input');
+  const errEl=document.getElementById('login-error');
+  const name=(nameInput.value||'').trim();
+  errEl.textContent='';
+  if(!name){ errEl.textContent='이름을 입력해주세요.'; return; }
+
+  const member=MEMBERS.find(x=>x.name===name);
+  if(!member){
+    errEl.textContent=`"${name}" 회원이 아닙니다. 이름을 다시 확인해주세요.`;
+    return;
+  }
+
+  loginInProgress=true;
+  errEl.textContent='출석 확인 중...';
+
+  // 로그인 직전, Firebase에서 최신 데이터를 반드시 먼저 받아온 뒤 출석 처리
+  // (다른 기기에서 이미 출석시켰는지 확인하기 위함 — race condition 방지)
+  REF.once('value').then(snap=>{
+    const raw=snap.val();
+    if(raw){ normalizeS(raw); }
+
+    // 로그인 성공 처리
+    try{ sessionStorage.setItem(LOGIN_KEY, JSON.stringify(member)); }catch(e){}
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='flex';
+
+    // 최신 데이터 기준으로 출석 여부 재확인
+    if(!S.attendees.find(x=>x.id===member.id)){
+      markAttend(member.id);
+    } else {
+      toast(`${member.name} 님, 이미 출석하셨습니다`);
+      renderAll();
+      goTab(1);
+    }
+    loginInProgress=false;
+  }).catch(()=>{
+    // Firebase 조회 실패 시에도 로컬 기준으로 진행 (오프라인 대비)
+    try{ sessionStorage.setItem(LOGIN_KEY, JSON.stringify(member)); }catch(e){}
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='flex';
+    if(!S.attendees.find(x=>x.id===member.id)){
+      markAttend(member.id);
+    } else {
+      toast(`${member.name} 님, 이미 출석하셨습니다`);
+      goTab(1);
+    }
+    loginInProgress=false;
+  });
+}
+
+function checkExistingLogin(){
+  try{
+    const saved=sessionStorage.getItem(LOGIN_KEY);
+    if(saved){
+      const member=JSON.parse(saved);
+      // 회원명부에 여전히 존재하는지 재확인
+      if(MEMBERS.find(x=>x.id===member.id && x.name===member.name)){
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='flex';
+        return true;
+      }
+    }
+  }catch(e){}
+  return false;
 }
 
 /* ── 시작 ── */
@@ -713,6 +889,7 @@ document.getElementById('hdr-date').textContent=todayLbl();
 setInterval(tick,1000);tick();
 renderAll();
 syncListen(); // Firebase 실시간 수신 시작
+checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
 </script>
 
 </body>

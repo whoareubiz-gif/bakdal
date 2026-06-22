@@ -194,8 +194,8 @@ const db = firebase.database();
 const REF = db.ref('tennis/' + new Date().toISOString().slice(0,10)); // 날짜별 분리
 
 let syncPushTimer = null;
-let localSeq = 0;     // 내가 push한 seq
-let lastSeenSeq = -1; // 마지막으로 처리한 seq
+const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
+let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 
 function setSyncDot(st){
   const d=document.getElementById('sync-dot');
@@ -239,9 +239,9 @@ function syncPush(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   setSyncDot('busy');
   syncPushTimer = setTimeout(()=>{
-    localSeq++;
-    lastSeenSeq = localSeq; // 내가 보낸 seq 미리 기록
-    REF.set({state:S, CC, seq:localSeq, updatedAt:Date.now()})
+    const token = DEVICE_ID+'-'+Date.now();
+    lastSentToken = token;
+    REF.set({state:S, CC, seq:token, updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 1000);
@@ -253,11 +253,8 @@ function syncListen(){
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
     setSyncDot('ok');
-    // 내가 push한 데이터가 돌아온 것 → 무시
-    const incomingSeq = raw.seq ?? 0;
-    if(incomingSeq === lastSeenSeq) return;
-    lastSeenSeq = incomingSeq;
-    // 데이터 정규화 후 반영
+    const incomingToken = raw.seq ?? '';
+    if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
     renderAll();
   });
