@@ -546,6 +546,38 @@ const TBANDS=[
 ];
 const CMAX=4;
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
+const COURT_ACTIVE_KEY='tennis_court_active';
+let courtActive={1:true,2:true,3:true,4:true}; // 오늘 사용할 코트 (1~4만 해당)
+function loadCourtActive(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(COURT_ACTIVE_KEY)||'null');
+    if(saved) courtActive=saved;
+  }catch(e){}
+}
+function saveCourtActive(){
+  try{ localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(courtActive)); }catch(e){}
+  try{ firebase.database().ref('tennis_court_active').set(courtActive); }catch(e){}
+}
+function syncCourtActiveFromFirebase(){
+  try{
+    firebase.database().ref('tennis_court_active').once('value',snap=>{
+      const fb=snap.val();
+      if(fb){ courtActive=fb; localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(fb)); renderAll(); }
+    });
+  }catch(e){}
+}
+function toggleCourtActive(n){
+  const activeCount=Object.values(courtActive).filter(Boolean).length;
+  if(courtActive[n] && activeCount<=1){ toast('최소 1개 코트는 활성 상태여야 합니다 ⚠️'); return; }
+  if(courtActive[n]){
+    // 비활성화 시도: 해당 코트에 인원이 있으면 막기
+    const pl=S.attendees.filter(x=>x.court===n);
+    if(pl.length){ toast(`${CNAMES[n]}에 배정된 인원이 있어 비활성화할 수 없습니다`); return; }
+  }
+  courtActive[n]=!courtActive[n];
+  saveCourtActive();
+  renderAll();
+}
 const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0','#2E7D9E','#6B7280'];
 const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD','#E0F2F7','#F0F0F0'];
 const NEXT_COURTS=[5,6];
@@ -744,6 +776,7 @@ function leave(id){
 function toggleCourt(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();save();renderAll();return;}
+  if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ⚠️`);return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   if(!NEXT_COURTS.includes(n)){
     if(a.court&&!NEXT_COURTS.includes(a.court))CC[a.court]=false;
@@ -805,7 +838,7 @@ function confirmNextCourt(n){
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   const availCourts=[];
-  for(let cn=1;cn<=4;cn++){const cur=S.attendees.filter(x=>x.court===cn).length;if(cur<CMAX)availCourts.push({cn,cur,free:CMAX-cur});}
+  for(let cn=1;cn<=4;cn++){if(!courtActive[cn])continue;const cur=S.attendees.filter(x=>x.court===cn).length;if(cur<CMAX)availCourts.push({cn,cur,free:CMAX-cur});}
   if(!availCourts.length){toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);return;}
   const t=timeStr();const baseTs=nowTs();
   CC[n]=true;
@@ -993,8 +1026,20 @@ function renderToday(){
 
 /* ── 코트 현황 ── */
 function renderCourts(){
-  let h='<div class="court-grid">';
+  // 코트 사용 설정 토글 바
+  let h=`<div style="padding:9px 11px 0">
+    <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트</div>
+    <div style="display:flex;gap:5px;margin-bottom:4px">`;
   [1,2,3,4].forEach(n=>{
+    const isOn=courtActive[n];
+    h+=`<button onclick="toggleCourtActive(${n})" style="flex:1;padding:8px 4px;border-radius:8px;border:1.5px solid ${isOn?CCOLORS[n]:'#D8D5CF'};background:${isOn?CBGS[n]:'#F0EDE8'};color:${isOn?CCOLORS[n]:'#aaa'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+      ${isOn?'✅':'⬜'} ${CNAMES[n]}
+    </button>`;
+  });
+  h+=`</div></div>`;
+
+  h+='<div class="court-grid">';
+  [1,2,3,4].filter(n=>courtActive[n]).forEach(n=>{
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
     let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
@@ -1038,9 +1083,10 @@ function renderCourts(){
     function courtAllCard(a){
       const isWaiting=!a.court||NEXT_COURTS.includes(a.court)||(!NEXT_COURTS.includes(a.court)&&a.court&&!CC[a.court]);
       const cBtns=[1,2,3,4].map(n=>{
-        const isFull=S.attendees.filter(x=>x.court===n).length>=CMAX&&a.court!==n;
+        const isInactive=!courtActive[n]&&a.court!==n;
+        const isFull=(S.attendees.filter(x=>x.court===n).length>=CMAX&&a.court!==n)||isInactive;
         const isOn=a.court===n?' on':'';
-        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px">${n}</button>`;
+        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:10px;font-weight:700;padding:3px 4px;min-width:20px;border-radius:5px${isInactive?';opacity:.3':''}">${n}</button>`;
       }).join('');
       const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
       const nc1full=S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1;
@@ -1065,7 +1111,7 @@ function renderCourts(){
   const recTeams=buildRecommendedTeams();
   if(recTeams.length){
     function recCourtBtns(tIds){
-      return[1,2,3,4].map(n=>{const ex=S.attendees.filter(x=>x.court===n).length;return`<button class="assign-btn" onclick="assignTeam(${n},${tIds})" style="background:${CCOLORS[n]}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${ex===0?'빈코트':`${ex}/${CMAX}`}</span></button>`;}).join('');
+      return[1,2,3,4].filter(n=>courtActive[n]).map(n=>{const ex=S.attendees.filter(x=>x.court===n).length;return`<button class="assign-btn" onclick="assignTeam(${n},${tIds})" style="background:${CCOLORS[n]}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${ex===0?'빈코트':`${ex}/${CMAX}`}</span></button>`;}).join('');
     }
     h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div>`;
     recTeams.forEach(({label,color,badge,team})=>{
@@ -1563,6 +1609,7 @@ function renderAll(){
 }
 
 /* ── 시작 ── */
+loadCourtActive();
 loadExtraMembers();
 load();
 document.getElementById('hdr-date').textContent=todayLbl();
@@ -1572,6 +1619,7 @@ syncListen(); // Firebase 실시간 수신 시작
 syncExtraMembersFromFirebase(); // 추가 회원 동기화
 syncMemberEditsFromFirebase(); // 원본회원 이름수정 동기화
 syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
+syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 </script>
 </body>
 </html>
