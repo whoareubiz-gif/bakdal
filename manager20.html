@@ -307,10 +307,68 @@ const MEMBERS=[
 
 /* ── 추가 회원 (localStorage + Firebase 동기화) ── */
 const EXTRA_MEMBERS_KEY='tennis_extra_members';
+const MEMBER_EDITS_KEY='tennis_member_edits'; // 원본회원(id<1000) 이름 수정 내역 {id: newName}
 function loadExtraMembers(){
   try{
     const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
     extra.forEach(m=>{ if(!MEMBERS.find(x=>x.id===m.id)) MEMBERS.push(m); });
+  }catch(e){}
+  applyMemberEdits();
+}
+const DELETED_MEMBERS_KEY='tennis_deleted_members'; // 삭제된 원본회원 id 목록
+function applyMemberEdits(){
+  // 1. 이름 수정 적용
+  try{
+    const edits=JSON.parse(localStorage.getItem(MEMBER_EDITS_KEY)||'{}');
+    Object.keys(edits).forEach(idStr=>{
+      const id=Number(idStr);
+      const m=MEMBERS.find(x=>x.id===id);
+      if(m) m.name=edits[idStr];
+    });
+  }catch(e){}
+  // 2. 삭제 내역 적용 (MEMBERS에서 영구 제거)
+  try{
+    const deleted=JSON.parse(localStorage.getItem(DELETED_MEMBERS_KEY)||'[]');
+    deleted.forEach(id=>{
+      const idx=MEMBERS.findIndex(x=>x.id===id);
+      if(idx>=0) MEMBERS.splice(idx,1);
+    });
+  }catch(e){}
+}
+function syncDeletedMembersFromFirebase(){
+  try{
+    firebase.database().ref('tennis_deleted_members').once('value',snap=>{
+      const fbDeleted=snap.val();
+      if(!fbDeleted)return;
+      const ids=Object.keys(fbDeleted).map(Number);
+      let changed=false;
+      ids.forEach(id=>{
+        const idx=MEMBERS.findIndex(x=>x.id===id);
+        if(idx>=0){ MEMBERS.splice(idx,1); changed=true; }
+      });
+      if(changed){
+        localStorage.setItem(DELETED_MEMBERS_KEY, JSON.stringify(ids));
+        renderAll();
+      }
+    });
+  }catch(e){}
+}
+function syncMemberEditsFromFirebase(){
+  try{
+    firebase.database().ref('tennis_member_edits').once('value',snap=>{
+      const fbEdits=snap.val();
+      if(!fbEdits)return;
+      let changed=false;
+      Object.keys(fbEdits).forEach(idStr=>{
+        const id=Number(idStr);
+        const m=MEMBERS.find(x=>x.id===id);
+        if(m && m.name!==fbEdits[idStr]){ m.name=fbEdits[idStr]; changed=true; }
+      });
+      if(changed){
+        localStorage.setItem(MEMBER_EDITS_KEY, JSON.stringify(fbEdits));
+        renderAll();
+      }
+    });
   }catch(e){}
 }
 function syncExtraMembersFromFirebase(){
@@ -393,16 +451,25 @@ function editMemberName(id, newName){
   S.attendees.forEach(a=>{ if(a.id===id) a.name=newName; });
   S.leftMembers.forEach(a=>{ if(a.id===id) a.name=newName; });
   save();
-  // localStorage 추가회원 목록 업데이트
-  try{
-    const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
-    const idx=extra.findIndex(x=>x.id===id);
-    if(idx>=0){ extra[idx].name=newName; localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra)); }
-  }catch(e){}
-  // Firebase 동기화 (id>=1000인 추가 회원만 별도 노드 보유)
-  try{
-    if(id>=1000) firebase.database().ref('tennis_extra_members/'+id).update({name:newName});
-  }catch(e){}
+
+  if(id>=1000){
+    // 추가 회원: extra 목록 자체를 업데이트
+    try{
+      const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+      const idx=extra.findIndex(x=>x.id===id);
+      if(idx>=0){ extra[idx].name=newName; localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra)); }
+    }catch(e){}
+    try{ firebase.database().ref('tennis_extra_members/'+id).update({name:newName}); }catch(e){}
+  } else {
+    // 원본 회원(하드코딩된 MEMBERS): 수정 내역을 별도 저장해야 새로고침 후에도 유지됨
+    try{
+      const edits=JSON.parse(localStorage.getItem(MEMBER_EDITS_KEY)||'{}');
+      edits[id]=newName;
+      localStorage.setItem(MEMBER_EDITS_KEY, JSON.stringify(edits));
+    }catch(e){}
+    try{ firebase.database().ref('tennis_member_edits/'+id).set(newName); }catch(e){}
+  }
+
   toast(`✅ "${oldName}" → "${newName}" 으로 수정 완료`);
   renderAll();
   renderMemberSearchResults();
@@ -443,12 +510,28 @@ function deleteMember(id){
       })).filter(entry=>entry.members.length>=2);
       localStorage.setItem('tennis_court_hist', JSON.stringify(filtered));
     }catch(e){}
-    // 5. localStorage 추가회원 목록에서 제거 + Firebase 추가회원 노드 제거
-    try{
-      const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
-      localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra.filter(x=>x.id!==id)));
-    }catch(e){}
-    try{ firebase.database().ref('tennis_extra_members/'+id).remove(); }catch(e){}
+    if(id>=1000){
+      // 5a. 추가 회원: extra 목록에서 제거
+      try{
+        const extra=JSON.parse(localStorage.getItem(EXTRA_MEMBERS_KEY)||'[]');
+        localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(extra.filter(x=>x.id!==id)));
+      }catch(e){}
+      try{ firebase.database().ref('tennis_extra_members/'+id).remove(); }catch(e){}
+    } else {
+      // 5b. 원본 회원: 삭제 목록에 영구 기록 (새로고침해도 다시 안 살아남)
+      try{
+        const deleted=JSON.parse(localStorage.getItem(DELETED_MEMBERS_KEY)||'[]');
+        if(!deleted.includes(id)) deleted.push(id);
+        localStorage.setItem(DELETED_MEMBERS_KEY, JSON.stringify(deleted));
+      }catch(e){}
+      try{ firebase.database().ref('tennis_deleted_members/'+id).set(true); }catch(e){}
+      // 이름 수정 내역이 남아있다면 같이 제거
+      try{
+        const edits=JSON.parse(localStorage.getItem(MEMBER_EDITS_KEY)||'{}');
+        if(edits[id]){ delete edits[id]; localStorage.setItem(MEMBER_EDITS_KEY, JSON.stringify(edits)); }
+      }catch(e){}
+      try{ firebase.database().ref('tennis_member_edits/'+id).remove(); }catch(e){}
+    }
     toast(`🗑 "${m.name}" 회원 및 모든 데이터 삭제 완료`);
     renderAll();
     renderMemberSearchResults();
@@ -1487,6 +1570,8 @@ setInterval(tick,1000);tick();
 renderAll();
 syncListen(); // Firebase 실시간 수신 시작
 syncExtraMembersFromFirebase(); // 추가 회원 동기화
+syncMemberEditsFromFirebase(); // 원본회원 이름수정 동기화
+syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
 </script>
 </body>
 </html>
