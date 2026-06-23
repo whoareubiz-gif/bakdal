@@ -769,12 +769,16 @@ function checkGlobalCourtAnnouncements(){
       // 새로 4명이 채워짐 (배정 완료, 이전엔 4명이 아니었거나 다른 조합)
       if(cnt===CMAX && !confirmed && (prev.key!==key || prev.cnt<CMAX)){
         const names=pl.map(a=>a.name).join(', ');
-        speakStatus(`${CNAMES[n]}에 ${names} 배정되었습니다`);
+        const msg=`${CNAMES[n]}에 ${names} 배정되었습니다`;
+        speakStatus(msg);
+        showStatusPopup('🎾', msg, CBGS[n], CCOLORS[n]);
       }
       // 새로 확정됨 (이전엔 미확정 → 지금 확정)
       if(confirmed && !prev.confirmed){
         const names=pl.map(a=>a.name).join(', ');
-        speakStatus(`${CNAMES[n]}에 ${names} 확정되어 입장하십시오`);
+        const msg=`${CNAMES[n]}에 ${names} 확정되어 입장하십시오`;
+        speakStatus(msg);
+        showStatusPopup('✅', msg, CBGS[n], CCOLORS[n]);
       }
     }
     prevCourtSnapshot[n]={cnt, confirmed, key};
@@ -893,13 +897,30 @@ function showStatusPopup(icon, label, bg, tc){
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:900;animation:fadeIn .2s';
   overlay.innerHTML=`<div style="background:${bg};border-radius:20px;padding:28px 30px;max-width:300px;width:85%;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.3);animation:popIn .25s">
     <div style="font-size:48px;margin-bottom:10px">${icon}</div>
-    <div style="font-size:20px;font-weight:900;color:${tc};line-height:1.4">${label}</div>
+    <div style="font-size:18px;font-weight:900;color:${tc};line-height:1.5;word-break:keep-all">${label}</div>
     <button onclick="document.getElementById('status-popup-overlay').remove()" style="margin-top:18px;padding:9px 22px;background:${tc};color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">확인</button>
   </div>`;
   document.body.appendChild(overlay);
   overlay.onclick=(e)=>{ if(e.target===overlay) overlay.remove(); };
-  // 4초 후 자동 닫힘
-  setTimeout(()=>{ const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 4000);
+  // 음성이 끝나면 팝업도 같이 닫힘 (speechSynthesis 종료 감지)
+  try{
+    if('speechSynthesis' in window){
+      const checkSpeaking=setInterval(()=>{
+        if(!window.speechSynthesis.speaking){
+          clearInterval(checkSpeaking);
+          const el=document.getElementById('status-popup-overlay');
+          if(el) el.remove();
+        }
+      },200);
+      // 안전장치: 최대 8초 후에는 무조건 닫힘
+      setTimeout(()=>{ clearInterval(checkSpeaking); const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 8000);
+    } else {
+      // 음성 API 미지원 기기는 4초 후 자동 닫힘
+      setTimeout(()=>{ const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 4000);
+    }
+  }catch(e){
+    setTimeout(()=>{ const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 4000);
+  }
 }
 
 function renderMyStatusBanner(){
@@ -941,10 +962,11 @@ function renderMyStatusBanner(){
     <button onclick="notifyEnabled=!notifyEnabled;this.textContent=notifyEnabled?'🔔':'🔕';" id="notify-toggle-btn" style="flex-shrink:0;background:rgba(255,255,255,.5);border:none;border-radius:8px;padding:6px 9px;font-size:16px;cursor:pointer">🔔</button>
   </div>`;
 
-  // ── 상태 변화 감지 → 알림 트리거 (음성 + 진동만, 팝업 없음) ──
-  if(lastMyStatusKey!==null && lastMyStatusKey!==statusKey){
+  // ── 상태 변화 감지 → 알림 트리거 (음성 + 진동 + 팝업, 모니터링 계정은 제외) ──
+  if(lastMyStatusKey!==null && lastMyStatusKey!==statusKey && !HIDDEN_MEMBER_IDS.includes(me.id)){
     vibrateDevice([200,100,200]);
     speakStatus(`${me.name}님, ${label} 상태입니다`);
+    showStatusPopup(icon, label, bg, tc);
   }
   lastMyStatusKey=statusKey;
 }
