@@ -1040,7 +1040,15 @@ function renderCourts(){
   h+=`</div></div>`;
 
   h+='<div class="court-grid">';
-  [1,2,3,4].filter(n=>courtActive[n]).forEach(n=>{
+  [1,2,3,4].forEach(n=>{
+    if(!courtActive[n]){
+      // 비활성 코트: 자리는 유지하되 비활성 표시만 (레이아웃 자리 보존)
+      h+=`<div class="ct-card" style="opacity:.45">
+        <div class="ct-hdr" style="background:#B8B5AF"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">사용 안 함</span></div>
+        <div class="ct-body"><div class="ct-empty" style="padding:20px 0;text-align:center">오늘 비활성화된 코트입니다</div></div>
+      </div>`;
+      return;
+    }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
     let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
