@@ -999,13 +999,13 @@ function attendRow(a){
 /* ── 오늘 참석자 ── */
 function renderToday(){
   if(leftOnly){
-    const ls=S.leftMembers;let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
+    const ls=S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!ls.length){h+=`<div class="empty">🚪<br>퇴소한 회원이 없습니다.</div></div>`;return h;}
     ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;});
     h+=`</div>`;return h;
   }
   if(todayGender){
-    const list=S.attendees.filter(x=>x.gender===todayGender);
+    const list=S.attendees.filter(x=>x.gender===todayGender&&!HIDDEN_MEMBER_IDS.includes(x.id));
     const lbl=todayGender==='m'?'👨 남자 참석자':'👩 여자 참석자';
     let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">${lbl} (${list.length}명)</div><button onclick="todayGender=null;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!list.length){h+=`<div class="empty">🎾<br>해당 성별 참석자가 없습니다.</div></div>`;return h;}
@@ -1015,7 +1015,7 @@ function renderToday(){
     if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
     h+=`</div>`;return h;
   }
-  const list=S.attendees;
+  const list=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
   let h=`<div class="pg-inner"><div class="stitle">📋 오늘 참석자 (${list.length}명)</div>`;
   if(!list.length){h+=`<div class="empty" style="padding:30px 0">🎾<br>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div></div>`;return h;}
   const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
