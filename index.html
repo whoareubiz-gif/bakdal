@@ -902,18 +902,22 @@ function showStatusPopup(icon, label, bg, tc){
   </div>`;
   document.body.appendChild(overlay);
   overlay.onclick=(e)=>{ if(e.target===overlay) overlay.remove(); };
+
   // 음성이 끝나면 팝업도 같이 닫힘 (speechSynthesis 종료 감지)
+  // 음성 시작까지 약간의 지연이 있으므로, 0.8초 뒤부터 감지 시작 (오작동 방지)
   try{
     if('speechSynthesis' in window){
-      const checkSpeaking=setInterval(()=>{
-        if(!window.speechSynthesis.speaking){
-          clearInterval(checkSpeaking);
-          const el=document.getElementById('status-popup-overlay');
-          if(el) el.remove();
-        }
-      },200);
-      // 안전장치: 최대 8초 후에는 무조건 닫힘
-      setTimeout(()=>{ clearInterval(checkSpeaking); const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 8000);
+      setTimeout(()=>{
+        const checkSpeaking=setInterval(()=>{
+          if(!window.speechSynthesis.speaking){
+            clearInterval(checkSpeaking);
+            const el=document.getElementById('status-popup-overlay');
+            if(el) el.remove();
+          }
+        },200);
+        // 안전장치: 감지 시작 후 최대 8초 지나면 무조건 닫힘
+        setTimeout(()=>{ clearInterval(checkSpeaking); const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 8000);
+      }, 800);
     } else {
       // 음성 API 미지원 기기는 4초 후 자동 닫힘
       setTimeout(()=>{ const el=document.getElementById('status-popup-overlay'); if(el) el.remove(); }, 4000);

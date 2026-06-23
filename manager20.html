@@ -545,6 +545,7 @@ const TBANDS=[
   {label:'20:00~21:00',s:20*60,e:21*60},
 ];
 const CMAX=4;
+const HIDDEN_MEMBER_IDS=[999]; // 모니터링 등 숨김 회원 (대기현황·통계에서 항상 제외)
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
 const COURT_ACTIVE_KEY='tennis_court_active';
 let courtActive={1:true,2:true,3:true,4:true}; // 오늘 사용할 코트 (1~4만 해당)
@@ -900,13 +901,13 @@ function assignNextTeam(which,teamIds){
 function getSortedWaiting(){
   function getTs(a){if(a.courtFreeTs)return a.courtFreeTs;const t=a.courtFreeAt||a.time||'00:00';const[h,m]=t.split(':').map(Number);return h*3600+m*60;}
   S.attendees.forEach(a=>{if(a.hasCourt===undefined)a.hasCourt=!!(a.courtFreeAt&&a.courtFreeAt!==a.time);});
-  return S.attendees.filter(x=>x.court===null).sort((a,b)=>getTs(a)-getTs(b));
+  return S.attendees.filter(x=>x.court===null&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>getTs(a)-getTs(b));
 }
 function buildRecommendedTeams(){
   const waiting=getSortedWaiting();
   function buildPool(gender){
     const w=waiting.filter(x=>x.gender===gender);
-    const c=S.attendees.filter(x=>x.gender===gender&&x.court&&!NEXT_COURTS.includes(x.court)).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+    const c=S.attendees.filter(x=>x.gender===gender&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
     return{all:[...w,...c]};
   }
   function pick(n,pool){
@@ -949,8 +950,8 @@ function renderMembers(){
     const guest=arr.filter(x=>x.name.includes('게스트'));
     return [...regular, ...guest];
   }
-  const males=sortGuestLast(MEMBERS.filter(x=>x.gender==='m'));
-  const females=sortGuestLast(MEMBERS.filter(x=>x.gender==='f'));
+  const males=sortGuestLast(MEMBERS.filter(x=>x.gender==='m'&&!HIDDEN_MEMBER_IDS.includes(x.id)));
+  const females=sortGuestLast(MEMBERS.filter(x=>x.gender==='f'&&!HIDDEN_MEMBER_IDS.includes(x.id)));
   const malesRegular=males.filter(x=>!x.name.includes('게스트'));
   const femalesRegular=females.filter(x=>!x.name.includes('게스트'));
   const mAtt=malesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
@@ -1073,11 +1074,11 @@ function renderCourts(){
   const waiting=getSortedWaiting();
   // 확정되지 않은 코트에 배정된 인원 (CC[court]===false)
   const inCourtUnconfirmed=S.attendees
-    .filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&!CC[x.court])
+    .filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&!CC[x.court]&&!HIDDEN_MEMBER_IDS.includes(x.id))
     .sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
   // 확정된 코트에 배정된 인원 (제외)
   const inCourtConfirmed=S.attendees
-    .filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&CC[x.court]);
+    .filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&CC[x.court]&&!HIDDEN_MEMBER_IDS.includes(x.id));
   const allSorted=[...waiting,...inCourtUnconfirmed];
   if(allSorted.length){
     function courtAllCard(a){
@@ -1254,7 +1255,7 @@ function renderStatPage(){
   function inRange(ds){return ds>=fromDate&&ds<=toDate;}
   function isWeekend(ds){const d=new Date(ds+'T00:00:00');return d.getDay()===0||d.getDay()===6;}
   const filtered=st.filter(x=>inRange(x.date));
-  const REGULAR=MEMBERS.filter(m=>!m.name.includes('게스트')).length;
+  const REGULAR=MEMBERS.filter(m=>!m.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(m.id)).length;
   const ALL=st;
 
   const pBtns=['day','week','month','all'].map(p=>{
@@ -1281,7 +1282,7 @@ function renderStatPage(){
   let avgBox='';
   if(filtered.length>0){
     const avgAttend=(filtered.reduce((s,d)=>{
-      return s+[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).length;
+      return s+[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).length;
     },0)/filtered.length).toFixed(1);
     const pct=Math.round(parseFloat(avgAttend)/REGULAR*100);
     avgBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
@@ -1382,7 +1383,7 @@ function renderStatPage(){
     function buildMap(days){
       const map={};
       days.forEach(d=>{
-        [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).forEach(a=>{
+        [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
           if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,cnt:0};
           map[a.id].cnt++;
         });
@@ -1474,7 +1475,7 @@ function renderStatPage(){
   else if(statView==='games'){
     const map={};
     ALL.forEach(d=>{
-      [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')).forEach(a=>{
+      [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
         if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,minutes:0};
         map[a.id].games+=a.games||0;
         const [ih,im]=(a.time||'18:00').split(':').map(Number);
@@ -1516,7 +1517,7 @@ function renderStatPage(){
   else if(statView==='together'){
     const pairMap={};
     ch.forEach(entry=>{
-      const ng=entry.members.filter(m=>!m.name.includes('게스트'));
+      const ng=entry.members.filter(m=>!m.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(m.id));
       if(ng.length<2)return;
       const ids=ng.map(m=>m.id),names={};ng.forEach(m=>{names[m.id]=m.name;});
       for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
