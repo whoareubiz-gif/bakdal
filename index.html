@@ -758,8 +758,11 @@ function renderAll(){
 let prevCourtSnapshot={}; // {courtNum: {cnt, confirmed, key}}
 function checkGlobalCourtAnnouncements(){
   if(!notifyEnabled) return;
-  [1,2,3,4].forEach(n=>{
-    const pl=S.attendees.filter(x=>x.court===n);
+  [1,2,3,4,5,6].forEach(n=>{
+    // 1~4코트는 court 필드, 5/6(다음차례1·2)은 nextCourt1/nextCourt2 필드로 판별
+    const pl = n<=4
+      ? S.attendees.filter(x=>x.court===n)
+      : S.attendees.filter(x=>n===5 ? x.nextCourt1 : x.nextCourt2);
     const cnt=pl.length;
     const confirmed=!!CC[n];
     const key=pl.map(a=>a.id).sort().join(',');
@@ -776,7 +779,9 @@ function checkGlobalCourtAnnouncements(){
       // 새로 확정됨 (이전엔 미확정 → 지금 확정)
       if(confirmed && !prev.confirmed){
         const names=pl.map(a=>a.name).join(', ');
-        const msg=`${CNAMES[n]}에 ${names} 확정되어 입장하십시오`;
+        const msg = n<=4
+          ? `${CNAMES[n]}에 ${names} 확정되어 입장하십시오`
+          : `${CNAMES[n]}에 ${names} 확정되었습니다`;
         speakStatus(msg);
         showStatusPopup('✅', msg, CBGS[n], CCOLORS[n]);
       }
