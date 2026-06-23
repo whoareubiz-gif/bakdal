@@ -751,6 +751,38 @@ function renderAll(){
   renderBottom();
   renderBoard(); // 보드 모드가 열려있으면 같이 갱신
   checkGlobalCourtAnnouncements(); // 전체 회원 코트 상태 변화 음성 안내
+  checkAttendanceAnnouncements(); // 모니터링 계정: 출석/퇴소 음성 안내
+}
+
+/* ── 모니터링 계정 전용: 출석/퇴소 음성 안내 (팝업 없음, 음성만) ── */
+let prevAttendIds=null;
+let prevLeftIds=null;
+function checkAttendanceAnnouncements(){
+  const me=getCurrentMember();
+  if(!me || !HIDDEN_MEMBER_IDS.includes(me.id)) return; // 모니터링 계정만 동작
+  if(!notifyEnabled) return;
+
+  const curAttendIds=new Set(S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)).map(x=>x.id));
+  const curLeftIds=new Set(S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)).map(x=>x.id));
+
+  if(prevAttendIds!==null){
+    curAttendIds.forEach(id=>{
+      if(!prevAttendIds.has(id)){
+        const a=S.attendees.find(x=>x.id===id);
+        if(a) speakStatus(`${a.name} 회원님 출석하였습니다`);
+      }
+    });
+  }
+  if(prevLeftIds!==null){
+    curLeftIds.forEach(id=>{
+      if(!prevLeftIds.has(id)){
+        const a=S.leftMembers.find(x=>x.id===id);
+        if(a) speakStatus(`${a.name} 회원님 퇴소하였습니다`);
+      }
+    });
+  }
+  prevAttendIds=curAttendIds;
+  prevLeftIds=curLeftIds;
 }
 
 /* ── 전체 회원 코트 배정/확정 음성 안내 ──
