@@ -8,6 +8,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -1238,6 +1239,8 @@ let statCustomTo='';
 let statDetailDate='';
 let statMemberSearch='';
 let adminDeleteDate=''; // 관리 탭: 일자별 DB 삭제용 선택 날짜
+let adminExportPeriod='day'; // 관리 탭: 엑셀 다운로드 조회기간
+let adminExportFrom='', adminExportTo='';
 
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
@@ -1631,12 +1634,114 @@ function renderAdminPage(){
     <div style="font-size:9px;color:#888780">선택한 날짜의 참석·통계·코트기록 데이터를 완전히 삭제합니다 (오늘 날짜 선택 시 현재 진행중인 참석 데이터도 함께 초기화됩니다)</div>
   </div>`;
 
+  // 엑셀 다운로드 박스 (조회기간 설정 — 통계탭과 동일한 패턴)
+  const now=new Date();
+  const todayStr=dateStr();
+  let exFrom='', exTo='';
+  if(adminExportFrom && adminExportTo){ exFrom=adminExportFrom; exTo=adminExportTo; }
+  else{
+    if(adminExportPeriod==='day'){ exFrom=exTo=todayStr; }
+    else if(adminExportPeriod==='week'){ const d=new Date(now); d.setDate(d.getDate()-6); exFrom=dateStr(d); exTo=todayStr; }
+    else if(adminExportPeriod==='month'){ exFrom=todayStr.slice(0,7)+'-01'; exTo=todayStr; }
+    else{ exFrom='2000-01-01'; exTo='2099-12-31'; }
+  }
+  const exPBtns=['day','week','month','all'].map(p=>{
+    const lbl={day:'오늘',week:'1주',month:'이번달',all:'전체'}[p];
+    const on=adminExportPeriod===p&&!adminExportFrom;
+    return`<button onclick="adminExportPeriod='${p}';adminExportFrom='';adminExportTo='';document.getElementById('pg4').innerHTML=renderAdminPage();" style="padding:5px 10px;border-radius:7px;border:1.5px solid ${on?'#1D9E75':'#D8D5CF'};background:${on?'#1D9E75':'#fff'};color:${on?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${lbl}</button>`;
+  }).join('');
+
+  const exportBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+    <div class="stitle" style="margin-bottom:8px">📥 엑셀 파일로 다운로드</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${exPBtns}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+      <input type="date" id="admin-export-from" value="${exFrom}" style="flex:1;padding:6px 8px;border:.5px solid #D8D5CF;border-radius:7px;font-size:12px;font-family:inherit" onchange="adminExportFrom=this.value;adminExportTo=document.getElementById('admin-export-to').value||this.value;adminExportPeriod='';document.getElementById('pg4').innerHTML=renderAdminPage();">
+      <span style="font-size:12px;color:#888780">~</span>
+      <input type="date" id="admin-export-to" value="${exTo}" style="flex:1;padding:6px 8px;border:.5px solid #D8D5CF;border-radius:7px;font-size:12px;font-family:inherit" onchange="adminExportTo=this.value;adminExportFrom=document.getElementById('admin-export-from').value||this.value;adminExportPeriod='';document.getElementById('pg4').innerHTML=renderAdminPage();">
+    </div>
+    <button onclick="exportExcel('${exFrom}','${exTo}')" style="width:100%;padding:10px;background:#1D9E75;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📥 엑셀 다운로드 (${exFrom} ~ ${exTo})</button>
+    <div style="font-size:9px;color:#888780;margin-top:6px">일자·총참석률(남/여)·참석인원·출석시각·퇴소시각·게임수 포함 (게스트 제외)</div>
+  </div>`;
+
   return`<div class="pg-inner">
     <div class="stitle">⚙️ 관리</div>
     ${addMemberBox}
     ${searchBox}
     ${deleteDateBox}
+    ${exportBox}
   </div>`;
+}
+
+function exportExcel(fromDate, toDate){
+  if(!fromDate || !toDate){ toast('조회 기간을 선택해주세요'); return; }
+  toast('엑셀 생성 중...');
+
+  // localStorage + Firebase 통계 병합 후 기간 필터링 → 엑셀 생성
+  firebase.database().ref('tennis_stats').once('value').then(snap=>{
+    const fbData=snap.val()||{};
+    let st=[];
+    try{ st=JSON.parse(localStorage.getItem(STKEY)||'[]'); }catch(e){}
+    const localDates=new Set(st.map(x=>x.date));
+    Object.values(fbData).forEach(entry=>{
+      if(entry&&entry.date){
+        const idx=st.findIndex(x=>x.date===entry.date);
+        if(idx>=0) st[idx]=entry; else st.push(entry);
+      }
+    });
+
+    const filtered=st.filter(x=>x.date>=fromDate && x.date<=toDate).sort((a,b)=>a.date.localeCompare(b.date));
+    if(!filtered.length){ toast('선택한 기간에 데이터가 없습니다'); return; }
+
+    const REGULAR_COUNT=MEMBERS.filter(m=>!m.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(m.id)).length;
+    const rows=[]; // 일자별 요약 시트
+    const detailRows=[]; // 일자별 상세(개인별) 시트
+
+    filtered.forEach(entry=>{
+      const all=[...(entry.attendees||[]),...(entry.leftMembers||[])]
+        .filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id));
+      const mCnt=all.filter(a=>a.gender==='m').length;
+      const fCnt=all.filter(a=>a.gender==='f').length;
+      const totalCnt=all.length;
+      const totalRate=REGULAR_COUNT>0 ? Math.round(totalCnt/REGULAR_COUNT*100) : 0;
+
+      rows.push({
+        '일자': entry.date,
+        '총참석률(%)': totalRate,
+        '남자참석률(%)': REGULAR_COUNT>0?Math.round(mCnt/REGULAR_COUNT*100):0,
+        '여자참석률(%)': REGULAR_COUNT>0?Math.round(fCnt/REGULAR_COUNT*100):0,
+        '참석인원': totalCnt,
+        '남자인원': mCnt,
+        '여자인원': fCnt,
+      });
+
+      all.forEach(a=>{
+        detailRows.push({
+          '일자': entry.date,
+          '이름': a.name,
+          '성별': a.gender==='m'?'남':'여',
+          '출석시각': a.time||'',
+          '퇴소시각': a.leftAt||'',
+          '게임수': a.games||0,
+        });
+      });
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(rows);
+    ws1['!cols']=[{wch:12},{wch:12},{wch:14},{wch:14},{wch:10},{wch:10},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws1, '일자별 요약');
+
+    const ws2 = XLSX.utils.json_to_sheet(detailRows);
+    ws2['!cols']=[{wch:12},{wch:10},{wch:6},{wch:10},{wch:10},{wch:8}];
+    XLSX.utils.book_append_sheet(wb, ws2, '개인별 상세');
+
+    const filename=`테니스클럽_출석현황_${fromDate}_${toDate}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast('✅ 엑셀 다운로드 완료');
+  }).catch(e=>{
+    console.error(e);
+    toast('엑셀 생성 중 오류가 발생했습니다');
+  });
 }
 
 function deleteDBByDate(targetDate){
