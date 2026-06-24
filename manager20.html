@@ -564,6 +564,77 @@ const HIDDEN_MEMBER_IDS=[999]; // 모니터링 등 숨김 회원 (대기현황·
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
 const COURT_ACTIVE_KEY='tennis_court_active';
 let courtActive={1:true,2:true,3:true,4:true}; // 오늘 사용할 코트 (1~4만 해당)
+
+/* ── 오늘의 공지사항 (관리 탭 안에 표시) ── */
+let todayNotice=''; // 현재 공지사항 내용
+let noticeEditing=false; // 입력창 편집 모드 여부
+
+function loadNoticeFromFirebase(){
+  try{
+    firebase.database().ref('tennis_notice/'+dateStr()).on('value', snap=>{
+      const v=snap.val();
+      todayNotice = (v && v.text) ? v.text : '';
+      if(curTab===4 && !noticeEditing) document.getElementById('pg4').innerHTML=renderAdminPage();
+    });
+  }catch(e){}
+}
+function saveNotice(text){
+  text=(text||'').trim();
+  todayNotice=text;
+  try{
+    firebase.database().ref('tennis_notice/'+dateStr()).set({text, updatedAt:Date.now()});
+  }catch(e){}
+  noticeEditing=false;
+  document.getElementById('pg4').innerHTML=renderAdminPage();
+  toast(text ? '✅ 공지사항이 저장되었습니다' : '🗑 공지사항이 삭제되었습니다');
+}
+function deleteNotice(){
+  if(!todayNotice){ toast('삭제할 공지사항이 없습니다'); return; }
+  openModal('오늘의 공지사항을 삭제하시겠습니까?', ()=>{ saveNotice(''); });
+}
+function startEditNotice(){
+  noticeEditing=true;
+  document.getElementById('pg4').innerHTML=renderAdminPage();
+  setTimeout(()=>{
+    const el=document.getElementById('notice-textarea');
+    if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  },0);
+}
+function cancelEditNotice(){
+  noticeEditing=false;
+  document.getElementById('pg4').innerHTML=renderAdminPage();
+}
+function renderNoticeAdminBox(){
+  if(noticeEditing){
+    return`<div style="margin-bottom:10px;padding:12px 14px;border-radius:12px;background:#FFF8E1;border:1.5px solid #F5C842">
+      <div style="font-size:11px;font-weight:700;color:#8A6D00;margin-bottom:6px">📢 오늘의 공지사항 작성</div>
+      <textarea id="notice-textarea" rows="3" placeholder="회원들에게 전달할 공지사항을 입력하세요"
+        style="width:100%;padding:8px 10px;border:.5px solid #E0C84A;border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical">${todayNotice}</textarea>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="saveNotice(document.getElementById('notice-textarea').value)" style="flex:1;padding:8px;background:#1D9E75;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">저장</button>
+        <button onclick="cancelEditNotice()" style="flex:1;padding:8px;background:#F0EDE8;color:#666;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
+      </div>
+    </div>`;
+  }
+
+  if(todayNotice){
+    return`<div style="margin-bottom:10px;padding:12px 14px;border-radius:12px;background:#FFF8E1;border:1.5px solid #F5C842;display:flex;align-items:flex-start;gap:10px">
+      <span style="font-size:20px;flex-shrink:0">📢</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:700;color:#8A6D00;margin-bottom:3px">오늘의 공지사항</div>
+        <div style="font-size:13px;color:#5C4A00;line-height:1.5;white-space:pre-wrap">${todayNotice}</div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button onclick="startEditNotice()" style="padding:5px 9px;background:#fff;border:1px solid #E0C84A;border-radius:6px;font-size:11px;font-weight:700;color:#8A6D00;cursor:pointer;font-family:inherit">수정</button>
+        <button onclick="deleteNotice()" style="padding:5px 9px;background:#fff;border:1px solid #E0C84A;border-radius:6px;font-size:11px;font-weight:700;color:#C0392B;cursor:pointer;font-family:inherit">삭제</button>
+      </div>
+    </div>`;
+  }
+
+  return`<div style="margin-bottom:10px">
+    <button onclick="startEditNotice()" style="width:100%;padding:9px;background:#FFF8E1;border:1.5px dashed #E0C84A;border-radius:10px;font-size:12px;font-weight:700;color:#8A6D00;cursor:pointer;font-family:inherit">📢 오늘의 공지사항 작성하기</button>
+  </div>`;
+}
 function loadCourtActive(){
   try{
     const saved=JSON.parse(localStorage.getItem(COURT_ACTIVE_KEY)||'null');
@@ -794,6 +865,7 @@ function leave(id){
 function toggleCourt(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();save();renderAll();return;}
+  if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ⚠️`);return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   if(!NEXT_COURTS.includes(n)){
@@ -815,6 +887,7 @@ function toggleNextCourt(id,which){
     CC[n]=false;
     save();renderAll();return;
   }
+  if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(S.attendees.filter(x=>x[nc]).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   a[nc]=n;
   // 새로 배정 시 확정 상태 초기화
@@ -838,6 +911,8 @@ function confirmCourt(n){
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
+  const leavingMembers=pl.filter(a=>a.leavingScheduled);
+  if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   pl.forEach(a=>{a.games+=1;});CC[n]=true;recordCourtGame(n);save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
@@ -854,6 +929,8 @@ function confirmNextCourt(n){
   const pl=S.attendees.filter(x=>x[nc]);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
+  const leavingMembers=pl.filter(a=>a.leavingScheduled);
+  if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   const availCourts=[];
   for(let cn=1;cn<=4;cn++){if(!courtActive[cn])continue;const cur=S.attendees.filter(x=>x.court===cn).length;if(cur<CMAX)availCourts.push({cn,cur,free:CMAX-cur});}
@@ -892,6 +969,8 @@ function restorePrevState(){
   save();renderAll();toast('↩️ 이전 상태로 복구 완료');
 }
 function assignTeam(cn,teamIds){
+  const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
+  if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
@@ -899,6 +978,8 @@ function assignTeam(cn,teamIds){
   save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
 }
 function assignNextTeam(which,teamIds){
+  const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
+  if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
   const nc1cnt=S.attendees.filter(a=>a.nextCourt1).length;
   let targetWhich=which;
@@ -918,13 +999,13 @@ function assignNextTeam(which,teamIds){
 function getSortedWaiting(){
   function getTs(a){if(a.courtFreeTs)return a.courtFreeTs;const t=a.courtFreeAt||a.time||'00:00';const[h,m]=t.split(':').map(Number);return h*3600+m*60;}
   S.attendees.forEach(a=>{if(a.hasCourt===undefined)a.hasCourt=!!(a.courtFreeAt&&a.courtFreeAt!==a.time);});
-  return S.attendees.filter(x=>x.court===null&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>getTs(a)-getTs(b));
+  return S.attendees.filter(x=>x.court===null&&!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.leavingScheduled).sort((a,b)=>getTs(a)-getTs(b));
 }
 function buildRecommendedTeams(){
   const waiting=getSortedWaiting();
   function buildPool(gender){
     const w=waiting.filter(x=>x.gender===gender);
-    const c=S.attendees.filter(x=>x.gender===gender&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+    const c=S.attendees.filter(x=>x.gender===gender&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.leavingScheduled).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
     return{all:[...w,...c]};
   }
   function pick(n,pool){
@@ -959,6 +1040,11 @@ function renderStats(){
 }
 
 /* ── 회원명부 ── */
+/* 퇴소예정 표시 헬퍼: 이름 우측 상단에 * 표시 */
+function leavingMark(isLeaving){
+  return isLeaving ? `<span style="font-size:11px;font-weight:900;color:#C0392B;vertical-align:super;margin-left:1px">*</span>` : '';
+}
+
 function renderMembers(){
   const aIds=new Set(S.attendees.map(x=>x.id));const lIds=new Set(S.leftMembers.map(x=>x.id));
   // 게스트 제외한 정회원만 카운트/표시
@@ -977,11 +1063,13 @@ function renderMembers(){
   const fAtt=femalesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
   function card(m){
     const a=aIds.has(m.id),l=lIds.has(m.id);
+    const attendee=S.attendees.find(x=>x.id===m.id);
+    const isLeaving=attendee&&attendee.leavingScheduled;
     const chips=(a&&!l?chip('g','✓'):'');
     const btn=l?`<button class="btn-att" style="background:#FAECE7;color:#993C1D;cursor:default;border:.5px solid #EFBCB0" disabled>퇴소</button>`
       :a?`<button class="btn-att done" disabled>완료</button>`
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
-    return`<div class="scard"><span class="sname">${m.name}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
+    return`<div class="scard"><span class="sname">${m.name}${leavingMark(isLeaving)}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
   }
   return`<div class="split-wrap"><div class="split-col lcol"><div class="split-hdr m">👨 남자 (${mAtt}/${malesRegular.length})</div>${males.map(card).join('')}</div><div class="split-col"><div class="split-hdr f">👩 여자 (${fAtt}/${femalesRegular.length})</div>${females.map(card).join('')}</div></div>`;
 }
@@ -1002,7 +1090,7 @@ function attendRow(a){
   return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px">
     <div style="display:flex;align-items:center;gap:4px">
       <div class="seq-b" style="flex-shrink:0">${a.seq}</div>
-      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span>
+      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>
       ${gt(a.gender,true)}${courtTag}
       <span style="flex:1"></span>
       <span class="atime-row" style="margin-top:0;flex-shrink:0">🕐 ${timeLabel}</span>
@@ -1010,9 +1098,18 @@ function attendRow(a){
     <div style="display:flex;align-items:center;gap:3px">
       <div class="cbtn-wrap" style="flex:1">${cBtns}${ncBtns}</div>
       <span class="gcnt-only">${a.games}게임</span>
+      <button onclick="toggleLeavingScheduledAdmin(${a.id})" style="background:${a.leavingScheduled?'#B25000':'#FFF3E0'};color:${a.leavingScheduled?'#fff':'#B25000'};border:.5px solid #F5C98A;padding:4px 7px;border-radius:7px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0">${a.leavingScheduled?'예정취소':'퇴소예정'}</button>
       <button class="btn-lv" onclick="leave(${a.id})">퇴소</button>
     </div>
   </div>`;
+}
+
+/* 관리자가 직접 퇴소예정 설정/해제 */
+function toggleLeavingScheduledAdmin(id){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  a.leavingScheduled=!a.leavingScheduled;
+  save();renderAll();
+  toast(a.leavingScheduled?`⏰ ${a.name} 퇴소예정으로 설정`:`${a.name} 퇴소예정 취소`);
 }
 
 /* ── 오늘 참석자 ── */
@@ -1069,7 +1166,7 @@ function renderCourts(){
       return;
     }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
+    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -1088,7 +1185,7 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="font-size:13px;font-weight:700">${a.name}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -1130,7 +1227,7 @@ function renderCourts(){
       // 미확정 코트 배정 인원 중 첫 번째에 구분선
       const gInCourt=gSorted.filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&!CC[x.court]);
       const divider=a.court&&!NEXT_COURTS.includes(a.court)&&!CC[a.court]&&gInCourt.indexOf(a)===0?`<div style="font-size:13px;color:#888780;padding:4px 0 2px;font-weight:700">─── 코트 배정 중 (미확정) ───</div>`:'';
-      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px"><span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</span><div style="display:flex;gap:1px;flex-shrink:0">${cBtns}${ncBtns}</div></div>`;
+      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px"><span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span><div style="display:flex;gap:1px;flex-shrink:0">${cBtns}${ncBtns}</div></div>`;
     }
     const mSorted=allSorted.filter(x=>x.gender==='m');const fSorted=allSorted.filter(x=>x.gender==='f');
     h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle" style="font-size:13px;">👥 게임편성 대기현황 (${S.attendees.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미배정(${waiting.length})·미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
@@ -1145,7 +1242,7 @@ function renderCourts(){
     recTeams.forEach(({label,color,badge,team})=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
-      const members=team.map(a=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member"><span class="rec-name" style="flex:0;white-space:nowrap">${a.name}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span><span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
+      const members=team.map(a=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member"><span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span><span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
       h+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
@@ -1665,6 +1762,7 @@ function renderAdminPage(){
 
   return`<div class="pg-inner">
     <div class="stitle">⚙️ 관리</div>
+    ${renderNoticeAdminBox()}
     ${addMemberBox}
     ${searchBox}
     ${deleteDateBox}
@@ -1845,6 +1943,7 @@ function checkAttendanceAnnouncements(){
 
 /* ── 시작 ── */
 loadCourtActive();
+loadNoticeFromFirebase();
 loadExtraMembers();
 load();
 document.getElementById('hdr-date').textContent=todayLbl();

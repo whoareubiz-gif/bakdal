@@ -164,6 +164,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       <div class="sc" onclick="showLeft()"><div class="sn lv" id="st3">0</div><div class="sl">퇴소</div></div>
     </div>
   </div>
+  <div id="notice-banner"></div>
   <div id="my-status-banner"></div>
   <div id="next-court-banner"></div>
   <div class="tab-bar">
@@ -752,6 +753,7 @@ function renderBottom(){
 /* ── 전체 렌더 ── */
 function renderAll(){
   renderStats();
+  renderNoticeBanner();
   renderMyStatusBanner();
   renderNextCourtBanner();
   document.getElementById('pg1').innerHTML=renderToday();
@@ -1015,6 +1017,32 @@ function showStatusPopup(icon, label, bg, tc){
   setTimeout(closeStatusPopupDOM,4000);
 }
 
+let todayNoticeText='';
+function renderNoticeBanner(){
+  const el=document.getElementById('notice-banner');
+  if(!el) return;
+  const me=getCurrentMember();
+  // 로그인(출석) 전이거나 공지사항이 없으면 표시 안 함
+  if(!me || !S.attendees.find(x=>x.id===me.id) || !todayNoticeText){ el.innerHTML=''; return; }
+
+  el.innerHTML=`<div style="margin:10px 11px;padding:14px 16px;border-radius:14px;background:#FFF8E1;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+    <span style="font-size:26px;flex-shrink:0">📢</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;color:#8A6D00;opacity:.75;font-weight:600">오늘의 공지사항</div>
+      <div style="font-size:18px;font-weight:900;color:#5C4A00;margin-top:1px;line-height:1.4;white-space:pre-wrap">${todayNoticeText}</div>
+    </div>
+  </div>`;
+}
+function loadNoticeFromFirebase(){
+  try{
+    firebase.database().ref('tennis_notice/'+dateStr()).on('value', snap=>{
+      const v=snap.val();
+      todayNoticeText = (v && v.text) ? v.text : '';
+      renderNoticeBanner();
+    });
+  }catch(e){}
+}
+
 function renderMyStatusBanner(){
   const el=document.getElementById('my-status-banner');
   if(!el) return;
@@ -1084,6 +1112,16 @@ function renderNextCourtBanner(){
     </div>`;
   }
 
+  const myAttendee=S.attendees.find(x=>x.id===me.id);
+  const isLeaving=myAttendee&&myAttendee.leavingScheduled;
+  const leaveBtns=myAttendee ? `<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #E0DFDB">
+    ${isLeaving
+      ? `<button onclick="cancelLeavingScheduled(${me.id})" style="flex:1;padding:10px;background:#FFF3E0;color:#B25000;border:1.5px solid #F5C98A;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">⏰ 퇴소예정 취소</button>`
+      : `<button onclick="setLeavingScheduled(${me.id})" style="flex:1;padding:10px;background:#FFF3E0;color:#B25000;border:1.5px solid #F5C98A;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">⏰ 퇴소예정</button>`
+    }
+    <button onclick="leave(${me.id})" style="flex:1;padding:10px;background:#FAECE7;color:#993C1D;border:1.5px solid #EFBCB0;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">🚪 퇴소</button>
+  </div>` : '';
+
   el.innerHTML=`<div style="margin:6px 11px 10px;padding:12px 16px;border-radius:14px;background:#F4F6F7;box-shadow:0 2px 8px rgba(0,0,0,.06)">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
       <span style="font-size:18px">⏭</span>
@@ -1094,7 +1132,22 @@ function renderNextCourtBanner(){
       <div style="width:1px;background:#D8D5CF;flex-shrink:0"></div>
       ${buildCol(6)}
     </div>
+    ${leaveBtns}
   </div>`;
+}
+
+/* ── 퇴소예정 설정/취소 (본인 직접) ── */
+function setLeavingScheduled(id){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  openModal('퇴소 예정으로 표시하시겠습니까?\n(관리자 화면에 * 표시되며, 코트 배정/확정에서 제외됩니다)',()=>{
+    a.leavingScheduled=true;
+    save();renderAll();toast('⏰ 퇴소예정으로 표시되었습니다');
+  });
+}
+function cancelLeavingScheduled(id){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  a.leavingScheduled=false;
+  save();renderAll();toast('퇴소예정이 취소되었습니다');
 }
 
 let loginInProgress=false;
@@ -1174,6 +1227,7 @@ document.getElementById('hdr-date').textContent=todayLbl();
 setInterval(tick,1000);tick();
 renderAll();
 syncListen(); // Firebase 실시간 수신 시작
+loadNoticeFromFirebase(); // 오늘의 공지사항 실시간 수신
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
 setTimeout(()=>{ initialRenderDone=true; }, 1500); // 초기 동기화 안정화 후 알림 활성화
 </script>
