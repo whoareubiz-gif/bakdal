@@ -739,7 +739,7 @@ function saveCourtActive(){
 }
 function syncCourtActiveFromFirebase(){
   try{
-    firebase.database().ref('tennis_court_active').once('value',snap=>{
+    firebase.database().ref('tennis_court_active').on('value',snap=>{
       const fb=snap.val();
       if(fb){ courtActive=fb; localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(fb)); renderAll(); }
     });
