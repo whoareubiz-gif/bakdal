@@ -337,7 +337,7 @@ function applyMemberEdits(){
 }
 function syncDeletedMembersFromFirebase(){
   try{
-    firebase.database().ref('tennis_deleted_members').once('value',snap=>{
+    firebase.database().ref('tennis_deleted_members').on('value',snap=>{
       const fbDeleted=snap.val();
       if(!fbDeleted)return;
       const ids=Object.keys(fbDeleted).map(Number);
@@ -355,7 +355,7 @@ function syncDeletedMembersFromFirebase(){
 }
 function syncMemberEditsFromFirebase(){
   try{
-    firebase.database().ref('tennis_member_edits').once('value',snap=>{
+    firebase.database().ref('tennis_member_edits').on('value',snap=>{
       const fbEdits=snap.val();
       if(!fbEdits)return;
       let changed=false;
@@ -373,14 +373,26 @@ function syncMemberEditsFromFirebase(){
 }
 function syncExtraMembersFromFirebase(){
   try{
-    firebase.database().ref('tennis_extra_members').once('value',snap=>{
-      const fbExtra=snap.val();
-      if(!fbExtra)return;
-      const list=Object.values(fbExtra);
+    firebase.database().ref('tennis_extra_members').on('value',snap=>{
+      const fbExtra=snap.val()||{};
+      const fbList=Object.values(fbExtra);
+      const fbIds=new Set(fbList.map(m=>m.id));
       let changed=false;
-      list.forEach(m=>{
+
+      // 1. Firebase에 있는데 로컬에 없으면 추가
+      fbList.forEach(m=>{
         if(!MEMBERS.find(x=>x.id===m.id)){ MEMBERS.push(m); changed=true; }
       });
+
+      // 2. 로컬에 추가회원(id>=1000)으로 있는데 Firebase에는 없으면 → 삭제된 것이므로 제거
+      const localExtraIds=MEMBERS.filter(x=>x.id>=1000).map(x=>x.id);
+      localExtraIds.forEach(id=>{
+        if(!fbIds.has(id)){
+          const idx=MEMBERS.findIndex(x=>x.id===id);
+          if(idx>=0){ MEMBERS.splice(idx,1); changed=true; }
+        }
+      });
+
       if(changed){
         localStorage.setItem(EXTRA_MEMBERS_KEY, JSON.stringify(MEMBERS.filter(x=>x.id>=1000)));
         renderAll();
@@ -933,10 +945,12 @@ function chip(c,t){return`<span class="chip ${c}">${t}</span>`;}
 
 /* ── 통계 ── */
 function renderStats(){
-  document.getElementById('st0').textContent=S.attendees.length;
-  document.getElementById('st1').textContent=S.attendees.filter(x=>x.gender==='m').length;
-  document.getElementById('st2').textContent=S.attendees.filter(x=>x.gender==='f').length;
-  document.getElementById('st3').textContent=S.leftMembers.length;
+  const visibleAttendees=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
+  const visibleLeft=S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
+  document.getElementById('st0').textContent=visibleAttendees.length;
+  document.getElementById('st1').textContent=visibleAttendees.filter(x=>x.gender==='m').length;
+  document.getElementById('st2').textContent=visibleAttendees.filter(x=>x.gender==='f').length;
+  document.getElementById('st3').textContent=visibleLeft.length;
 }
 
 /* ── 회원명부 ── */
