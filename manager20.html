@@ -1633,14 +1633,26 @@ function renderAll(){
 }
 
 /* ── 출석/퇴소 음성 안내 (manager20 접속 중 감지) ── */
+const notifyQueue=[];
+let notifyQueueRunning=false;
 function speakStatus(text){
+  notifyQueue.push(text);
+  runNotifyQueue();
+}
+function runNotifyQueue(){
+  if(notifyQueueRunning) return;
+  const next=notifyQueue.shift();
+  if(!next) return;
+  notifyQueueRunning=true;
   try{
-    if(!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utter=new SpeechSynthesisUtterance(text);
-    utter.lang='ko-KR'; utter.rate=1.0; utter.pitch=1.0;
+    if(!('speechSynthesis' in window)){ notifyQueueRunning=false; runNotifyQueue(); return; }
+    const utter=new SpeechSynthesisUtterance(next);
+    utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
+    utter.onend=()=>{ notifyQueueRunning=false; runNotifyQueue(); };
+    utter.onerror=()=>{ notifyQueueRunning=false; runNotifyQueue(); };
     window.speechSynthesis.speak(utter);
-  }catch(e){}
+    setTimeout(()=>{ if(notifyQueueRunning){ notifyQueueRunning=false; runNotifyQueue(); } }, 8000);
+  }catch(e){ notifyQueueRunning=false; runNotifyQueue(); }
 }
 let prevAttendIds=null; // 직전 출석자 id Set (변화 감지용)
 let prevLeftIds=null;   // 직전 퇴소자 id Set
