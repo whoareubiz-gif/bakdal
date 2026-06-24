@@ -150,13 +150,15 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
     <button class="tab" id="tab1" onclick="goTab(1)"><span>📋</span>오늘 참석자</button>
     <button class="tab" id="tab2" onclick="goTab(2)"><span>🎾</span>코트 현황</button>
     <button class="tab" id="tab3" onclick="goTab(3)"><span>📊</span>통계</button>
+    <button class="tab" id="tab4" onclick="goTab(4)"><span>⚙️</span>관리</button>
   </div>
   <div class="slide-wrap" id="slide-wrap">
-    <div class="slide-track" id="slide-track">
-      <div class="slide-page" id="pg0"></div>
-      <div class="slide-page" id="pg1"></div>
-      <div class="slide-page" id="pg2"></div>
-      <div class="slide-page" id="pg3"></div>
+    <div class="slide-track" id="slide-track" style="width:500%">
+      <div class="slide-page" id="pg0" style="width:calc(100% / 5)"></div>
+      <div class="slide-page" id="pg1" style="width:calc(100% / 5)"></div>
+      <div class="slide-page" id="pg2" style="width:calc(100% / 5)"></div>
+      <div class="slide-page" id="pg3" style="width:calc(100% / 5)"></div>
+      <div class="slide-page" id="pg4" style="width:calc(100% / 5)"></div>
     </div>
   </div>
 </div>
@@ -651,25 +653,27 @@ function goTab(idx){
   curTab=idx;leftOnly=false;todayGender=null;
   // 통계 탭 클릭 시: 오늘/참석률 기본값 + 현재 데이터 자동 저장
   if(idx===3){statPeriod='day';statView='attend';saveStatHistory();setTimeout(renderMemberSearchResults,0);}
-  ['tab0','tab1','tab2','tab3'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===idx));
-  document.getElementById('slide-track').style.transform=`translateX(${-idx*100/4}%)`;
+  // 관리 탭 클릭 시: DB 삭제용 날짜 선택값 오늘로 초기화 + 검색 결과 갱신
+  if(idx===4){adminDeleteDate=dateStr();setTimeout(renderMemberSearchResults,0);}
+  ['tab0','tab1','tab2','tab3','tab4'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===idx));
+  document.getElementById('slide-track').style.transform=`translateX(${-idx*100/5}%)`;
   renderAll();
 }
 function showLeft(){leftOnly=true;todayGender=null;curTab=1;
-  ['tab0','tab1','tab2','tab3'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
-  document.getElementById('slide-track').style.transform=`translateX(${-100/4}%)`;
+  ['tab0','tab1','tab2','tab3','tab4'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
+  document.getElementById('slide-track').style.transform=`translateX(${-100/5}%)`;
   renderAll();
 }
 function showGender(g){todayGender=g;leftOnly=false;curTab=1;
-  ['tab0','tab1','tab2'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
-  document.getElementById('slide-track').style.transform=`translateX(${-100/4}%)`;
+  ['tab0','tab1','tab2','tab3','tab4'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===1));
+  document.getElementById('slide-track').style.transform=`translateX(${-100/5}%)`;
   renderAll();
 }
 (function(){
   const wrap=document.getElementById('slide-wrap');
   let sx=0,dragging=false,moved=false;
   function start(x){sx=x;dragging=true;moved=false;}
-  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(3,curTab+(dx<0?1:-1))));}
+  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));}
   wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX);},{passive:true});
   wrap.addEventListener('touchmove',e=>{if(dragging&&Math.abs(e.touches[0].clientX-sx)>5)moved=true;},{passive:true});
   wrap.addEventListener('touchend',e=>{end(e.changedTouches[0].clientX);});
@@ -700,13 +704,13 @@ function autoReset(now){
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
 function manualReset(){
-  openModal('오늘 데이터를 저장하고 초기화하시겠습니까?\n(참석 중인 회원 전원 퇴소 처리 후 저장)',()=>{
+  openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(참석 중인 회원 전원 퇴소 처리 후 저장)',()=>{
     leaveAllForSave();   // ① 전원 퇴소 처리 (퇴소시간 기록)
     saveStatHistory();   // ② 통계 저장 (퇴소시간 포함)
     archive(S,dateStr());// ③ 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};
-    save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 저장 후 초기화 완료');
+    save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 오늘 최종 저장 후 초기화 완료');
   });
 }
 function deleteTodayDB(){
@@ -1043,7 +1047,7 @@ function renderToday(){
 function renderCourts(){
   // 코트 사용 설정 토글 바
   let h=`<div style="padding:9px 11px 0">
-    <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트</div>
+    <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 버튼을 클릭하면 코트 사용 유무를 설정할 수 있습니다</span></div>
     <div style="display:flex;gap:5px;margin-bottom:4px">`;
   [1,2,3,4].forEach(n=>{
     const isOn=courtActive[n];
@@ -1073,7 +1077,7 @@ function renderCourts(){
   });
   h+=`</div>`;
   // 다음차례 코트
-  h+=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트</div></div><div class="court-grid" style="padding-top:0">`;
+  h+=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 확정을 클릭하면 빈 코트에 배정됩니다</span></div></div><div class="court-grid" style="padding-top:0">`;
   [5,6].forEach(n=>{
     const ncKey=n===5?'nextCourt1':'nextCourt2';
     const players=S.attendees.filter(x=>x[ncKey]);const cnt=players.length,full=cnt>=CMAX;
@@ -1154,15 +1158,9 @@ function renderBottom(){
   const el=document.getElementById('bottom-btns');
   if(curTab!==2){el.innerHTML='';return;}
   let h='<div class="bottom-btns">';
-  h+=`<div style="display:flex;gap:5px;margin-bottom:5px">
-    <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">🔄 전체 재편성</button>
-    <button class="btn-reassign" onclick="restorePrevState()" style="flex:1;margin-bottom:0;padding:9px 4px;font-size:12px">↩️ 이전으로 복구</button>
-  </div>`;
-  h+=`<div style="display:flex;gap:4px">
-    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:9px 2px;font-size:11px">💾 저장후 초기화</button>
-    <button class="btn-reset" onclick="manualResetNoSave()" style="flex:1;padding:9px 2px;font-size:11px;background:#FFF0F0;color:#C0392B;border-color:#F5A0A0">🗑 저장없이</button>
-    <button class="btn-reset" onclick="saveStatHistory();toast('✅ 저장 완료');" style="flex:1;padding:9px 2px;font-size:11px;background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB">📥 저장만</button>
-    <button class="btn-reset" onclick="deleteTodayDB()" style="flex:1;padding:9px 2px;font-size:11px;background:#2C2C2A;color:#fff;border-color:#1A1A1A">🗑 당일DB삭제</button>
+  h+=`<div style="display:flex;gap:5px">
+    <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0;padding:10px 4px;font-size:12px">🔄 전체 재편성</button>
+    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:10px 4px;font-size:12px">💾 오늘 최종 저장 후 초기화</button>
   </div></div>`;
   el.innerHTML=h;
 }
@@ -1239,6 +1237,7 @@ let statCustomFrom='';
 let statCustomTo='';
 let statDetailDate='';
 let statMemberSearch='';
+let adminDeleteDate=''; // 관리 탭: 일자별 DB 삭제용 선택 날짜
 
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
@@ -1574,6 +1573,17 @@ function renderStatPage(){
     }).join('');
   }
 
+  return`<div class="pg-inner">
+    <div class="stitle">📊 통계</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
+    ${rangeBox}${avgBox}${detailBox}${divider}
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>
+    <div>${body}</div>
+  </div>`;
+}
+
+/* ════ 관리 탭: 회원 추가/검색·수정·삭제 + 일자별 DB 삭제 ════ */
+function renderAdminPage(){
   // 회원 추가 박스
   const addMemberBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
     <div class="stitle" style="margin-bottom:8px">➕ 회원 추가</div>
@@ -1591,8 +1601,6 @@ function renderStatPage(){
 
   // 회원 검색/수정/삭제 박스
   const searchKw=(statMemberSearch||'').trim();
-
-  // 검색 입력란은 고정, 결과만 별도 div(member-search-results)로 갱신 (한글 IME 조합 보호)
   const searchBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
     <div class="stitle" style="margin-bottom:8px">🔍 회원 검색·수정·삭제</div>
     <input type="text" id="member-search-input" placeholder="회원 이름 검색" value="${searchKw}"
@@ -1601,15 +1609,62 @@ function renderStatPage(){
     <div id="member-search-results"></div>
   </div>`;
 
+  // 일자별 DB 삭제 박스 (초기값: 오늘 날짜)
+  if(!adminDeleteDate) adminDeleteDate=dateStr();
+  const allDates=[];
+  try{
+    const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+    st.forEach(x=>{ if(x.date && !allDates.includes(x.date)) allDates.push(x.date); });
+  }catch(e){}
+  if(!allDates.includes(adminDeleteDate)) allDates.push(adminDeleteDate);
+  allDates.sort((a,b)=>b.localeCompare(a));
+
+  const deleteDateBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+    <div class="stitle" style="margin-bottom:8px">🗑 일자별 DB 삭제</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+      <input type="date" id="admin-delete-date" value="${adminDeleteDate}"
+        onchange="adminDeleteDate=this.value;"
+        style="flex:1;padding:7px 9px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit;box-sizing:border-box">
+      <button onclick="deleteDBByDate(document.getElementById('admin-delete-date').value)"
+        style="padding:7px 14px;background:#C0392B;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">삭제</button>
+    </div>
+    <div style="font-size:9px;color:#888780">선택한 날짜의 참석·통계·코트기록 데이터를 완전히 삭제합니다 (오늘 날짜 선택 시 현재 진행중인 참석 데이터도 함께 초기화됩니다)</div>
+  </div>`;
+
   return`<div class="pg-inner">
-    <div class="stitle">📊 통계 <span style="font-size:9px;color:#888780;margin-left:4px">📥 저장 버튼으로 누적</span></div>
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
-    ${rangeBox}${avgBox}${detailBox}${divider}
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>
-    <div>${body}</div>
+    <div class="stitle">⚙️ 관리</div>
     ${addMemberBox}
     ${searchBox}
+    ${deleteDateBox}
   </div>`;
+}
+
+function deleteDBByDate(targetDate){
+  if(!targetDate){ toast('날짜를 선택해주세요'); return; }
+  openModal(`⚠️ ${targetDate} 데이터를 완전 삭제하시겠습니까?\n(참석·통계·코트기록 모두 삭제, 복구 불가)`,()=>{
+    const today=dateStr();
+    // 1. 오늘 날짜를 삭제하는 경우 → 현재 진행중인 S도 초기화
+    if(targetDate===today){
+      S={attendees:[],leftMembers:[],seqCounter:0};
+      CC={1:false,2:false,3:false,4:false,5:false,6:false};
+      save();
+      try{ firebase.database().ref('tennis/'+today).remove(); }catch(e){}
+    }
+    // 2. localStorage 통계에서 해당 날짜 삭제
+    try{
+      const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+      localStorage.setItem(STKEY, JSON.stringify(st.filter(x=>x.date!==targetDate)));
+    }catch(e){}
+    // 3. Firebase 통계에서 해당 날짜 삭제
+    try{ firebase.database().ref('tennis_stats/'+targetDate).remove(); }catch(e){}
+    // 4. 코트 히스토리(같이한 인원)에서 해당 날짜 기록 삭제
+    try{
+      const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+      localStorage.setItem('tennis_court_hist', JSON.stringify(ch.filter(x=>x.date!==targetDate)));
+    }catch(e){}
+    renderAll();
+    toast(`🗑 ${targetDate} 데이터 삭제 완료`);
+  });
 }
 
 
@@ -1628,6 +1683,7 @@ function renderAll(){
   document.getElementById('pg1').innerHTML=renderToday();
   document.getElementById('pg2').innerHTML=renderCourts();
   document.getElementById('pg3').innerHTML=renderStatPage();
+  document.getElementById('pg4').innerHTML=renderAdminPage();
   renderBottom();
   checkAttendanceAnnouncements(); // 출석/퇴소 음성 안내
 }
