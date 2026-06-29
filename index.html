@@ -1244,6 +1244,16 @@ function restorePrevState(){
   prevState=null;prevCC=null;
   save();renderAll();toast('↩️ 이전 상태로 복구 완료');
 }
+/* 1명 이상 있는 코트에 추천팀 배정 시도 → 확인 팝업 후 진행 */
+function confirmAssignToOccupied(cn, teamIds){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const existing=S.attendees.filter(x=>x.court===cn);
+  const names=existing.map(a=>a.name).join(', ');
+  openModal(`⚠️ ${CNAMES[cn]}에 이미 배정된 인원(${names})이 있습니다.\n해당 인원을 미배정으로 빼고 새 팀으로 배정하시겠습니까?`, ()=>{
+    assignTeam(cn, teamIds);
+  });
+}
+
 function assignTeam(cn,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
@@ -1683,7 +1693,14 @@ function renderCourts(){
   const recTeams=buildRecommendedTeams();
   if(recTeams.length){
     function recCourtBtns(tIds){
-      return[1,2,3,4].filter(n=>courtActive[n]).map(n=>{const ex=S.attendees.filter(x=>x.court===n).length;return`<button class="assign-btn" onclick="assignTeam(${n},${tIds})" style="background:${CCOLORS[n]}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${ex===0?'빈코트':`${ex}/${CMAX}`}</span></button>`;}).join('');
+      return[1,2,3,4].filter(n=>courtActive[n]).map(n=>{
+        const ex=S.attendees.filter(x=>x.court===n).length;
+        const isEmpty=ex===0;
+        // 빈코트: 클럽 기본 녹색 / 1명 이상(꽉찬 포함): 회색 (클릭 시 확인팝업)
+        const bg=isEmpty?'#1D9E75':'#9C9C98';
+        const onclick=isEmpty?`assignTeam(${n},${tIds})`:`confirmAssignToOccupied(${n},${tIds})`;
+        return`<button class="assign-btn" onclick="${onclick}" style="background:${bg}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${isEmpty?'빈코트':`${ex}/${CMAX}`}</span></button>`;
+      }).join('');
     }
     h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div>`;
     recTeams.forEach(({label,color,badge,team})=>{
