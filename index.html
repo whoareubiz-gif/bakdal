@@ -2110,6 +2110,18 @@ function renderStatPage(){
 let prevCourtSnapshot={}; // {courtNum: {cnt, confirmed, key}}
 function checkGlobalCourtAnnouncements(){
   if(!notifyEnabled) return;
+  if(!initialRenderDone){
+    // 초기 동기화가 끝나기 전에는 스냅샷만 기록하고 알림은 절대 울리지 않음
+    // (Firebase 데이터가 여러 단계로 나뉘어 도착하면서 "이미 있던 상태"를
+    //  "방금 일어난 변화"로 오인하는 것을 방지)
+    [1,2,3,4,5,6].forEach(n=>{
+      const pl = n<=4
+        ? S.attendees.filter(x=>x.court===n)
+        : S.attendees.filter(x=>n===5 ? x.nextCourt1 : x.nextCourt2);
+      prevCourtSnapshot[n]={cnt:pl.length, confirmed:!!CC[n], key:pl.map(a=>a.id).sort().join(',')};
+    });
+    return;
+  }
   [1,2,3,4,5,6].forEach(n=>{
     // 1~4코트는 court 필드, 5/6(다음차례1·2)은 nextCourt1/nextCourt2 필드로 판별
     const pl = n<=4
@@ -2513,6 +2525,13 @@ function checkAttendanceAnnouncements(){
   const curAttendIds=new Set(S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)).map(x=>x.id));
   const curLeftIds=new Set(S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)).map(x=>x.id));
 
+  if(!initialRenderDone){
+    // 초기 동기화 중에는 스냅샷만 기록, 알림은 안 울림
+    prevAttendIds=curAttendIds;
+    prevLeftIds=curLeftIds;
+    return;
+  }
+
   if(prevAttendIds!==null){
     // 새로 출석한 회원
     curAttendIds.forEach(id=>{
@@ -2551,7 +2570,7 @@ syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
 syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
-setTimeout(()=>{ initialRenderDone=true; }, 1500); // 초기 동기화 안정화 후 알림 활성화
+setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
 // 화면 어디든 첫 클릭/터치 시 음성엔진을 안전하게 한 번 더 잠금해제 시도
 // (checkExistingLogin으로 재입장한 경우는 doLogin을 안 거치므로 이 장치가 필요함)
 document.addEventListener('click', unlockSpeechSynthesis, {once:true});
