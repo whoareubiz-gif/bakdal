@@ -1320,10 +1320,12 @@ function buildRecommendedTeams(){
   const teams=[];
   if(mp.all.length>=1){const t=pick(4,mp);if(t.length)teams.push({label:'추천1팀 — 남자',color:'#185FA5',badge:'👨',team:t});}
   if(fp.all.length>=1){const t=pick(4,fp);if(t.length)teams.push({label:'추천2팀 — 여자',color:'#993556',badge:'👩',team:t});}
+  /* 추천3팀(혼성) 비활성화 — 필요시 아래 주석 해제
   if(mp.all.length>=1&&fp.all.length>=1){
     const tm=pick(2,mp),tf=pick(2,fp);const t=[...tm,...tf];
     if(t.length>=2)teams.push({label:'추천3팀 — 혼성(남2여2)',color:'#7B3FA0',badge:'👫',team:t});
   }
+  */
   return teams;
 }
 
@@ -1486,7 +1488,8 @@ function renderToday(){
     if(!list.length){h+=`<div class="empty">🎾<br>해당 성별 참석자가 없습니다.</div></div>`;return h;}
     const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
     list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
-    TBANDS.forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+    Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
+    [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
     if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
     h+=`</div>`;return h;
   }
@@ -1495,7 +1498,9 @@ function renderToday(){
   if(!list.length){h+=`<div class="empty" style="padding:30px 0">🎾<br>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div></div>`;return h;}
   const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
   list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
-  TBANDS.forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+  // 각 그룹 안에서 출석시각 내림차순(최신 출석자가 맨 위)
+  Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
+  [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
   if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
   h+=`</div>`;return h;
 }
@@ -1687,7 +1692,7 @@ function renderCourts(){
       return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>${waitMinutesLabel(a)}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${cBtns}${ncBtns}</div></div>`;
     }
     const mSorted=allSorted.filter(x=>x.gender==='m');const fSorted=allSorted.filter(x=>x.gender==='f');
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 게임편성 대기현황 (${S.attendees.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미배정(${waiting.length})·미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
+    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 게임편성 대기현황 (${waiting.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
   }
   // 추천팀
   const recTeams=buildRecommendedTeams();
