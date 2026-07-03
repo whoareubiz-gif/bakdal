@@ -1903,7 +1903,8 @@ function renderStatPage(){
     const rows=showDates.map(date=>{
       const dd=st.find(x=>x.date===date);
       if(!dd)return'';
-      const all=[...(dd.attendees||[]),...(dd.leftMembers||[])];
+      const all=[...(dd.attendees||[]),...(dd.leftMembers||[])]
+        .filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.name.includes('게스트'));
       const mCnt=all.filter(x=>x.gender==='m').length;
       const fCnt=all.filter(x=>x.gender==='f').length;
       const total=all.length;
