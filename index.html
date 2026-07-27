@@ -210,6 +210,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
     <div style="color:#fff;font-size:clamp(13px,2vw,22px);font-weight:900;white-space:nowrap">🎾 박달브라운 테니스 클럽 — 코트 현황</div>
     <div style="display:flex;align-items:center;gap:clamp(8px,1.4vw,16px)">
       <div id="board-clock" style="color:#fff;font-size:clamp(11px,1.6vw,19px);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
+      <div id="board-sync-dot" style="width:10px;height:10px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
       <button onclick="toggleBoardMode(false)" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:clamp(6px,1vw,9px) clamp(10px,1.6vw,18px);font-size:clamp(11px,1.5vw,15px);font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
     </div>
   </div>
@@ -253,6 +254,12 @@ let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 function setSyncDot(st){
   const d=document.getElementById('sync-dot');
   if(d){d.className='sync-dot'+(st?' '+st:'');}
+  // 보드모드 sync dot도 같이 갱신 (모니터링 화면에서 연결 상태 확인용)
+  const bd=document.getElementById('board-sync-dot');
+  if(bd){
+    bd.style.background=st==='ok'?'#7FFFB0':st==='err'?'#FF7070':st==='busy'?'#FFD580':'#aaa';
+    bd.title='Firebase '+(st==='ok'?'연결됨':st==='err'?'연결 끊김':st==='busy'?'동기화 중':'대기중');
+  }
 }
 
 /* Firebase 객체/배열 정규화
@@ -302,6 +309,7 @@ function syncPush(){
 
 /* 서버에서 실시간 listen */
 function syncListen(){
+  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
   REF.on('value', snap=>{
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
@@ -310,8 +318,27 @@ function syncListen(){
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
     renderAll();
+    if(boardModeOn) renderBoard();
+  }, err=>{
+    setSyncDot('err');
   });
 }
+
+/* 화면 복귀 시(백그라운드→포그라운드) 최신 데이터 한 번 직접 가져옴
+   Firebase on()은 자동 재연결되지만, 백그라운드 중 놓친 데이터를 보충 */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    REF.once('value', snap=>{
+      const raw=snap.val();
+      if(!raw) return;
+      const incomingToken=raw.seq??'';
+      if(incomingToken && incomingToken===lastSentToken) return;
+      normalizeS(raw);
+      renderAll();
+      if(boardModeOn) renderBoard();
+    });
+  }
+});
 
 /* ════════════════════════════════════════
    회원 데이터
@@ -2577,6 +2604,12 @@ syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
 setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
+
+// Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
+// Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음
+firebase.database().ref('.info/connected').on('value', snap=>{
+  setSyncDot(snap.val()===true ? 'ok' : 'err');
+});
 // 화면 어디든 첫 클릭/터치 시 음성엔진을 안전하게 한 번 더 잠금해제 시도
 // (checkExistingLogin으로 재입장한 경우는 doLogin을 안 거치므로 이 장치가 필요함)
 document.addEventListener('click', unlockSpeechSynthesis, {once:true});
