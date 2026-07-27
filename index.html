@@ -245,7 +245,9 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const REF = db.ref('tennis/' + (()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})() ); // 날짜별 분리 (KST 로컬 기준)
+// 고정 경로 사용 (날짜별로 분리하면 디바이스 접속 시점에 따라 경로가 달라지는 버그 발생)
+// 날짜 구분은 REF 경로가 아닌 저장 데이터 내 date 필드로 처리
+const REF = db.ref('tennis_current');
 
 let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
@@ -272,6 +274,9 @@ function toArr(v){
 }
 function normalizeS(raw){
   if(!raw) return;
+  // 고정 경로(tennis_current) 사용으로 날짜 체크 필요
+  // Firebase 데이터의 날짜가 오늘과 다르면 무시 (어제 데이터 오염 방지)
+  if(raw.date && raw.date !== dateStr()) return;
   const s = raw.state;
   if(s){
     s.attendees  = toArr(s.attendees).map(a=>({
