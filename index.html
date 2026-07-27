@@ -244,7 +244,7 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const REF = db.ref('tennis/' + new Date().toISOString().slice(0,10)); // 날짜별 분리
+const REF = db.ref('tennis/' + (()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})() ); // 날짜별 분리 (KST 로컬 기준)
 
 let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
