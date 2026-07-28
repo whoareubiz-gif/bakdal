@@ -2243,11 +2243,13 @@ function renderBoard(){
   }
 
   let h='';
-  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:clamp(8px,1.6vw,20px);margin-bottom:clamp(14px,2.4vw,26px)">';
+  // 1~4코트: 항상 2열 고정 (가로/세로 모두 2x2 배치)
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:clamp(8px,1.6vw,20px);margin-bottom:clamp(14px,2.4vw,26px)">';
   [1,2,3,4].forEach(n=>{ h+=bigCard(n,false); });
   h+='</div>';
   h+='<div style="color:#2C2C2A;font-size:clamp(13px,2.2vw,22px);font-weight:900;margin-bottom:clamp(8px,1.6vw,16px)">⏭ 다음차례 코트</div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:clamp(8px,1.6vw,20px)">';
+  // 다음차례1·2: 항상 2열 고정
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:clamp(8px,1.6vw,20px)">';
   [5,6].forEach(n=>{ h+=bigCard(n,true); });
   h+='</div>';
 
