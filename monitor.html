@@ -98,6 +98,10 @@ const boardModeOn=true;
 /* 상수 추가 */
 const HIDDEN_MEMBER_IDS=[998,999];
 const LOGIN_KEY='tennis_login_member';
+const COURT_ACTIVE_KEY='tennis_court_active_local';
+let lastSentToken=''; // monitor는 데이터를 보내지 않으므로 항상 빈 문자열
+const HIDDEN_MEMBER_IDS=[998,999];
+const LOGIN_KEY='tennis_login_member';
 
 /* monitor.html은 항상 모니터링 모드 — getCurrentMember는 null 반환 */
 function getCurrentMember(){ return null; }
@@ -171,7 +175,6 @@ function syncListen(){
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
     renderBoard();
-    if(boardModeOn) renderBoard();
   }, err=>{
     setSyncDot('err');
   });
