@@ -214,7 +214,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       <button onclick="toggleBoardMode(false)" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
     </div>
   </div>
-  <div id="board-content" style="padding:1vw 1.5vw;box-sizing:border-box;flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;"></div>
+  <div id="board-content" style="padding:1vw 1.5vw 2vw 1.5vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;"></div>
 </div>
 <div id="moverlay">
   <div class="mbox">
@@ -2206,13 +2206,14 @@ function renderBoard(){
     const isMe=me&&a.id===me.id;
     const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:'';
     // conf: true=확정(녹색), false=미확정/빈코트(회색)
-    const nameTc = conf ? '#fff' : '#1A1A1A';
-    const genderBg = conf ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)';
-    const genderTc = conf ? '#fff' : '#1A1A1A';
-    return`<div style="background:${conf?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.5)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
-      <span style="font-size:2.4vw;font-weight:900;color:${nameTc};text-shadow:${conf?'0 1px 3px rgba(0,0,0,.2)':'none'}">${a.name}</span>
+    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색
+    const nameTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
+    const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    return`<div style="background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
+      <span style="font-size:2.9vw;font-weight:900;color:${nameTc}">${a.name}</span>
       <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
-      ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#FFD23F;white-space:nowrap">⭐ 나</span>`:''}
+      ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
     </div>`;
   }
   function emptySlot(conf){
@@ -2231,8 +2232,22 @@ function renderBoard(){
     const pl=isNext ? S.attendees.filter(x=>x[ncKey]) : S.attendees.filter(x=>x.court===n);
     const cnt=pl.length, conf=!!CC[n];
     let body='';
-    pl.forEach(a=>{ body+=bigSlot(a,conf); });
-    for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
+    if(isNext){
+      // 다음차례: 이름 4개를 한 줄 가로 나열 (성별 뱃지 없음)
+      const slots = [];
+      pl.forEach(a=>{
+        const nameTc = conf ? (a.gender==='m'?'#185FA5':'#993556') : '#1A1A1A';
+        slots.push(`<div style="flex:1;text-align:center;background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:0.8vw;padding:0.9vw 0.5vw;font-size:2.9vw;font-weight:900;color:${nameTc};min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</div>`);
+      });
+      for(let i=cnt;i<CMAX;i++){
+        const ec=conf?'rgba(0,0,0,.3)':'rgba(0,0,0,.3)';
+        slots.push(`<div style="flex:1;text-align:center;border:0.15vw dashed ${conf?'rgba(255,255,255,.4)':'rgba(0,0,0,.15)'};border-radius:0.8vw;padding:0.9vw 0.5vw;font-size:1.4vw;color:${conf?'rgba(255,255,255,.7)':'rgba(0,0,0,.3)'};font-weight:700">빈자리</div>`);
+      }
+      body=`<div style="display:flex;gap:0.5vw;align-items:stretch">${slots.join('')}</div>`;
+    } else {
+      pl.forEach(a=>{ body+=bigSlot(a,conf); });
+      for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
+    }
     const badgeStyle='padding:0.5vw 1.2vw;border-radius:1.5vw;font-size:1.5vw;font-weight:900;white-space:nowrap';
     const statusBadge=conf
       ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 게임 확정</span>`
@@ -2242,7 +2257,7 @@ function renderBoard(){
     // 확정=녹색, 미확정(대기)·빈코트=중간밝은회색
     const cardBg = conf ? '#1D9E75' : '#9EA8B0';
     const cardTc = '#fff';
-    return`<div style="background:${cardBg};border-radius:1.4vw;padding:1.2vw 1.5vw;min-width:0;height:100%;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
+    return`<div style="background:${cardBg};border-radius:1.4vw;padding:1.2vw 1.5vw;min-width:0;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1vw;flex-wrap:wrap;gap:0.4vw">
         <span style="color:${cardTc};font-size:2.2vw;font-weight:900;text-shadow:0 1px 3px rgba(0,0,0,.25)">${CNAMES[n]}</span>
         ${statusBadge}
@@ -2251,20 +2266,19 @@ function renderBoard(){
     </div>`;
   }
 
-  // 전체를 세로 2행으로 구성:
-  // 상단: 1~4코트 4열 가로 배치 (뷰포트 상단 절반 이상)
-  // 하단: 다음차례1·2 2열 가로 배치
-  // 전체를 CSS grid 2행으로 정확히 분할 (겹침 완전 방지)
-  // 외부 래퍼: height:100vh, flex column → 헤더 + 콘텐츠 영역 자동 분할
-  const gap = '0.7vw';
+  // ── 보드 레이아웃 (23인치 1920×1080 기준) ──
+  // 고정 높이 없이 내용 크기대로 자연스럽게 배치
+  // 1~4코트 → 바로 아래 다음차례1·2 (스크롤로 확인)
+  const gap = '0.8vw';
 
   let h='';
-  // 1~4코트: 4열 가로 한 줄 (상단 약 60%)
-  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:${gap};flex:62;min-height:0;margin-bottom:${gap}">`;
+  // 1~4코트: 4열, 높이는 내용(인원)에 맞게 자동
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:${gap};align-items:start;margin-bottom:${gap}">`;
   [1,2,3,4].forEach(n=>{ h+=bigCard(n,false); });
   h+='</div>';
-  // 다음차례: 2열 가로 한 줄 (하단 약 35%)
-  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:${gap};flex:35;min-height:0">`;
+  // 다음차례: 바로 아래 이어서
+  h+=`<div style="font-size:2vw;font-weight:900;color:#2C2C2A;margin-bottom:0.8vw">⏭ 다음차례 코트</div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:${gap};align-items:start;margin-bottom:2vw">`;
   [5,6].forEach(n=>{ h+=bigCard(n,true); });
   h+='</div>';
 

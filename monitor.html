@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎾 박달브라운 테니스 클럽 — 모니터</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:#EFEDE8;font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;}
+#board-wrap{display:flex;flex-direction:column;height:100vh;}
+#board-header{display:flex;align-items:center;justify-content:space-between;padding:1vw 1.5vw;background:#1D9E75;flex-shrink:0;flex-wrap:wrap;gap:8px;}
+#board-content{padding:1vw 1.5vw 2vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;}
+</style>
+</head>
+<body>
+<div id="board-wrap">
+  <div id="board-header">
+    <div style="color:#fff;font-size:2.2vw;font-weight:900;white-space:nowrap">🎾 박달브라운 테니스 클럽 — 코트 현황</div>
+    <div style="display:flex;align-items:center;gap:1.2vw">
+      <div id="board-clock" style="color:#fff;font-size:1.8vw;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
+      <div id="board-sync-dot" style="width:14px;height:14px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
+    </div>
+  </div>
+  <div id="board-content"></div>
+</div>
+
+<script>
+/* Firebase */
+const firebaseConfig = {
+  apiKey: "AIzaSyD_anBSKfX8UsExUOQoDilhMJtDe8eoVks",
+  authDomain: "bakdal-d30e6.firebaseapp.com",
+  databaseURL: "https://bakdal-d30e6-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bakdal-d30e6",
+  storageBucket: "bakdal-d30e6.firebasestorage.app",
+  messagingSenderId: "250451058346",
+  appId: "1:250451058346:web:d1635d423763fba63cbad3",
+  measurementId: "G-EEGPXMBXKL"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const REF = db.ref('tennis_current');
+
+/* 상수/상태 */
+const MEMBERS=[
+  {id:1,name:'강태욱',gender:'m'},{id:2,name:'고윤정',gender:'f'},
+  {id:3,name:'권성렬',gender:'m'},{id:4,name:'권윤지',gender:'f'},
+  {id:5,name:'김광숙',gender:'f'},{id:6,name:'김금수',gender:'m'},
+  {id:7,name:'김남동',gender:'m'},{id:8,name:'김범수',gender:'m'},
+  {id:9,name:'김성태',gender:'m'},{id:10,name:'김순옥',gender:'f'},
+  {id:11,name:'김응덕',gender:'m'},{id:12,name:'김재연',gender:'f'},
+  {id:13,name:'김정한',gender:'m'},{id:14,name:'김지윤',gender:'f'},
+  {id:15,name:'김진일',gender:'f'},{id:16,name:'김철환',gender:'m'},
+  {id:17,name:'김태경',gender:'m'},{id:18,name:'김태용',gender:'m'},
+  {id:19,name:'김현범',gender:'m'},{id:20,name:'김현주',gender:'m'},
+  {id:21,name:'김화영',gender:'f'},{id:22,name:'김희준',gender:'m'},
+  {id:23,name:'남궁리',gender:'f'},{id:24,name:'박건식',gender:'m'},
+  {id:25,name:'박규남',gender:'m'},{id:26,name:'박상환',gender:'m'},
+  {id:27,name:'박성빈',gender:'m'},{id:28,name:'박세나',gender:'f'},
+  {id:29,name:'박은정',gender:'f'},{id:30,name:'박진용',gender:'m'},
+  {id:31,name:'박창훈',gender:'m'},{id:32,name:'백동현',gender:'m'},
+  {id:33,name:'빈관기',gender:'m'},{id:34,name:'서현재',gender:'m'},
+  {id:35,name:'성혜린',gender:'f'},{id:36,name:'송한헌',gender:'m'},
+  {id:37,name:'신지원',gender:'f'},{id:38,name:'안영준',gender:'m'},
+  {id:39,name:'안용진',gender:'m'},{id:40,name:'유재호',gender:'m'},
+  {id:41,name:'윤기보',gender:'m'},{id:42,name:'이경희',gender:'f'},{id:77,name:'이기창',gender:'m'},
+  {id:43,name:'이광호',gender:'m'},{id:44,name:'이나연',gender:'f'},
+  {id:45,name:'이범석',gender:'m'},{id:46,name:'이상현',gender:'m'},
+  {id:47,name:'이서현',gender:'f'},{id:48,name:'이성로',gender:'m'},
+  {id:49,name:'이정민',gender:'m'},{id:50,name:'이주화',gender:'m'},
+  {id:51,name:'임윤미',gender:'f'},{id:52,name:'전용구',gender:'m'},
+  {id:53,name:'전하리',gender:'m'},{id:54,name:'전하일',gender:'m'},
+  {id:55,name:'조범진',gender:'m'},{id:56,name:'조현웅',gender:'m'},
+  {id:57,name:'주영길',gender:'m'},{id:58,name:'진혜원',gender:'f'},
+  {id:59,name:'천성인',gender:'m'},{id:60,name:'최경문',gender:'m'},
+  {id:61,name:'최두희',gender:'m'},{id:62,name:'최명자',gender:'f'},
+  {id:63,name:'최성희',gender:'f'},{id:64,name:'최주경',gender:'m'},
+  {id:65,name:'한경수',gender:'m'},{id:66,name:'홍유철',gender:'m'},
+  {id:67,name:'황병학',gender:'m'},{id:68,name:'황성인',gender:'m'},
+  {id:69,name:'게스트1',gender:'m'},{id:70,name:'게스트2',gender:'m'},
+  {id:71,name:'게스트3',gender:'m'},{id:72,name:'게스트4',gender:'m'},
+  {id:73,name:'게스트1',gender:'f'},{id:74,name:'게스트2',gender:'f'},
+  {id:75,name:'게스트3',gender:'f'},{id:76,name:'게스트4',gender:'f'},
+  {id:998,name:'관리자',gender:'m'}, // 특수 회원: 순수 관리 전용, 모든 출석/참석 현황에서 완전 제외
+  {id:999,name:'모니터링',gender:'m'}, // 특수 회원: 보드모드 전용, 회원수/명부 제외
+];
+const CMAX=4;
+const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
+const CCOLORS=['','#1D9E75','#185FA5','#B25000','#7B3FA0','#2E7D9E','#6B7280'];
+const CBGS=['','#E1F5EE','#E6F1FB','#FFF0E0','#F3E8FD','#E0F2F7','#F0F0F0'];
+const NEXT_COURTS=[5,6];
+let CC={1:false,2:false,3:false,4:false,5:false,6:false};
+let S={attendees:[],leftMembers:[],seqCounter:0};
+let courtActive={1:true,2:true,3:true,4:true};
+const boardModeOn=true;
+
+/* 헬퍼 */
+function pad(n){return String(n).padStart(2,'0');}
+function dateStr(d=new Date()){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+function timeStr(d=new Date()){return`${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+function nowTs(){return Math.floor(Date.now()/1000);}
+function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
+function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function toArr(v){
+  if(!v) return [];
+  if(Array.isArray(v)) return v;
+  return Object.values(v);
+}
+function leavingMark(isLeaving){
+  return isLeaving ? `<span style="font-size:11px;font-weight:900;color:#C0392B;vertical-align:super;margin-left:1px">*</span>` : '';
+}
+function waitMinutesLabel(a){
+  if(a.court) return ''; // 이미 코트에 배정된 인원은 대기시간 표시 안 함
+  const baseTs = a.courtFreeTs || a.attendTs || nowTs();
+  const mins = Math.max(0, Math.floor((nowTs()-baseTs)/60));
+  return `<span style="font-size:9px;color:#888780;font-weight:500;flex-shrink:0;white-space:nowrap">${mins}분</span>`;
+}
+
+/* Firebase */
+function normalizeS(raw){
+  if(!raw) return;
+  // 고정 경로(tennis_current) 사용으로 날짜 체크 필요
+  // Firebase 데이터의 날짜가 오늘과 다르면 무시 (어제 데이터 오염 방지)
+  if(raw.date && raw.date !== dateStr()) return;
+  const s = raw.state;
+  if(s){
+    s.attendees  = toArr(s.attendees).map(a=>({
+      ...a,
+      court:      a.court      ?? null,
+      nextCourt1: a.nextCourt1 ?? null,
+      nextCourt2: a.nextCourt2 ?? null,
+      hasCourt:   a.hasCourt   ?? false,
+    }));
+    s.leftMembers = toArr(s.leftMembers);
+    S = s;
+  }
+  if(raw.CC){
+    const c = raw.CC;
+    CC = {
+      1:!!(c['1']||c[1]), 2:!!(c['2']||c[2]),
+      3:!!(c['3']||c[3]), 4:!!(c['4']||c[4]),
+      5:!!(c['5']||c[5]), 6:!!(c['6']||c[6]),
+    };
+  }
+}
+function setSyncDot(st){
+  const d=document.getElementById('sync-dot');
+  if(d){d.className='sync-dot'+(st?' '+st:'');}
+  // 보드모드 sync dot도 같이 갱신 (모니터링 화면에서 연결 상태 확인용)
+  const bd=document.getElementById('board-sync-dot');
+  if(bd){
+    bd.style.background=st==='ok'?'#7FFFB0':st==='err'?'#FF7070':st==='busy'?'#FFD580':'#aaa';
+    bd.title='Firebase '+(st==='ok'?'연결됨':st==='err'?'연결 끊김':st==='busy'?'동기화 중':'대기중');
+  }
+}
+function syncListen(){
+  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
+  REF.on('value', snap=>{
+    const raw = snap.val();
+    if(!raw){ setSyncDot('err'); return; }
+    setSyncDot('ok');
+    const incomingToken = raw.seq ?? '';
+    if(incomingToken && incomingToken === lastSentToken) return;
+    normalizeS(raw);
+    renderAll();
+    if(boardModeOn) renderBoard();
+  }, err=>{
+    setSyncDot('err');
+  });
+}
+function syncCourtActiveFromFirebase(){
+  try{
+    firebase.database().ref('tennis_court_active').on('value',snap=>{
+      const fb=snap.val();
+      if(fb){ courtActive=fb; localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(fb)); renderAll(); }
+    });
+  }catch(e){}
+}
+
+/* 보드 렌더링 */
+function renderBoard(){
+  if(!boardModeOn) return;
+  const el=document.getElementById('board-content');
+  if(!el) return;
+  const me=getCurrentMember();
+
+  function bigSlot(a, conf){
+    const isMe=me&&a.id===me.id;
+    const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:'';
+    // conf: true=확정(녹색), false=미확정/빈코트(회색)
+    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색
+    const nameTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
+    const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    return`<div style="background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
+      <span style="font-size:2.9vw;font-weight:900;color:${nameTc}">${a.name}</span>
+      <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
+      ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
+    </div>`;
+  }
+  function emptySlot(conf){
+    const ec = conf ? "rgba(255,255,255,.8)" : "rgba(0,0,0,.4)";
+    const eb = conf ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.15)";
+    return`<div style="border:0.15vw dashed ${eb};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;text-align:center;color:${ec};font-size:1.6vw;font-weight:700">— 빈자리 —</div>`;
+  }
+  function bigCard(n, isNext){
+    if(!isNext && !courtActive[n]){
+      return`<div style="background:#C8CDD2;border-radius:1.4vw;padding:2.5vw 1.5vw;min-width:0;height:100%;box-sizing:border-box;box-shadow:0 0.4vw 1.2vw rgba(0,0,0,.1);text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:.6">
+        <div style="color:#fff;font-size:2.6vw;font-weight:900;margin-bottom:0.5vw">${CNAMES[n]}</div>
+        <div style="color:rgba(255,255,255,.8);font-size:1.6vw;font-weight:700">오늘 사용 안 함</div>
+      </div>`;
+    }
+    const ncKey=n===5?'nextCourt1':'nextCourt2';
+    const pl=isNext ? S.attendees.filter(x=>x[ncKey]) : S.attendees.filter(x=>x.court===n);
+    const cnt=pl.length, conf=!!CC[n];
+    let body='';
+    if(isNext){
+      // 다음차례: 이름 4개를 한 줄 가로 나열 (성별 뱃지 없음)
+      const slots = [];
+      pl.forEach(a=>{
+        const nameTc = conf ? (a.gender==='m'?'#185FA5':'#993556') : '#1A1A1A';
+        slots.push(`<div style="flex:1;text-align:center;background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:0.8vw;padding:0.9vw 0.5vw;font-size:2.9vw;font-weight:900;color:${nameTc};min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</div>`);
+      });
+      for(let i=cnt;i<CMAX;i++){
+        const ec=conf?'rgba(0,0,0,.3)':'rgba(0,0,0,.3)';
+        slots.push(`<div style="flex:1;text-align:center;border:0.15vw dashed ${conf?'rgba(255,255,255,.4)':'rgba(0,0,0,.15)'};border-radius:0.8vw;padding:0.9vw 0.5vw;font-size:1.4vw;color:${conf?'rgba(255,255,255,.7)':'rgba(0,0,0,.3)'};font-weight:700">빈자리</div>`);
+      }
+      body=`<div style="display:flex;gap:0.5vw;align-items:stretch">${slots.join('')}</div>`;
+    } else {
+      pl.forEach(a=>{ body+=bigSlot(a,conf); });
+      for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
+    }
+    const badgeStyle='padding:0.5vw 1.2vw;border-radius:1.5vw;font-size:1.5vw;font-weight:900;white-space:nowrap';
+    const statusBadge=conf
+      ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 게임 확정</span>`
+      : cnt>=CMAX
+        ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">🔴 미확정(대기)</span>`
+        : `<span style="background:rgba(0,0,0,.15);color:rgba(255,255,255,.9);${badgeStyle};font-weight:800">${cnt}/${CMAX}명 대기</span>`;
+    // 확정=녹색, 미확정(대기)·빈코트=중간밝은회색
+    const cardBg = conf ? '#1D9E75' : '#9EA8B0';
+    const cardTc = '#fff';
+    return`<div style="background:${cardBg};border-radius:1.4vw;padding:1.2vw 1.5vw;min-width:0;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1vw;flex-wrap:wrap;gap:0.4vw">
+        <span style="color:${cardTc};font-size:2.2vw;font-weight:900;text-shadow:0 1px 3px rgba(0,0,0,.25)">${CNAMES[n]}</span>
+        ${statusBadge}
+      </div>
+      ${body}
+    </div>`;
+  }
+
+  // ── 보드 레이아웃 (23인치 1920×1080 기준) ──
+  // 고정 높이 없이 내용 크기대로 자연스럽게 배치
+  // 1~4코트 → 바로 아래 다음차례1·2 (스크롤로 확인)
+  const gap = '0.8vw';
+
+  let h='';
+  // 1~4코트: 4열, 높이는 내용(인원)에 맞게 자동
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:${gap};align-items:start;margin-bottom:${gap}">`;
+  [1,2,3,4].forEach(n=>{ h+=bigCard(n,false); });
+  h+='</div>';
+  // 다음차례: 바로 아래 이어서
+  h+=`<div style="font-size:2vw;font-weight:900;color:#2C2C2A;margin-bottom:0.8vw">⏭ 다음차례 코트</div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:${gap};align-items:start;margin-bottom:2vw">`;
+  [5,6].forEach(n=>{ h+=bigCard(n,true); });
+  h+='</div>';
+
+  el.innerHTML=h;
+}
+
+/* 시계 */
+function updateBoardClock(){
+  const el=document.getElementById('board-clock');
+  if(el) el.textContent=timeStr()+' '+todayLbl();
+}
+setInterval(updateBoardClock,1000);
+updateBoardClock();
+
+/* 화면 복귀 시 */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    REF.once('value', snap=>{
+      const raw=snap.val();
+      if(!raw) return;
+      const incomingToken=raw.seq??'';
+      if(incomingToken && incomingToken===lastSentToken) return;
+      normalizeS(raw);
+      renderAll();
+      if(boardModeOn) renderBoard();
+    });
+  }
+}
+
+/* 연결 상태 */
+// Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
+// Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음
+firebase.database().ref('.info/connected').on('value', snap=>{
+  setSyncDot(snap.val()===true ? 'ok' : 'err');
+});
+
+/* 시작 */
+syncListen();
+syncCourtActiveFromFirebase();
+renderBoard();
+</script>
+</body>
+</html>
