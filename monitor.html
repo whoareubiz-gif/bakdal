@@ -95,6 +95,13 @@ let S={attendees:[],leftMembers:[],seqCounter:0};
 let courtActive={1:true,2:true,3:true,4:true};
 const boardModeOn=true;
 
+/* 상수 추가 */
+const HIDDEN_MEMBER_IDS=[998,999];
+const LOGIN_KEY='tennis_login_member';
+
+/* monitor.html은 항상 모니터링 모드 — getCurrentMember는 null 반환 */
+function getCurrentMember(){ return null; }
+
 /* 헬퍼 */
 function pad(n){return String(n).padStart(2,'0');}
 function dateStr(d=new Date()){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
@@ -163,7 +170,7 @@ function syncListen(){
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
-    renderAll();
+    renderBoard();
     if(boardModeOn) renderBoard();
   }, err=>{
     setSyncDot('err');
@@ -173,7 +180,7 @@ function syncCourtActiveFromFirebase(){
   try{
     firebase.database().ref('tennis_court_active').on('value',snap=>{
       const fb=snap.val();
-      if(fb){ courtActive=fb; localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(fb)); renderAll(); }
+      if(fb){ courtActive=fb; localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(fb)); renderBoard(); }
     });
   }catch(e){}
 }
@@ -285,7 +292,7 @@ document.addEventListener('visibilitychange', ()=>{
       const incomingToken=raw.seq??'';
       if(incomingToken && incomingToken===lastSentToken) return;
       normalizeS(raw);
-      renderAll();
+      renderBoard();
       if(boardModeOn) renderBoard();
     });
   }
