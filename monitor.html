@@ -211,7 +211,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
     <div style="display:flex;align-items:center;gap:1.2vw">
       <div id="board-clock" style="color:#fff;font-size:1.8vw;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
       <div id="board-sync-dot" style="width:14px;height:14px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
-      <button onclick="toggleBoardMode(false)" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
+      <button onclick="window.close()" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
     </div>
   </div>
   <div id="board-content" style="padding:1vw 1.5vw 2vw 1.5vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;"></div>
@@ -314,7 +314,7 @@ function syncPush(){
 
 /* 서버에서 실시간 listen */
 function syncListen(){
-  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
+  let firstReceived = false;
   REF.on('value', snap=>{
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
@@ -322,8 +322,16 @@ function syncListen(){
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
-    renderAll();
-    if(boardModeOn) renderBoard();
+    // monitor.html: renderAll() 대신 필요한 것만 직접 호출
+    // (pg1/pg2 등 DOM 탭이 없어서 renderAll 에러 방지)
+    checkAttendanceAnnouncements();    // 출석/퇴소 음성
+    checkGlobalCourtAnnouncements();   // 배정/확정 음성
+    renderBoard();                      // 보드 화면 갱신
+
+    if(!firstReceived){
+      firstReceived = true;
+      setTimeout(()=>{ initialRenderDone=true; }, 1000);
+    }
   }, err=>{
     setSyncDot('err');
   });
@@ -2548,6 +2556,19 @@ function speakStatus(text, popupInfo){
   notifyQueue.push({text, popupInfo});
   runNotifyQueue();
 }
+
+// 크롬 speechSynthesis 안정화:
+// 장기 실행 시 조용히 멈추는 버그 → speak 전 cancel+resume으로 초기화
+function safeSpeech(utter){
+  try{
+    window.speechSynthesis.cancel();
+    setTimeout(()=>{
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utter);
+    }, 50);
+  }catch(e){ utter.onerror && utter.onerror(); }
+}
+
 function runNotifyQueue(){
   if(notifyQueueRunning) return;
   const next=notifyQueue.shift();
@@ -2556,19 +2577,28 @@ function runNotifyQueue(){
   if(next.popupInfo){
     renderStatusPopupDOM(next.popupInfo.icon, next.popupInfo.label, next.popupInfo.bg, next.popupInfo.tc);
   }
+  const done=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
   try{
     if(!('speechSynthesis' in window)){
-      setTimeout(()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }, 3000);
+      setTimeout(done, 3000);
       return;
     }
     const utter=new SpeechSynthesisUtterance(next.text);
     utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
-    utter.onend=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    utter.onerror=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    window.speechSynthesis.speak(utter);
-    setTimeout(()=>{ if(notifyQueueRunning){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); } }, 8000);
-  }catch(e){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }
+    utter.onend=done;
+    utter.onerror=done;
+    safeSpeech(utter);
+    // onend가 안 불리는 크롬 버그 대비 10초 강제 완료
+    setTimeout(()=>{ if(notifyQueueRunning) done(); }, 10000);
+  }catch(e){ done(); }
 }
+
+// 크롬 장기실행 시 speechSynthesis 멈춤 방지 — 14초마다 resume()
+setInterval(()=>{
+  if(window.speechSynthesis && !notifyQueueRunning){
+    window.speechSynthesis.resume();
+  }
+}, 14000);
 function vibrateDevice(pattern){
   if(!notifyEnabled) return;
   try{ if('vibrate' in navigator) navigator.vibrate(pattern); }catch(e){}
@@ -2642,7 +2672,32 @@ syncListen(); // Firebase 실시간 수신 시작
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
   toggleBoardMode(true);
-  renderAll();
+  // renderAll() 대신 보드만 렌더링 (탭 DOM 없음)
+  renderBoard();
+
+  // 크롬은 사용자 인터랙션 없이 음성 재생 불가 → 클릭 유도 오버레이 표시
+  // 한 번 클릭하면 음성 잠금해제 후 오버레이 제거
+  const overlay = document.createElement('div');
+  overlay.id = 'monitor-start-overlay';
+  overlay.style.cssText = [
+    'position:fixed','inset:0','z-index:9999',
+    'background:rgba(0,0,0,0.55)',
+    'display:flex','flex-direction:column',
+    'align-items:center','justify-content:center',
+    'cursor:pointer'
+  ].join(';');
+  overlay.innerHTML = `
+    <div style="color:#fff;font-size:3vw;font-weight:900;margin-bottom:1.5vw;text-shadow:0 2px 8px rgba(0,0,0,.5)">🎾 박달브라운 테니스 클럽</div>
+    <div style="background:#1D9E75;color:#fff;font-size:2vw;font-weight:800;padding:1.2vw 3vw;border-radius:1.5vw;box-shadow:0 4px 20px rgba(0,0,0,.3)">
+      화면을 클릭하면 모니터링이 시작됩니다
+    </div>
+    <div style="color:rgba(255,255,255,.7);font-size:1.2vw;margin-top:1vw">음성 알림을 활성화하려면 클릭이 필요합니다</div>
+  `;
+  overlay.addEventListener('click', function(){
+    unlockSpeechSynthesis();
+    overlay.remove();
+  }, {once:true});
+  document.body.appendChild(overlay);
 })();
 syncExtraMembersFromFirebase(); // 추가 회원 동기화
 syncMemberEditsFromFirebase(); // 원본회원 이름수정 동기화
@@ -2650,7 +2705,7 @@ syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
 syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
-setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
+// initialRenderDone은 syncListen에서 첫 Firebase 수신 후 1초 뒤 활성화됨 (WiFi 지연 대응)
 
 // Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
 // Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음

@@ -314,7 +314,7 @@ function syncPush(){
 
 /* 서버에서 실시간 listen */
 function syncListen(){
-  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
+  let firstReceived = false;
   REF.on('value', snap=>{
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
@@ -324,6 +324,12 @@ function syncListen(){
     normalizeS(raw);
     renderAll();
     if(boardModeOn) renderBoard();
+
+    if(!firstReceived){
+      firstReceived = true;
+      // 첫 Firebase 데이터 수신 후 1초 뒤 알림 활성화 (WiFi 지연 무관)
+      setTimeout(()=>{ initialRenderDone=true; }, 1000);
+    }
   }, err=>{
     setSyncDot('err');
   });
@@ -1025,14 +1031,42 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 }
 (function(){
   const wrap=document.getElementById('slide-wrap');
-  let sx=0,dragging=false,moved=false;
-  function start(x){sx=x;dragging=true;moved=false;}
-  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));}
-  wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX);},{passive:true});
-  wrap.addEventListener('touchmove',e=>{if(dragging&&Math.abs(e.touches[0].clientX-sx)>5)moved=true;},{passive:true});
+  let sx=0,sy=0,dragging=false,moved=false,scrolling=false;
+  function start(x,y){sx=x;sy=y;dragging=true;moved=false;scrolling=false;}
+  function end(ex){
+    if(!dragging)return;
+    dragging=false;
+    if(!moved||scrolling)return; // 세로 스크롤 중이면 탭 전환 안 함
+    const dx=ex-sx;
+    if(Math.abs(dx)>60) goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));
+  }
+  wrap.addEventListener('touchstart',e=>{
+    start(e.touches[0].clientX, e.touches[0].clientY);
+  },{passive:true});
+  wrap.addEventListener('touchmove',e=>{
+    if(!dragging) return;
+    const dx=Math.abs(e.touches[0].clientX-sx);
+    const dy=Math.abs(e.touches[0].clientY-sy);
+    if(!moved && !scrolling){
+      // 처음 움직임 방향으로 스와이프/스크롤 판정
+      if(dy > dx){
+        scrolling=true; // Y축이 더 크면 세로 스크롤로 판정 → 탭전환 무시
+      } else if(dx > 10){
+        moved=true;     // X축이 더 크고 10px 이상이면 가로 스와이프
+      }
+    }
+  },{passive:true});
   wrap.addEventListener('touchend',e=>{end(e.changedTouches[0].clientX);});
-  wrap.addEventListener('mousedown',e=>{start(e.clientX);});
-  wrap.addEventListener('mousemove',e=>{if(dragging&&Math.abs(e.clientX-sx)>5)moved=true;});
+  wrap.addEventListener('mousedown',e=>{start(e.clientX, e.clientY);});
+  wrap.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const dx=Math.abs(e.clientX-sx);
+    const dy=Math.abs(e.clientY-sy);
+    if(!moved && !scrolling){
+      if(dy > dx) scrolling=true;
+      else if(dx > 10) moved=true;
+    }
+  });
   wrap.addEventListener('mouseup',e=>{end(e.clientX);});
 })();
 
@@ -2551,6 +2585,17 @@ function speakStatus(text, popupInfo){
   notifyQueue.push({text, popupInfo});
   runNotifyQueue();
 }
+
+function safeSpeech(utter){
+  try{
+    window.speechSynthesis.cancel();
+    setTimeout(()=>{
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utter);
+    }, 50);
+  }catch(e){ utter.onerror && utter.onerror(); }
+}
+
 function runNotifyQueue(){
   if(notifyQueueRunning) return;
   const next=notifyQueue.shift();
@@ -2559,19 +2604,27 @@ function runNotifyQueue(){
   if(next.popupInfo){
     renderStatusPopupDOM(next.popupInfo.icon, next.popupInfo.label, next.popupInfo.bg, next.popupInfo.tc);
   }
+  const done=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
   try{
     if(!('speechSynthesis' in window)){
-      setTimeout(()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }, 3000);
+      setTimeout(done, 3000);
       return;
     }
     const utter=new SpeechSynthesisUtterance(next.text);
     utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
-    utter.onend=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    utter.onerror=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    window.speechSynthesis.speak(utter);
-    setTimeout(()=>{ if(notifyQueueRunning){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); } }, 8000);
-  }catch(e){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }
+    utter.onend=done;
+    utter.onerror=done;
+    safeSpeech(utter);
+    setTimeout(()=>{ if(notifyQueueRunning) done(); }, 10000);
+  }catch(e){ done(); }
 }
+
+// 크롬 장기실행 시 speechSynthesis 멈춤 방지
+setInterval(()=>{
+  if(window.speechSynthesis && !notifyQueueRunning){
+    window.speechSynthesis.resume();
+  }
+}, 14000);
 function vibrateDevice(pattern){
   if(!notifyEnabled) return;
   try{ if('vibrate' in navigator) navigator.vibrate(pattern); }catch(e){}
@@ -2646,7 +2699,7 @@ syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
 syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
-setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
+// initialRenderDone은 syncListen에서 첫 Firebase 수신 후 1초 뒤 활성화됨 (WiFi 지연 대응)
 
 // Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
 // Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음
