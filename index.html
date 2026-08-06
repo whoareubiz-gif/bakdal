@@ -1291,6 +1291,13 @@ function assignTeam(cn,teamIds){
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
+  // 배정할 인원들이 기존에 있던 코트 확정 해제
+  // (예: 1코트 확정 인원을 2코트로 옮기면 1코트 CC도 false로)
+  const prevCourts=new Set(
+    teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court)
+  );
+  prevCourts.forEach(pc=>{ if(pc!==cn) CC[pc]=false; });
+  // 대상 코트(cn) 기존 인원 해제 및 확정 해제
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
