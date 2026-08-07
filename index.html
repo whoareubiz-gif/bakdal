@@ -285,6 +285,7 @@ function normalizeS(raw){
       nextCourt1: a.nextCourt1 ?? null,
       nextCourt2: a.nextCourt2 ?? null,
       hasCourt:   a.hasCourt   ?? false,
+      isGuest:    a.isGuest    ?? false,
     }));
     s.leftMembers = toArr(s.leftMembers);
     S = s;
@@ -314,7 +315,7 @@ function syncPush(){
 
 /* 서버에서 실시간 listen */
 function syncListen(){
-  let firstReceived = false;
+  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
   REF.on('value', snap=>{
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
@@ -324,12 +325,6 @@ function syncListen(){
     normalizeS(raw);
     renderAll();
     if(boardModeOn) renderBoard();
-
-    if(!firstReceived){
-      firstReceived = true;
-      // 첫 Firebase 데이터 수신 후 1초 뒤 알림 활성화 (WiFi 지연 무관)
-      setTimeout(()=>{ initialRenderDone=true; }, 1000);
-    }
   }, err=>{
     setSyncDot('err');
   });
@@ -788,6 +783,37 @@ function saveCourtActive(){
   try{ localStorage.setItem(COURT_ACTIVE_KEY, JSON.stringify(courtActive)); }catch(e){}
   try{ firebase.database().ref('tennis_court_active').set(courtActive); }catch(e){}
 }
+
+function syncDailyGuestsFromFirebase(){
+  firebase.database().ref(DAILY_GUEST_FB).on('value',function(snap){
+    var raw=snap.val();var today=dateStr();
+    dailyGuests=raw?Object.values(raw).filter(function(g){return g.date===today;}):[]; 
+  });
+}
+function addDailyGuest(name,gender){
+  if(!name||!name.trim()){toast('이름을 입력해주세요');return;}
+  var today=dateStr();
+  if(dailyGuests.find(function(g){return g.name===name.trim()&&g.gender===gender;})){toast('이미 등록된 게스트');return;}
+  var id=90000+Math.floor(Math.random()*9999);
+  var guest={id:id,name:name.trim(),gender:gender,date:today,isGuest:true};
+  firebase.database().ref(DAILY_GUEST_FB+'/'+id).set(guest);
+  var t=timeStr();var ts=nowTs();S.seqCounter++;
+  S.attendees.push({id:id,name:name.trim(),gender:gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false,isGuest:true});
+  save();renderAll();toast(name.trim()+' 게스트 등록 완료');
+  var inp=document.getElementById('daily-guest-name-input');if(inp)inp.value='';
+}
+function removeDailyGuest(id){
+  openModal('이 게스트를 삭제하시겠습니까?',function(){
+    firebase.database().ref(DAILY_GUEST_FB+'/'+id).remove();
+    S.attendees=S.attendees.filter(function(a){return a.id!==id;});
+    S.leftMembers=S.leftMembers.filter(function(a){return a.id!==id;});
+    save();renderAll();toast('게스트 삭제 완료');
+  });
+}
+function clearAllDailyGuests(){
+  try{firebase.database().ref(DAILY_GUEST_FB).remove();}catch(e){}
+  dailyGuests=[];
+}
 function syncCourtActiveFromFirebase(){
   try{
     firebase.database().ref('tennis_court_active').on('value',snap=>{
@@ -821,15 +847,14 @@ let autoFired=false,toastT=null,modalFn=null;
 
 /* ── 로그인 & 모드 (member: 일반회원 화면 / admin: 관리자 전체화면) ── */
 const LOGIN_KEY='tennis_login_member';
+const SESSION_TTL=5*60*60*1000;
 let appMode='member'; // 'member' | 'admin'
 
 function getCurrentMember(){
-  try{
-    const saved=sessionStorage.getItem(LOGIN_KEY);
-    if(saved) return JSON.parse(saved);
-  }catch(e){}
+  try{const s=localStorage.getItem(LOGIN_KEY);if(s){const o=JSON.parse(s);if(o.expiry&&Date.now()<o.expiry)return o.member;localStorage.removeItem(LOGIN_KEY);}}catch(e){}
   return null;
 }
+function saveLoginSession(m){try{localStorage.setItem(LOGIN_KEY,JSON.stringify({member:m,expiry:Date.now()+SESSION_TTL}));}catch(e){}}
 
 function updateModeToggleBtn(){
   const btn=document.getElementById('mode-toggle-btn');
@@ -844,7 +869,7 @@ function toggleAppMode(){
   const me=getCurrentMember();
   if(!me || !isOfficer(me.id)){ toast('관리 권한이 없습니다'); return; }
   appMode = appMode==='admin' ? 'member' : 'admin';
-  try{ sessionStorage.setItem('tennis_app_mode', appMode); }catch(e){}
+  try{localStorage.setItem('tns_mode',JSON.stringify({mode:appMode,expiry:Date.now()+SESSION_TTL}));}catch(e){}
   updateModeToggleBtn();
   applyModeVisibility();
   renderAll();
@@ -904,13 +929,13 @@ function doLogin(){
     member = matches.find(x=>x.gender===chosenGender) || matches[0];
   }
 
-  try{ sessionStorage.setItem(LOGIN_KEY, JSON.stringify(member)); }catch(e){}
+  saveLoginSession(member);
 
   // 관리자 계정(998): 출석 처리 자체를 하지 않고 곧바로 관리 모드로 진입
   const ADMIN_ACCOUNT_ID=998;
   if(member.id===ADMIN_ACCOUNT_ID){
     appMode='admin';
-    try{ sessionStorage.setItem('tennis_app_mode','admin'); }catch(e){}
+    try{localStorage.setItem('tns_mode',JSON.stringify({mode:'admin',expiry:Date.now()+SESSION_TTL}));}catch(e){}
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='flex';
     updateModeToggleBtn();
@@ -923,7 +948,7 @@ function doLogin(){
 
   // 기본은 항상 member 모드로 시작 (임원이어도 본인이 직접 전환해야 관리모드 진입)
   appMode='member';
-  try{ sessionStorage.setItem('tennis_app_mode','member'); }catch(e){}
+  try{localStorage.setItem('tns_mode',JSON.stringify({mode:'member',expiry:Date.now()+SESSION_TTL}));}catch(e){}
 
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -943,14 +968,14 @@ function doLogin(){
 
 function checkExistingLogin(){
   try{
-    const saved=sessionStorage.getItem(LOGIN_KEY);
+    const saved=localStorage.getItem(LOGIN_KEY);
     if(saved){
-      const member=JSON.parse(saved);
+      const _so=JSON.parse(saved);if(!_so.expiry||Date.now()>=_so.expiry){localStorage.removeItem(LOGIN_KEY);return false;}const member=_so.member;
       if(MEMBERS.find(x=>x.id===member.id && x.name===member.name)){
-        const savedMode = sessionStorage.getItem('tennis_app_mode') || 'member';
+        let savedMode='member';try{const _m=JSON.parse(localStorage.getItem('tns_mode')||'{}');if(_m.expiry&&Date.now()<_m.expiry)savedMode=_m.mode||'member';}catch(e){}
         // 임원 권한이 그 사이 회수됐을 수 있으므로, admin 모드 복원 전 재검증
-        appMode = (savedMode==='admin' && isOfficer(member.id)) ? 'admin' : 'member';
-        try{ sessionStorage.setItem('tennis_app_mode', appMode); }catch(e){}
+        appMode = (savedMode==='admin' && (isOfficer(member.id)||member.id===998)) ? 'admin' : 'member';
+        try{localStorage.setItem('tns_mode',JSON.stringify({mode:appMode,expiry:Date.now()+SESSION_TTL}));}catch(e){}
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='flex';
         updateModeToggleBtn();
@@ -1031,42 +1056,14 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 }
 (function(){
   const wrap=document.getElementById('slide-wrap');
-  let sx=0,sy=0,dragging=false,moved=false,scrolling=false;
-  function start(x,y){sx=x;sy=y;dragging=true;moved=false;scrolling=false;}
-  function end(ex){
-    if(!dragging)return;
-    dragging=false;
-    if(!moved||scrolling)return; // 세로 스크롤 중이면 탭 전환 안 함
-    const dx=ex-sx;
-    if(Math.abs(dx)>60) goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));
-  }
-  wrap.addEventListener('touchstart',e=>{
-    start(e.touches[0].clientX, e.touches[0].clientY);
-  },{passive:true});
-  wrap.addEventListener('touchmove',e=>{
-    if(!dragging) return;
-    const dx=Math.abs(e.touches[0].clientX-sx);
-    const dy=Math.abs(e.touches[0].clientY-sy);
-    if(!moved && !scrolling){
-      // 처음 움직임 방향으로 스와이프/스크롤 판정
-      if(dy > dx){
-        scrolling=true; // Y축이 더 크면 세로 스크롤로 판정 → 탭전환 무시
-      } else if(dx > 10){
-        moved=true;     // X축이 더 크고 10px 이상이면 가로 스와이프
-      }
-    }
-  },{passive:true});
+  let sx=0,dragging=false,moved=false;
+  function start(x){sx=x;dragging=true;moved=false;}
+  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));}
+  wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX);},{passive:true});
+  wrap.addEventListener('touchmove',e=>{if(dragging&&Math.abs(e.touches[0].clientX-sx)>5)moved=true;},{passive:true});
   wrap.addEventListener('touchend',e=>{end(e.changedTouches[0].clientX);});
-  wrap.addEventListener('mousedown',e=>{start(e.clientX, e.clientY);});
-  wrap.addEventListener('mousemove',e=>{
-    if(!dragging) return;
-    const dx=Math.abs(e.clientX-sx);
-    const dy=Math.abs(e.clientY-sy);
-    if(!moved && !scrolling){
-      if(dy > dx) scrolling=true;
-      else if(dx > 10) moved=true;
-    }
-  });
+  wrap.addEventListener('mousedown',e=>{start(e.clientX);});
+  wrap.addEventListener('mousemove',e=>{if(dragging&&Math.abs(e.clientX-sx)>5)moved=true;});
   wrap.addEventListener('mouseup',e=>{end(e.clientX);});
 })();
 
@@ -1089,6 +1086,7 @@ function autoReset(now){
   saveStatHistory();
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
+  clearAllDailyGuests();
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
 function manualReset(){
@@ -1099,6 +1097,7 @@ function manualReset(){
     archive(S,dateStr());// ③ 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};
+    clearAllDailyGuests();
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 오늘 최종 저장 후 초기화 완료');
   });
 }
@@ -1146,19 +1145,10 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  if(S.attendees.find(x=>x.id===id)){
-    toast(`${m.name} 이미 출석`);
-    if(appMode!=='admin') goTab(2); // 관리자 모드에서는 탭 이동 안 함
-    return;
-  }
+  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);goTab(2);return;}
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
-  save();toast(`${m.name} 출석 ✓  ${t}`);
-  if(appMode==='admin'){
-    renderAll(); // 관리자: 탭 이동 없이 화면만 갱신 (출석→완료 버튼 즉시 반영)
-  } else {
-    goTab(2);   // 일반: 코트현황 탭으로 이동 (goTab 내부에서 renderAll 호출됨)
-  }
+  save();toast(`${m.name} 출석 ✓  ${t}`);goTab(2);
 }
 function restoreAttendee(id){
   const idx=S.leftMembers.findIndex(x=>x.id===id);
@@ -1334,13 +1324,6 @@ function assignTeam(cn,teamIds){
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
-  // 배정할 인원들이 기존에 있던 코트 확정 해제
-  // (예: 1코트 확정 인원을 2코트로 옮기면 1코트 CC도 false로)
-  const prevCourts=new Set(
-    teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court)
-  );
-  prevCourts.forEach(pc=>{ if(pc!==cn) CC[pc]=false; });
-  // 대상 코트(cn) 기존 인원 해제 및 확정 해제
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
@@ -1501,10 +1484,12 @@ function attendRow(a){
       <button class="btn-lv" onclick="leave(${a.id})">퇴소</button>`;
   }
 
-  return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px;${isMemberMode&&isMe?'background:#FFFBEA;border-color:#F5C842':''}">
+  const _gBg=a.isGuest?'background:#FFF8E1;border-color:#F5C842;':'';
+  const _mBg=(isMemberMode&&isMe)?'background:#FFFBEA;border-color:#F5C842;':'';
+  return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px;${_mBg||_gBg}">
     <div style="display:flex;align-items:center;gap:4px">
       <div class="seq-b" style="flex-shrink:0">${a.seq}</div>
-      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>⭐나</span>':''}</span>
+      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}${a.isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>나</span>':''}</span>
       ${gt(a.gender,true)}${courtTag}
       <span style="flex:1"></span>
       <span class="atime-row" style="margin-top:0;flex-shrink:0">🕐 ${timeLabel}</span>
@@ -1664,7 +1649,6 @@ function renderMyStatusBannerHTML(){
 
 function renderCourts(){
   const isMemberMode = appMode!=='admin';
-  const _me = getCurrentMember(); // 본인 강조 표시용 — 스코프 최상단 선언
   let h = isMemberMode ? renderMyStatusBannerHTML() : '';
 
   // 코트 사용 설정 토글 바 (관리모드만)
@@ -1692,12 +1676,7 @@ function renderCourts(){
       return;
     }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{
-      const isMe=_me&&a.id===_me.id&&isMemberMode;
-      const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
-      const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
-    });
+    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -1716,10 +1695,7 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      const isMe2=_me&&a.id===_me.id&&isMemberMode;
-      const meSt2=isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
-      const meNm2=isMe2?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -2351,6 +2327,28 @@ function updateBoardClock(){
 setInterval(updateBoardClock,1000);
 
 
+function renderDailyGuestBox(){
+  var today=dateStr();
+  var gs=dailyGuests.filter(function(g){return g.date===today;});
+  var listHtml=gs.length===0
+    ? '<div style="font-size:12px;color:#B8B5AF;text-align:center;padding:8px">등록된 당일 게스트가 없습니다</div>'
+    : gs.map(function(g){
+        var bg=g.gender==='m'?'#E6F1FB':'#FBEAF0';
+        var tc=g.gender==='m'?'#185FA5':'#993556';
+        return '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:'+bg+';border-radius:8px;margin-bottom:4px">'
+          +'<span style="font-size:13px;font-weight:700;color:'+tc+';flex:1">'+g.name+' ('+(g.gender==='m'?'남':'여')+')</span>'
+          +'<button onclick="removeDailyGuest('+g.id+')" style="padding:3px 8px;background:#FAECE7;color:#993C1D;border:.5px solid #EFBCB0;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">삭제</button>'
+          +'</div>';
+      }).join('');
+  return '<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">'
+    +'<div class="stitle" style="margin-bottom:8px">&#128075; 당일 게스트 등록 <span style="font-size:11px;color:#888780;font-weight:500">&#183; 당일만 유지, 통계 제외</span></div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:8px">'
+    +'<input type="text" id="daily-guest-name-input" placeholder="게스트 이름 입력" style="flex:1;padding:7px 9px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit;box-sizing:border-box">'
+    +'<button onclick="addDailyGuest(document.getElementById(&quot;daily-guest-name-input&quot;).value,&quot;m&quot;)" style="padding:7px 12px;background:#185FA5;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">남자</button>'
+    +'<button onclick="addDailyGuest(document.getElementById(&quot;daily-guest-name-input&quot;).value,&quot;f&quot;)" style="padding:7px 12px;background:#993556;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">여자</button>'
+    +'</div>'+listHtml+'</div>';
+}
+
 function renderAdminPage(){
   // 회원 추가 박스
   const addMemberBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
@@ -2440,6 +2438,7 @@ function renderAdminPage(){
     ${renderNoticeAdminBox()}
     ${addMemberBox}
     ${searchBox}
+    ${renderDailyGuestBox()}
     ${deleteDateBox}
     ${exportBox}
   </div>`;
@@ -2603,17 +2602,6 @@ function speakStatus(text, popupInfo){
   notifyQueue.push({text, popupInfo});
   runNotifyQueue();
 }
-
-function safeSpeech(utter){
-  try{
-    window.speechSynthesis.cancel();
-    setTimeout(()=>{
-      window.speechSynthesis.resume();
-      window.speechSynthesis.speak(utter);
-    }, 50);
-  }catch(e){ utter.onerror && utter.onerror(); }
-}
-
 function runNotifyQueue(){
   if(notifyQueueRunning) return;
   const next=notifyQueue.shift();
@@ -2622,27 +2610,19 @@ function runNotifyQueue(){
   if(next.popupInfo){
     renderStatusPopupDOM(next.popupInfo.icon, next.popupInfo.label, next.popupInfo.bg, next.popupInfo.tc);
   }
-  const done=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
   try{
     if(!('speechSynthesis' in window)){
-      setTimeout(done, 3000);
+      setTimeout(()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }, 3000);
       return;
     }
     const utter=new SpeechSynthesisUtterance(next.text);
     utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
-    utter.onend=done;
-    utter.onerror=done;
-    safeSpeech(utter);
-    setTimeout(()=>{ if(notifyQueueRunning) done(); }, 10000);
-  }catch(e){ done(); }
+    utter.onend=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
+    utter.onerror=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
+    window.speechSynthesis.speak(utter);
+    setTimeout(()=>{ if(notifyQueueRunning){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); } }, 8000);
+  }catch(e){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }
 }
-
-// 크롬 장기실행 시 speechSynthesis 멈춤 방지
-setInterval(()=>{
-  if(window.speechSynthesis && !notifyQueueRunning){
-    window.speechSynthesis.resume();
-  }
-}, 14000);
 function vibrateDevice(pattern){
   if(!notifyEnabled) return;
   try{ if('vibrate' in navigator) navigator.vibrate(pattern); }catch(e){}
@@ -2715,9 +2695,10 @@ syncExtraMembersFromFirebase(); // 추가 회원 동기화
 syncMemberEditsFromFirebase(); // 원본회원 이름수정 동기화
 syncDeletedMembersFromFirebase(); // 원본회원 삭제 동기화
 syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
+syncDailyGuestsFromFirebase(); // 당일 게스트 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
-// initialRenderDone은 syncListen에서 첫 Firebase 수신 후 1초 뒤 활성화됨 (WiFi 지연 대응)
+setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
 
 // Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
 // Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음
