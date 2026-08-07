@@ -1448,7 +1448,9 @@ function waitMinutesLabel(a){
   if(a.court) return ''; // 이미 코트에 배정된 인원은 대기시간 표시 안 함
   const baseTs = a.courtFreeTs || a.attendTs || nowTs();
   const mins = Math.max(0, Math.floor((nowTs()-baseTs)/60));
-  return `<span style="font-size:9px;color:#888780;font-weight:500;flex-shrink:0;white-space:nowrap">${mins}분</span>`;
+  const isLong = mins >= 30;
+  const prefix = isLong ? '<span style="font-size:11px;color:#C0392B;font-weight:800;flex-shrink:0;white-space:nowrap;margin-right:2px">긴 대기중</span>' : '';
+  return prefix + `<span style="font-size:12px;color:${isLong?'#C0392B':'#1A1A1A'};font-weight:700;flex-shrink:0;white-space:nowrap">${mins}분</span>`;
 }
 
 function renderMembers(){
@@ -1777,12 +1779,12 @@ function renderCourts(){
         const isInactive=(!courtActive[n]&&a.court!==n)||isLeavingNotAssigned;
         const isFull=(S.attendees.filter(x=>x.court===n).length>=CMAX&&a.court!==n)||isInactive;
         const isOn=a.court===n?' on':'';
-        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:15px;border-radius:5px${isInactive?';opacity:.3':''}">${n}</button>`;
+        return`<button class="cbtn c${n}${isOn}${isFull?' full-disabled':''}" onclick="${isFull?'':` toggleCourt(${a.id},${n})`}" style="font-size:11px;font-weight:700;padding:4px 0;flex:1;border-radius:6px;text-align:center${isInactive?';opacity:.3':''}">${n}</button>`;
       }).join('');
       const nc1on=a.nextCourt1?' on':'';const nc2on=a.nextCourt2?' on':'';
       const nc1full=(S.attendees.filter(x=>x.nextCourt1).length>=CMAX&&!a.nextCourt1)||isLeavingNotAssigned;
       const nc2full=(S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2)||isLeavingNotAssigned;
-      const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLeavingNotAssigned?';opacity:.3':''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLeavingNotAssigned?';opacity:.3':''}">다2</button>`;
+      const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:11px;font-weight:700;padding:4px 0;flex:1.2;border-radius:6px;text-align:center${isLeavingNotAssigned?';opacity:.3':''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:11px;font-weight:700;padding:4px 0;flex:1.2;border-radius:6px;text-align:center${isLeavingNotAssigned?';opacity:.3':''}">다2</button>`;
       // 성별별 미배정/배정중 경계 구분선
       const mWaiting2=waiting.filter(x=>x.gender==='m');
       const fWaiting2=waiting.filter(x=>x.gender==='f');
@@ -1793,7 +1795,13 @@ function renderCourts(){
       // 미확정 코트 배정 인원 중 첫 번째에 구분선
       const gInCourt=gSorted.filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&!CC[x.court]);
       const divider=a.court&&!NEXT_COURTS.includes(a.court)&&!CC[a.court]&&gInCourt.indexOf(a)===0?`<div style="font-size:13px;color:#888780;padding:4px 0 2px;font-weight:700">─── 코트 배정 중 (미확정) ───</div>`:'';
-      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:11px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>${waitMinutesLabel(a)}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${cBtns}${ncBtns}</div></div>`;
+      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:13px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>
+          ${waitMinutesLabel(a)}
+        </div>
+        <div style="display:flex;gap:3px">${cBtns}${ncBtns}</div>
+      </div>`;
     }
     const mSorted=allSorted.filter(x=>x.gender==='m');const fSorted=allSorted.filter(x=>x.gender==='f');
     h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 게임편성 대기현황 (${waiting.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
@@ -1807,7 +1815,7 @@ function renderCourts(){
       const nc2full=(S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2)||isLv;
       const courtTag=`<span style="font-size:8px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 4px;border-radius:4px;flex-shrink:0">${CNAMES[a.court]}</span>`;
       const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다2</button>`;
-      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:11px;font-weight:700;color:#185FA5;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
+      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:13px;font-weight:700;color:#185FA5;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
     }
     const mConf=inCourtConfirmed.filter(x=>x.gender==='m');
     const fConf=inCourtConfirmed.filter(x=>x.gender==='f');
