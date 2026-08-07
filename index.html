@@ -112,8 +112,8 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .rec-card{background:#F8F7F4;border:.5px solid #E0DFDB;border-radius:10px;padding:9px 10px;margin-bottom:8px;}
 .rec-title{font-size:14px;font-weight:700;color:#1A1A1A;margin-bottom:6px;display:flex;align-items:center;gap:5px;}
 .rec-members{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:7px;}
-.rec-member{display:flex;align-items:center;gap:3px;background:#fff;border:.5px solid #E0DFDB;border-radius:7px;padding:4px 6px;}
-.rec-name{font-size:11px;font-weight:700;color:#1A1A1A;flex:1;}
+.rec-member{display:flex;align-items:center;gap:4px;background:#fff;border:.5px solid #E0DFDB;border-radius:7px;padding:6px 8px;}
+.rec-name{font-size:15px;font-weight:700;color:#1A1A1A;flex:1;}
 .rec-time{font-size:8px;color:#888780;}
 .assign-row{display:flex;gap:3px;flex-wrap:nowrap;}
 .assign-btn{flex:1;padding:4px 2px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;border:none;color:#fff;}
@@ -315,7 +315,7 @@ function syncPush(){
 
 /* 서버에서 실시간 listen */
 function syncListen(){
-  // Firebase SDK는 연결이 끊겨도 자동으로 재연결+재구독하므로 단순하게 유지
+  let firstReceived=false;
   REF.on('value', snap=>{
     const raw = snap.val();
     if(!raw){ setSyncDot('err'); return; }
@@ -325,9 +325,11 @@ function syncListen(){
     normalizeS(raw);
     renderAll();
     if(boardModeOn) renderBoard();
-  }, err=>{
-    setSyncDot('err');
-  });
+    if(!firstReceived){
+      firstReceived=true;
+      setTimeout(()=>{ initialRenderDone=true; }, 1000);
+    }
+  }, err=>{ setSyncDot('err'); });
 }
 
 /* 화면 복귀 시(백그라운드→포그라운드) 최신 데이터 한 번 직접 가져옴
@@ -685,6 +687,8 @@ const CMAX=4;
 const HIDDEN_MEMBER_IDS=[998,999]; // 관리자(998)·모니터링(999) — 숨김 회원, 모든 현황에서 항상 제외
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
 const COURT_ACTIVE_KEY='tennis_court_active';
+const DAILY_GUEST_FB='tennis_daily_guests'; // 당일 게스트 Firebase 경로
+let dailyGuests=[]; // 당일 등록 게스트 목록
 let courtActive={1:true,2:true,3:true,4:true}; // 오늘 사용할 코트 (1~4만 해당)
 
 /* ── 오늘의 공지사항 (관리 탭 안에 표시) ── */
@@ -1056,14 +1060,27 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 }
 (function(){
   const wrap=document.getElementById('slide-wrap');
-  let sx=0,dragging=false,moved=false;
-  function start(x){sx=x;dragging=true;moved=false;}
-  function end(ex){if(!dragging)return;dragging=false;if(!moved)return;const dx=ex-sx;if(Math.abs(dx)>40)goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));}
-  wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX);},{passive:true});
-  wrap.addEventListener('touchmove',e=>{if(dragging&&Math.abs(e.touches[0].clientX-sx)>5)moved=true;},{passive:true});
+  let sx=0,sy=0,dragging=false,moved=false,scrolling=false;
+  function start(x,y){sx=x;sy=y;dragging=true;moved=false;scrolling=false;}
+  function end(ex){
+    if(!dragging)return;dragging=false;
+    if(!moved||scrolling)return;
+    const dx=ex-sx;
+    if(Math.abs(dx)>60)goTab(Math.max(0,Math.min(4,curTab+(dx<0?1:-1))));
+  }
+  wrap.addEventListener('touchstart',e=>{start(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
+  wrap.addEventListener('touchmove',e=>{
+    if(!dragging)return;
+    const dx=Math.abs(e.touches[0].clientX-sx),dy=Math.abs(e.touches[0].clientY-sy);
+    if(!moved&&!scrolling){if(dy>dx)scrolling=true;else if(dx>10)moved=true;}
+  },{passive:true});
   wrap.addEventListener('touchend',e=>{end(e.changedTouches[0].clientX);});
-  wrap.addEventListener('mousedown',e=>{start(e.clientX);});
-  wrap.addEventListener('mousemove',e=>{if(dragging&&Math.abs(e.clientX-sx)>5)moved=true;});
+  wrap.addEventListener('mousedown',e=>{start(e.clientX,e.clientY);});
+  wrap.addEventListener('mousemove',e=>{
+    if(!dragging)return;
+    const dx=Math.abs(e.clientX-sx),dy=Math.abs(e.clientY-sy);
+    if(!moved&&!scrolling){if(dy>dx)scrolling=true;else if(dx>10)moved=true;}
+  });
   wrap.addEventListener('mouseup',e=>{end(e.clientX);});
 })();
 
@@ -1145,10 +1162,19 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);goTab(2);return;}
+  if(S.attendees.find(x=>x.id===id)){
+    toast(`${m.name} 이미 출석`);
+    if(appMode!=='admin') goTab(2);
+    return;
+  }
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
-  save();toast(`${m.name} 출석 ✓  ${t}`);goTab(2);
+  save();toast(`${m.name} 출석 ✓  ${t}`);
+  if(appMode==='admin'){
+    renderAll(); // 관리자: 탭 이동 없이 화면만 갱신
+  } else {
+    goTab(2);
+  }
 }
 function restoreAttendee(id){
   const idx=S.leftMembers.findIndex(x=>x.id===id);
@@ -1324,6 +1350,8 @@ function assignTeam(cn,teamIds){
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
+  const prevCourts=new Set(teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court));
+  prevCourts.forEach(pc=>{if(pc!==cn)CC[pc]=false;});
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
@@ -1649,6 +1677,7 @@ function renderMyStatusBannerHTML(){
 
 function renderCourts(){
   const isMemberMode = appMode!=='admin';
+  const _me = getCurrentMember();
   let h = isMemberMode ? renderMyStatusBannerHTML() : '';
 
   // 코트 사용 설정 토글 바 (관리모드만)
@@ -1676,7 +1705,12 @@ function renderCourts(){
       return;
     }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
+    let slots='';pl.forEach(a=>{
+      const isMe=_me&&a.id===_me.id&&isMemberMode;
+      const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
+      const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
+      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+    });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -1695,7 +1729,10 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      const isMe2=_me&&a.id===_me.id&&isMemberMode;
+      const meSt2=isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
+      const meNm2=isMe2?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -2562,9 +2599,9 @@ function renderAll(){
   document.getElementById('pg2').innerHTML=renderCourts();
   // admin 모드일 때만 보이는 탭은 admin 모드일 때만 렌더링 (불필요한 Firebase 호출·연산 방지)
   if(appMode==='admin'){
-    document.getElementById('pg0').innerHTML=renderMembers();
-    document.getElementById('pg3').innerHTML=renderStatPage();
-    document.getElementById('pg4').innerHTML=renderAdminPage();
+    try{ document.getElementById('pg0').innerHTML=renderMembers(); }catch(e){ document.getElementById('pg0').innerHTML='<div style="padding:20px;color:red">회원명부 오류: '+e.message+'</div>'; console.error('pg0',e); }
+    try{ document.getElementById('pg3').innerHTML=renderStatPage(); }catch(e){ document.getElementById('pg3').innerHTML='<div style="padding:20px;color:red">통계 오류: '+e.message+'</div>'; console.error('pg3',e); }
+    try{ document.getElementById('pg4').innerHTML=renderAdminPage(); }catch(e){ document.getElementById('pg4').innerHTML='<div style="padding:20px;color:red">관리 오류: '+e.message+'</div>'; console.error('pg4',e); }
   }
   renderBottom();
   updateModeToggleBtn();
@@ -2609,20 +2646,26 @@ function runNotifyQueue(){
   notifyQueueRunning=true;
   if(next.popupInfo){
     renderStatusPopupDOM(next.popupInfo.icon, next.popupInfo.label, next.popupInfo.bg, next.popupInfo.tc);
+    setTimeout(closeStatusPopupDOM, 3000);
   }
+  const done=()=>{ notifyQueueRunning=false; runNotifyQueue(); };
   try{
-    if(!('speechSynthesis' in window)){
-      setTimeout(()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }, 3000);
-      return;
-    }
+    if(!('speechSynthesis' in window)){ setTimeout(done,3000); return; }
     const utter=new SpeechSynthesisUtterance(next.text);
     utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
-    utter.onend=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    utter.onerror=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-    window.speechSynthesis.speak(utter);
-    setTimeout(()=>{ if(notifyQueueRunning){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); } }, 8000);
-  }catch(e){ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); }
+    let fired=false;
+    const safeDone=()=>{ if(fired)return; fired=true; done(); };
+    utter.onend=safeDone; utter.onerror=safeDone;
+    try{ window.speechSynthesis.cancel(); }catch(e){}
+    setTimeout(()=>{
+      try{ window.speechSynthesis.resume(); window.speechSynthesis.speak(utter); }
+      catch(e){ safeDone(); }
+    }, 80);
+    setTimeout(()=>{ if(notifyQueueRunning) safeDone(); }, 10000);
+  }catch(e){ done(); }
 }
+// 크롬 장기실행 시 speechSynthesis 멈춤 방지
+setInterval(()=>{ if(window.speechSynthesis&&!notifyQueueRunning) window.speechSynthesis.resume(); }, 14000);
 function vibrateDevice(pattern){
   if(!notifyEnabled) return;
   try{ if('vibrate' in navigator) navigator.vibrate(pattern); }catch(e){}
@@ -2698,7 +2741,7 @@ syncCourtActiveFromFirebase(); // 코트 활성화 설정 동기화
 syncDailyGuestsFromFirebase(); // 당일 게스트 동기화
 syncOfficerIdsFromFirebase(); // 임원 권한 동기화
 checkExistingLogin(); // 이미 로그인했던 세션이면 자동으로 앱 화면 표시
-setTimeout(()=>{ initialRenderDone=true; }, 2500); // 초기 동기화 안정화 후 알림 활성화 (느린 네트워크 대비 여유있게)
+// initialRenderDone은 syncListen 첫 수신 후 1초 뒤 활성화 (WiFi 지연 대응)
 
 // Firebase 연결 상태 표시 (sync dot 색상만 업데이트, 리스너 재등록은 하지 않음)
 // Firebase SDK가 자체적으로 재연결을 처리하므로 개입하지 않음
