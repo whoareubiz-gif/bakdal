@@ -1691,7 +1691,14 @@ function renderCourts(){
       return;
     }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    let slots='';pl.forEach(a=>{slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;});
+    const _me=getCurrentMember();
+    let slots='';pl.forEach(a=>{
+      const isMe=_me&&a.id===_me.id&&isMemberMode;
+      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':''}">
+        <span style="font-size:${isMe?'16px':'13px'};font-weight:${isMe?'900':'700'};color:${isMe?'#B8860B':'inherit'}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>
+        ${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span>
+      </div>`;
+    });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
@@ -1710,7 +1717,11 @@ function renderCourts(){
     let slots='';players.forEach(a=>{
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})"><span style="font-size:13px;font-weight:700">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      const isMe2=_me&&a.id===_me.id&&isMemberMode;
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':''}">
+        <span style="font-size:${isMe2?'16px':'13px'};font-weight:${isMe2?'900':'700'};color:${isMe2?'#B8860B':'inherit'}">${isMe2?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>
+        ${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span>
+      </div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
