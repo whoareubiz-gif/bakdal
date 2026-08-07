@@ -1154,7 +1154,11 @@ function markAttend(id){
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);
-  if(appMode!=='admin') goTab(2); // 관리자 모드에서는 탭 이동 안 함
+  if(appMode==='admin'){
+    renderAll(); // 관리자: 탭 이동 없이 화면만 갱신 (출석→완료 버튼 즉시 반영)
+  } else {
+    goTab(2);   // 일반: 코트현황 탭으로 이동 (goTab 내부에서 renderAll 호출됨)
+  }
 }
 function restoreAttendee(id){
   const idx=S.leftMembers.findIndex(x=>x.id===id);
