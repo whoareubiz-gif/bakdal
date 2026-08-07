@@ -1664,6 +1664,7 @@ function renderMyStatusBannerHTML(){
 
 function renderCourts(){
   const isMemberMode = appMode!=='admin';
+  const _me = getCurrentMember(); // 본인 강조 표시용 — 스코프 최상단 선언
   let h = isMemberMode ? renderMyStatusBannerHTML() : '';
 
   // 코트 사용 설정 토글 바 (관리모드만)
@@ -1691,7 +1692,6 @@ function renderCourts(){
       return;
     }
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,conf=CC[n];
-    const _me=getCurrentMember();
     let slots='';pl.forEach(a=>{
       const isMe=_me&&a.id===_me.id&&isMemberMode;
       const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
