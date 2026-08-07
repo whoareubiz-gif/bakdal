@@ -1146,10 +1146,15 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);goTab(2);return;}
+  if(S.attendees.find(x=>x.id===id)){
+    toast(`${m.name} 이미 출석`);
+    if(appMode!=='admin') goTab(2); // 관리자 모드에서는 탭 이동 안 함
+    return;
+  }
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
-  save();toast(`${m.name} 출석 ✓  ${t}`);goTab(2);
+  save();toast(`${m.name} 출석 ✓  ${t}`);
+  if(appMode!=='admin') goTab(2); // 관리자 모드에서는 탭 이동 안 함
 }
 function restoreAttendee(id){
   const idx=S.leftMembers.findIndex(x=>x.id===id);
