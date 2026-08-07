@@ -2565,13 +2565,14 @@ function runNotifyQueue(){
   if(!next) return;
   notifyQueueRunning=true;
 
+  // 팝업: 3초 고정 표시 후 자동 닫힘 (음성 종료와 무관)
   if(next.popupInfo){
     renderStatusPopupDOM(next.popupInfo.icon, next.popupInfo.label, next.popupInfo.bg, next.popupInfo.tc);
+    setTimeout(closeStatusPopupDOM, 3000);
   }
 
-  // 음성 종료 시 팝업도 같이 닫기
-  const done=()=>{ closeStatusPopupDOM(); notifyQueueRunning=false; runNotifyQueue(); };
-
+  // 음성 재생 (팝업과 독립적으로 동작)
+  const done=()=>{ notifyQueueRunning=false; runNotifyQueue(); };
   try{
     if(!('speechSynthesis' in window)){
       setTimeout(done, 3000);
@@ -2579,24 +2580,14 @@ function runNotifyQueue(){
     }
     const utter=new SpeechSynthesisUtterance(next.text);
     utter.lang='ko-KR'; utter.rate=1.15; utter.pitch=1.0;
-
-    // cancel() 후 이전 utter의 핸들러가 즉시 발동되는 크롬 버그 방지:
-    // 새 utter 등록 전 짧은 딜레이 후 speak (cancel은 speak 직전에만)
-    let fired=false;
-    const safeDone=()=>{ if(fired) return; fired=true; done(); };
-    utter.onend=safeDone;
-    utter.onerror=safeDone;
-
+    utter.onend=done;
+    utter.onerror=done;
     try{ window.speechSynthesis.cancel(); }catch(e){}
     setTimeout(()=>{
-      try{
-        window.speechSynthesis.resume();
-        window.speechSynthesis.speak(utter);
-      }catch(e){ safeDone(); }
+      try{ window.speechSynthesis.resume(); window.speechSynthesis.speak(utter); }
+      catch(e){ done(); }
     }, 80);
-
-    // 크롬 onend 미발동 버그 대비 12초 강제 완료
-    setTimeout(()=>{ if(notifyQueueRunning) safeDone(); }, 12000);
+    setTimeout(()=>{ if(notifyQueueRunning) done(); }, 12000);
   }catch(e){ done(); }
 }
 
