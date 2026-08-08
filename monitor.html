@@ -207,7 +207,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 <div id="toast"></div>
 <div id="board-overlay" style="display:none;position:fixed;inset:0;background:#EFEDE8;z-index:500;flex-direction:column;overflow:hidden;">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1vw 1.5vw;background:#1D9E75;position:sticky;top:0;z-index:10;flex-wrap:wrap;gap:8px">
-    <div style="color:#fff;font-size:2.2vw;font-weight:900;letter-spacing:-0.02em;white-space:nowrap">🎾 박달브라운 테니스 클럽 — 코트 현황</div>
+    <div style="color:#fff;font-size:1.7vw;font-weight:900;letter-spacing:-0.02em;white-space:nowrap">🎾 박달브라운 테니스 클럽 — 코트 현황</div>
     <div style="display:flex;align-items:center;gap:1.2vw">
       <div id="board-clock" style="color:#fff;font-size:1.8vw;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
       <div id="board-sync-dot" style="width:14px;height:14px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
@@ -1127,10 +1127,10 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);goTab(2);return;}
+  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);renderBoard();return;}
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
-  save();toast(`${m.name} 출석 ✓  ${t}`);goTab(2);
+  save();renderBoard();toast(`${m.name} 출석 ✓  ${t}`);
 }
 function restoreAttendee(id){
   const idx=S.leftMembers.findIndex(x=>x.id===id);
@@ -2302,7 +2302,43 @@ function renderBoard(){
   const gap = '0.8vw';
 
   let h='';
-  // 1~4코트: 4열, 높이는 내용(인원)에 맞게 자동
+
+  // ── 출석/퇴소 빠른 조작 패널 (코트 위) ──────────────────────────────────
+  // 출석한 회원 (attendees) + 미출석 회원 (MEMBERS 기준)
+  const attendIds = new Set(S.attendees.map(a=>a.id));
+  const leftIds = new Set(S.leftMembers.map(a=>a.id));
+  // 전체 정회원 (게스트/HIDDEN 제외)
+  const allRegular = MEMBERS.filter(m=>!HIDDEN_MEMBER_IDS.includes(m.id)&&!m.name.includes('게스트'));
+  const maleMembers = allRegular.filter(m=>m.gender==='m');
+  const femaleMembers = allRegular.filter(m=>m.gender==='f');
+
+  // 남자 2줄(51명), 여자 1줄(20명) 에 맞는 폰트 크기
+  function quickBtn(m, fs, fs2){
+    const isIn = attendIds.has(m.id);
+    const isLeft = leftIds.has(m.id);
+    const bg = isIn ? '#1D9E75' : isLeft ? '#9C9C98' : '#E0DFDB';
+    const tc = isIn ? '#fff' : isLeft ? '#fff' : '#555';
+    const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`;
+    const label = isIn ? '퇴' : isLeft ? '재' : '출';
+    const labelBg = isIn ? 'rgba(0,0,0,.2)' : isLeft ? 'rgba(0,0,0,.15)' : 'rgba(0,0,0,.08)';
+    return `<div style="display:inline-flex;align-items:center;gap:1px;background:${bg};border-radius:4px;padding:2px 3px 2px 3px;margin:1px;cursor:pointer;flex-shrink:0" onclick="${onclick}">
+      <span style="font-size:${fs};font-weight:700;color:${tc};white-space:nowrap">${m.name}</span>
+      <span style="font-size:${fs2};font-weight:900;color:${tc};background:${labelBg};border-radius:2px;padding:0 2px">${label}</span>
+    </div>`;
+  }
+
+  h+=`<div style="background:rgba(255,255,255,.85);border-radius:1vw;padding:0.5vw 0.7vw;margin-bottom:${gap}">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:2px;max-height:calc(1.8vw * 2 + 8px);overflow:hidden">
+      <span style="font-size:0.85vw;font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap">👨남</span>
+      ${maleMembers.map(m=>quickBtn(m,'0.72vw','0.6vw')).join('')}
+    </div>
+    <div style="display:flex;flex-wrap:nowrap;align-items:center;gap:0;overflow:hidden">
+      <span style="font-size:0.85vw;font-weight:800;color:#993556;margin-right:4px;flex-shrink:0;white-space:nowrap">👩여</span>
+      ${femaleMembers.map(m=>quickBtn(m,'0.85vw','0.7vw')).join('')}
+    </div>
+  </div>`;
+
+  // ── 1~4코트 ──────────────────────────────────────────────────────────────
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:${gap};align-items:start;margin-bottom:${gap}">`;
   [1,2,3,4].forEach(n=>{ h+=bigCard(n,false); });
   h+='</div>';
