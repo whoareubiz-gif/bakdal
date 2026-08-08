@@ -2277,7 +2277,7 @@ function renderBoard(){
       const nowSec=now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
       const elapsed=Math.max(0,nowSec-confSec);
       const em=Math.floor(elapsed/60);
-      ctStr=em>=60?` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}경과`:` ${em}분경과`;
+      ctStr=em>=60?` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}`:` ${em}분`;
     }
     const statusBadge=conf
       ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 확정${ctStr}</span>`
