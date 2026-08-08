@@ -2313,28 +2313,26 @@ function renderBoard(){
   const femaleMembers = allRegular.filter(m=>m.gender==='f');
 
   // 남자 2줄(51명), 여자 1줄(20명) 에 맞는 폰트 크기
-  function quickBtn(m, fs, fs2){
+  function quickBtn(m, fs){
     const isIn = attendIds.has(m.id);
     const isLeft = leftIds.has(m.id);
+    // 색상으로만 구분: 초록=출석중, 회색=퇴소, 연한=미출석
     const bg = isIn ? '#1D9E75' : isLeft ? '#9C9C98' : '#E0DFDB';
     const tc = isIn ? '#fff' : isLeft ? '#fff' : '#555';
     const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`;
-    const label = isIn ? '퇴' : isLeft ? '재' : '출';
-    const labelBg = isIn ? 'rgba(0,0,0,.2)' : isLeft ? 'rgba(0,0,0,.15)' : 'rgba(0,0,0,.08)';
-    return `<div style="display:inline-flex;align-items:center;gap:1px;background:${bg};border-radius:4px;padding:2px 3px 2px 3px;margin:1px;cursor:pointer;flex-shrink:0" onclick="${onclick}">
+    return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:2px 5px;margin:1px;cursor:pointer;flex-shrink:0" onclick="${onclick}">
       <span style="font-size:${fs};font-weight:700;color:${tc};white-space:nowrap">${m.name}</span>
-      <span style="font-size:${fs2};font-weight:900;color:${tc};background:${labelBg};border-radius:2px;padding:0 2px">${label}</span>
     </div>`;
   }
 
   h+=`<div style="background:rgba(255,255,255,.85);border-radius:1vw;padding:0.5vw 0.7vw;margin-bottom:${gap}">
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0;margin-bottom:2px;max-height:calc(1.8vw * 2 + 8px);overflow:hidden">
-      <span style="font-size:0.85vw;font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap">👨남</span>
-      ${maleMembers.map(m=>quickBtn(m,'0.72vw','0.6vw')).join('')}
+    <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:2px">
+      <span style="font-size:0.85vw;font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👨남</span>
+      <div style="display:flex;flex-wrap:wrap;gap:0;max-height:calc(1.9vw * 2 + 10px);overflow:hidden;flex:1">${maleMembers.map(m=>quickBtn(m,'0.9vw')).join('')}</div>
     </div>
     <div style="display:flex;flex-wrap:nowrap;align-items:center;gap:0;overflow:hidden">
       <span style="font-size:0.85vw;font-weight:800;color:#993556;margin-right:4px;flex-shrink:0;white-space:nowrap">👩여</span>
-      ${femaleMembers.map(m=>quickBtn(m,'0.85vw','0.7vw')).join('')}
+      ${femaleMembers.map(m=>quickBtn(m,'0.9vw')).join('')}
     </div>
   </div>`;
 
