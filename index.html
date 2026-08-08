@@ -298,6 +298,10 @@ function normalizeS(raw){
       5:!!(c['5']||c[5]), 6:!!(c['6']||c[6]),
     };
   }
+  if(raw.CT){
+    const ct=raw.CT;
+    CT={1:ct['1']||ct[1]||null,2:ct['2']||ct[2]||null,3:ct['3']||ct[3]||null,4:ct['4']||ct[4]||null,5:ct['5']||ct[5]||null,6:ct['6']||ct[6]||null};
+  }
 }
 
 /* 서버로 push (debounce 1초) */
@@ -307,7 +311,7 @@ function syncPush(){
   syncPushTimer = setTimeout(()=>{
     const token = DEVICE_ID+'-'+Date.now();
     lastSentToken = token;
-    REF.set({state:S, CC, seq:token, updatedAt:Date.now()})
+    REF.set({state:S, CC, CT, seq:token, updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 1000);
@@ -845,6 +849,7 @@ const SK='tennis_v7',HK='tennis_hist',STKEY='tennis_stats';
 
 let S={attendees:[],leftMembers:[],seqCounter:0};
 let CC={1:false,2:false,3:false,4:false,5:false,6:false};
+let CT={1:null,2:null,3:null,4:null,5:null,6:null}; // 코트별 확정 시각
 let curTab=0,leftOnly=false,todayGender=null;
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장
 let autoFired=false,toastT=null,modalFn=null;
@@ -1102,7 +1107,7 @@ function autoReset(now){
   leaveAllForSave();
   saveStatHistory();
   archive(S,dateStr(now));
-  S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
+  S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
   clearAllDailyGuests();
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
@@ -1113,7 +1118,7 @@ function manualReset(){
     saveStatHistory();   // ② 통계 저장 (퇴소시간 포함)
     archive(S,dateStr());// ③ 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
-    CC={1:false,2:false,3:false,4:false,5:false,6:false};
+    CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
     clearAllDailyGuests();
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 오늘 최종 저장 후 초기화 완료');
   });
@@ -1255,6 +1260,128 @@ function toggleNextCourt(id,which){
   CC[n]=false;
   save();renderAll();
 }
+/* 코트 이동 팝업 (길게 누르면 호출) */
+function showMoveCourtPopup(id){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const a=S.attendees.find(x=>x.id===id);if(!a||!a.court)return;
+  const fromCourt=a.court;
+
+  // 이동 가능한 코트 목록 (자신이 있는 코트 제외, 활성화된 코트)
+  const targets=[1,2,3,4].filter(n=>n!==fromCourt&&courtActive[n]);
+
+  // 팝업 생성
+  const old=document.getElementById('move-court-popup');if(old)old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='move-court-popup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900';
+
+  const btns=targets.map(n=>{
+    const cnt=S.attendees.filter(x=>x.court===n).length;
+    const conf=CC[n];
+    const status=cnt===0?'빈코트':conf?`확정(${cnt}명)`:`배정중(${cnt}명)`;
+    const bg=cnt===0?'#1D9E75':conf?'#185FA5':'#B25000';
+    return`<button onclick="moveToCourt(${id},${n})" style="flex:1;padding:12px 6px;background:${bg};color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px">
+      <span>${CNAMES[n]}</span>
+      <span style="font-size:11px;font-weight:500;opacity:.85">${status}</span>
+    </button>`;
+  }).join('');
+
+  overlay.innerHTML=`<div style="background:#fff;border-radius:18px;padding:22px 18px;width:90%;max-width:340px;box-shadow:0 16px 50px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:900;color:#1A1A1A;margin-bottom:6px">🔀 코트 이동</div>
+    <div style="font-size:13px;color:#888780;margin-bottom:14px">${a.name} · 현재 ${CNAMES[fromCourt]}${CC[fromCourt]?'(확정)':''}</div>
+    <div style="display:flex;gap:6px;margin-bottom:14px">${btns}</div>
+    <button onclick="document.getElementById('move-court-popup').remove()" style="width:100%;padding:10px;background:#F0EDE8;color:#666;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
+  </div>`;
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  document.body.appendChild(overlay);
+}
+
+/* 코트 전체 인원 이동 팝업 (코트 헤더 길게 누름) */
+function showMoveCourtAllPopup(fromCourt){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const pl=S.attendees.filter(x=>x.court===fromCourt);
+  if(!pl.length){toast(`${CNAMES[fromCourt]}에 배정 인원이 없습니다`);return;}
+
+  const old=document.getElementById('move-court-all-popup');if(old)old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='move-court-all-popup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900';
+
+  // 이동 가능한 코트 (자신 제외, 활성화된 코트)
+  const targets=[1,2,3,4].filter(n=>n!==fromCourt&&courtActive[n]);
+  const btns=targets.map(n=>{
+    const cnt=S.attendees.filter(x=>x.court===n).length;
+    const conf=CC[n];
+    const status=cnt===0?'빈코트':conf?`확정(${cnt}명)`:`배정중(${cnt}명)`;
+    const bg=cnt===0?'#1D9E75':conf?'#185FA5':'#B25000';
+    return`<button onclick="moveCourtAll(${fromCourt},${n})" style="flex:1;padding:12px 4px;background:${bg};color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px">
+      <span>${CNAMES[n]}</span>
+      <span style="font-size:11px;font-weight:500;opacity:.85">${status}</span>
+    </button>`;
+  }).join('');
+
+  const names=pl.map(a=>a.name).join(', ');
+  overlay.innerHTML=`<div style="background:#fff;border-radius:18px;padding:22px 18px;width:92%;max-width:360px;box-shadow:0 16px 50px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:900;color:#1A1A1A;margin-bottom:4px">🔀 코트 전체 이동</div>
+    <div style="font-size:12px;color:#888780;margin-bottom:4px">${CNAMES[fromCourt]}${CC[fromCourt]?' (확정)':''} · ${pl.length}명 전체</div>
+    <div style="font-size:12px;color:#1A1A1A;background:#F5F4F1;border-radius:8px;padding:7px 10px;margin-bottom:14px;word-break:keep-all">${names}</div>
+    <div style="display:flex;gap:6px;margin-bottom:14px">${btns}</div>
+    <button onclick="document.getElementById('move-court-all-popup').remove()" style="width:100%;padding:10px;background:#F0EDE8;color:#666;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
+  </div>`;
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  document.body.appendChild(overlay);
+}
+
+function moveCourtAll(fromCourt,toCourt){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const fromPl=S.attendees.filter(x=>x.court===fromCourt);
+  if(!fromPl.length)return;
+  const toPl=S.attendees.filter(x=>x.court===toCourt);
+  const t=timeStr();const ts=nowTs();
+
+  // 이동할 코트의 기존 인원 → fromCourt로 맞교환
+  toPl.forEach((a,i)=>{
+    a.court=fromCourt;
+    a.hasCourt=true;
+  });
+  // fromCourt 인원 → toCourt로 이동
+  fromPl.forEach(a=>{
+    a.court=toCourt;
+    a.hasCourt=true;
+  });
+
+  // 확정 상태 교환 (CC도 서로 바꿈)
+  const fromConf=CC[fromCourt];
+  const toConf=CC[toCourt];
+  CC[fromCourt]=toConf;
+  CC[toCourt]=fromConf;
+
+  document.getElementById('move-court-all-popup')?.remove();
+  save();renderAll();
+  toast(`${CNAMES[fromCourt]} ↔ ${CNAMES[toCourt]} 교환 완료`);
+}
+
+function moveToCourt(id,toCourt){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  const fromCourt=a.court;
+  // 기존 코트 확정 해제
+  if(fromCourt&&CC[fromCourt])CC[fromCourt]=false;
+  // 이동할 코트가 꽉 찼으면 기존 인원 한 명 밀어내기 (가장 늦게 들어온 순)
+  const t=timeStr();const ts=nowTs();
+  const destPl=S.attendees.filter(x=>x.court===toCourt);
+  if(destPl.length>=CMAX){
+    // 확정 상태도 해제
+    CC[toCourt]=false;
+    // 마지막 배정 인원 해제
+    const last=destPl[destPl.length-1];
+    last.court=null;last.courtFreeAt=t;last.courtFreeTs=ts-1;
+  }
+  a.court=toCourt;a.hasCourt=true;
+  document.getElementById('move-court-popup')?.remove();
+  save();renderAll();toast(`${a.name} → ${CNAMES[toCourt]} 이동`);
+}
+
 function removeFromCourt(id){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
@@ -1268,7 +1395,7 @@ function clearCourt(n){
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  CC[n]=false;CT[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1278,7 +1405,7 @@ function confirmCourt(n){
   const leavingMembers=pl.filter(a=>a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
-  pl.forEach(a=>{a.games+=1;});CC[n]=true;recordCourtGame(n);save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
+  pl.forEach(a=>{a.games+=1;});CC[n]=true;CT[n]=timeStr();recordCourtGame(n);save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1287,7 +1414,7 @@ function clearNextCourt(n){
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
-  CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  CC[n]=false;CT[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmNextCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1711,13 +1838,14 @@ function renderCourts(){
       const isMe=_me&&a.id===_me.id&&isMemberMode;
       const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
       const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" oncontextmenu="event.preventDefault();showMoveCourtPopup(${a.id})" ontouchstart="(function(){const t=setTimeout(()=>showMoveCourtPopup(${a.id}),600);this._lpt=t;}).call(this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">짧게:해제 길게:이동</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
     const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmCourt(${n})">확정</button>`:'';
-    h+=`<div class="ct-card"><div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
+    const ctTime=CC[n]&&CT[n]?`<span style="font-size:9px;color:rgba(255,255,255,.85);margin-left:4px;font-weight:500">✅ ${CT[n]}</span>`:'';
+    h+=`<div class="ct-card"><div class="ct-hdr c${n}" ontouchstart="(function(el){el._lpt=setTimeout(()=>showMoveCourtAllPopup(${n}),600);}).call(this,this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" oncontextmenu="event.preventDefault();showMoveCourtAllPopup(${n})" style="cursor:pointer" title="길게 누르면 전체 이동"><span class="ct-name">${CNAMES[n]}${ctTime}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   h+=`</div>`;
   // 다음차례 코트
@@ -2228,8 +2356,104 @@ function renderStatPage(){
     }).join('');
   }
 
+  // ── 당일 게임 효율 분석 ────────────────────────────────────────────────────
+  let todayAnalysisBox = '';
+  // 정회원 + 당일게스트 모두 포함 (HIDDEN_MEMBER_IDS만 제외)
+  const todayAll = [...S.attendees, ...S.leftMembers]
+    .filter(a => !HIDDEN_MEMBER_IDS.includes(a.id));
+
+  if(todayAll.length > 0){
+    const nowSec = nowTs();
+    const rows = todayAll.map(a => {
+      const inTs = a.attendTs || 0;
+      const outTs = a.leftTs || (a.leftAt ? (()=>{const[h,m]=(a.leftAt||'').split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return Math.floor(d.getTime()/1000);})() : nowSec);
+      const stayMin = inTs > 0 ? Math.max(0, Math.floor((outTs - inTs) / 60)) : 0;
+      const games = a.games || 0;
+      // 30분당 게임수
+      const per30 = stayMin > 0 ? Math.round((games / stayMin) * 30 * 10) / 10 : 0;
+      const valid = stayMin >= 30; // 30분 이상만 유의미
+      return { a, stayMin, games, per30, valid };
+    }).filter(r => r.stayMin > 0 || r.games > 0)
+      // 효율 낮은 순 정렬 (낮은 게 먼저, 30분 미만은 뒤로)
+      .sort((a, b) => {
+        if(a.valid && !b.valid) return -1;
+        if(!a.valid && b.valid) return 1;
+        return a.per30 - b.per30;
+      });
+
+    if(rows.length > 0){
+      const validRows = rows.filter(r => r.valid);
+      const avgPer30 = validRows.length > 0
+        ? Math.round(validRows.reduce((s,r)=>s+r.per30,0) / validRows.length * 10) / 10
+        : 0;
+      const lowThreshold = avgPer30 * 0.6;
+
+      const rowsHtml = rows.map((r,i) => {
+        const { a, stayMin, games, per30, valid } = r;
+        const isLow = valid && avgPer30 > 0 && per30 < lowThreshold;
+        const isLeft = !!(a.leftTs || a.leftAt); // leftAt: 퇴소시각(문자열), leftTs: 퇴소타임스탬프
+        const isGuest = !!a.isGuest;
+        const inT = a.attendTs ? timeStr(new Date(a.attendTs*1000)) : (a.time||'-');
+        const outT = a.leftTs ? timeStr(new Date(a.leftTs*1000)) : (a.leftAt || '게임중');
+        const stayStr = stayMin >= 60
+          ? `${Math.floor(stayMin/60)}시간${stayMin%60>0?` ${stayMin%60}분`:''}`
+          : `${stayMin}분`;
+        const score = valid ? per30.toFixed(1) : '-';
+        const barW = avgPer30>0 ? Math.min(100, Math.round(per30/avgPer30*60)) : 0;
+        const rowBg = isLow ? '#FFF0F0' : '#fff';
+        const rowBorder = isLow ? '#EFBCB0' : '#E0DFDB';
+        const nameColor = isLow ? '#C0392B' : '#1A1A1A';
+        const guestBadge = isGuest ? ' <span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:3px;font-weight:700">게스트</span>' : '';
+        return `<div style="background:${rowBg};border:.5px solid ${rowBorder};border-radius:9px;padding:7px 10px;margin-bottom:5px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:900;color:${isLow?'#C0392B':'#888780'};min-width:18px">${i+1}</span>
+            <span style="font-size:14px;font-weight:800;color:${nameColor};flex:1">${a.name}${isLow?' 🔴':''}${guestBadge}</span>
+            ${isLeft?'<span style="font-size:10px;background:#993C1D;color:#fff;padding:2px 6px;border-radius:5px;font-weight:700">퇴소</span>':''}
+            <span style="font-size:13px;font-weight:900;color:${isLow?'#C0392B':'#185FA5'}">${score}<span style="font-size:9px;font-weight:500">/30분</span></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#666;flex-wrap:wrap;margin-bottom:${valid?'5':'0'}px">
+            <span>🕐 ${inT} → ${outT}</span>
+            <span style="background:#E1F5EE;color:#0F6E56;padding:1px 5px;border-radius:4px;font-weight:700">${stayStr}</span>
+            <span style="background:#E6F1FB;color:#185FA5;padding:1px 5px;border-radius:4px;font-weight:700">${games}게임</span>
+          </div>
+          ${valid?`<div style="background:#F0EDE8;border-radius:4px;height:6px;overflow:hidden"><div style="width:${barW}%;background:${isLow?'#E74C3C':'#1D9E75'};height:100%;border-radius:4px"></div></div>`:'<div style="font-size:9px;color:#B8B5AF">30분 미만 — 집계 제외</div>'}
+        </div>`;
+      }).join('');
+
+      const lowCnt = rows.filter(r=>r.valid&&avgPer30>0&&r.per30<lowThreshold).length;
+      const guestCnt = rows.filter(r=>r.a.isGuest).length;
+
+      todayAnalysisBox = `<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+        <div class="stitle" style="margin-bottom:4px">⚡ 당일 게임 효율 분석
+          <span style="font-size:10px;color:#888780;font-weight:400;margin-left:4px">30분당 게임수 · 낮은 순</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="background:#E1F5EE;border-radius:8px;padding:5px 10px;font-size:11px">
+            <span style="color:#888780">참석</span>
+            <span style="font-size:15px;font-weight:900;color:#0F6E56;margin-left:4px">${rows.length}명</span>
+            ${guestCnt>0?`<span style="font-size:10px;color:#888780"> (게스트 ${guestCnt})</span>`:''}
+          </div>
+          <div style="background:#E6F1FB;border-radius:8px;padding:5px 10px;font-size:11px">
+            <span style="color:#888780">평균</span>
+            <span style="font-size:15px;font-weight:900;color:#185FA5;margin-left:4px">${avgPer30.toFixed(1)}</span>
+            <span style="font-size:10px;color:#888780">/30분</span>
+          </div>
+          ${lowCnt>0?`<div style="background:#FFF0F0;border-radius:8px;padding:5px 10px;font-size:11px">
+            <span style="color:#888780">게임 부족</span>
+            <span style="font-size:15px;font-weight:900;color:#C0392B;margin-left:4px">${lowCnt}명</span>
+            <span style="font-size:10px;color:#888780">(평균 60%↓)</span>
+          </div>`:''}
+        </div>
+        <div style="font-size:10px;color:#B25000;background:#FFF8E1;border-radius:6px;padding:5px 8px;margin-bottom:8px">
+          🔴 = 평균 대비 게임수 부족 · 다음 편성 우선 배정 추천
+        </div>
+        ${rowsHtml}
+      </div>`;
+    }
+  }
   return`<div class="pg-inner">
     <div class="stitle">📊 통계</div>
+    ${todayAnalysisBox}
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
     ${rangeBox}${avgBox}${detailBox}${divider}
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>

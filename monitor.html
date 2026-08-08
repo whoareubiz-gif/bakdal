@@ -297,6 +297,10 @@ function normalizeS(raw){
       5:!!(c['5']||c[5]), 6:!!(c['6']||c[6]),
     };
   }
+  if(raw.CT){
+    const ct=raw.CT;
+    CT={1:ct['1']||ct[1]||null,2:ct['2']||ct[2]||null,3:ct['3']||ct[3]||null,4:ct['4']||ct[4]||null,5:ct['5']||ct[5]||null,6:ct['6']||ct[6]||null};
+  }
 }
 
 /* 서버로 push (debounce 1초) */
@@ -817,6 +821,7 @@ const SK='tennis_v7',HK='tennis_hist',STKEY='tennis_stats';
 
 let S={attendees:[],leftMembers:[],seqCounter:0};
 let CC={1:false,2:false,3:false,4:false,5:false,6:false};
+let CT={1:null,2:null,3:null,4:null,5:null,6:null};
 let curTab=0,leftOnly=false,todayGender=null;
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장
 let autoFired=false,toastT=null,modalFn=null;
@@ -1114,7 +1119,9 @@ function manualResetNoSave(){
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
-  checkAutoLeave(); // 퇴소예정 10분 경과 자동 퇴소 체크
+  checkAutoLeave();
+  // 1분마다 보드 갱신 (확정 경과시간 등 시간 표시 최신화)
+  if(n.getSeconds()===0) renderBoard();
 }
 
 /* ── 출석/퇴소 ── */
@@ -2261,8 +2268,19 @@ function renderBoard(){
       for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
     }
     const badgeStyle='padding:0.5vw 1.2vw;border-radius:1.5vw;font-size:1.5vw;font-weight:900;white-space:nowrap;letter-spacing:-0.01em';
+    // 확정 후 경과시간 계산 (CT[n]은 "HH:MM" 문자열)
+    let ctStr='';
+    if(CT&&CT[n]){
+      const [ch,cm]=(CT[n]||'').split(':').map(Number);
+      const now=new Date();
+      const confSec=ch*3600+cm*60;
+      const nowSec=now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
+      const elapsed=Math.max(0,nowSec-confSec);
+      const em=Math.floor(elapsed/60);
+      ctStr=em>=60?` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}경과`:` ${em}분경과`;
+    }
     const statusBadge=conf
-      ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 게임 확정</span>`
+      ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 확정${ctStr}</span>`
       : cnt>=CMAX
         ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">🔴 미확정(대기)</span>`
         : `<span style="background:rgba(0,0,0,.15);color:rgba(255,255,255,.9);${badgeStyle};font-weight:800">${cnt}/${CMAX}명 대기</span>`;
