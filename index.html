@@ -1161,7 +1161,12 @@ function manualResetNoSave(){
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
-  checkAutoLeave(); // 퇴소예정 10분 경과 자동 퇴소 체크
+  checkAutoLeave();
+  // 1분마다 코트현황 갱신 (확정 경과시간 최신화)
+  if(n.getSeconds()===0){
+    const pg2=document.getElementById('pg2');
+    if(pg2) pg2.innerHTML=renderCourts();
+  }
 }
 
 /* ── 출석/퇴소 ── */
@@ -1442,7 +1447,23 @@ function confirmNextCourt(n){
     if(pi>=pl.length)break;
   }
   while(pi<pl.length){const a=pl[pi];a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+pi;}pi++;}
-  save();renderAll();toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
+
+  // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 ──────────────────
+  if(n===5){
+    const nc2Members=S.attendees.filter(x=>x.nextCourt2);
+    if(nc2Members.length){
+      nc2Members.forEach(a=>{
+        a.nextCourt1=true;  // 다음차례1로 이동
+        a.nextCourt2=null;  // 다음차례2 해제
+      });
+      toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
+    } else {
+      toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
+    }
+  } else {
+    toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
+  }
+  save();renderAll();
 }
 function reassign(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1844,7 +1865,17 @@ function renderCourts(){
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
     const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmCourt(${n})">확정</button>`:'';
-    const ctTime=CC[n]&&CT[n]?`<span style="font-size:9px;color:rgba(255,255,255,.85);margin-left:4px;font-weight:500">✅ ${CT[n]}</span>`:'';
+    let ctTime='';
+    if(CC[n]&&CT[n]){
+      const[ch2,cm2]=(CT[n]||'').split(':').map(Number);
+      const now2=new Date();
+      const confSec2=ch2*3600+cm2*60;
+      const nowSec2=now2.getHours()*3600+now2.getMinutes()*60+now2.getSeconds();
+      const elapsed2=Math.max(0,nowSec2-confSec2);
+      const em2=Math.floor(elapsed2/60);
+      const elStr2=em2>=60?Math.floor(em2/60)+'시간'+(em2%60>0?em2%60+'분':''):em2+'분';
+      ctTime=`<span style="font-size:9px;color:rgba(255,255,255,.85);margin-left:4px;font-weight:500">${elStr2}</span>`;
+    }
     h+=`<div class="ct-card"><div class="ct-hdr c${n}" ontouchstart="(function(el){el._lpt=setTimeout(()=>showMoveCourtAllPopup(${n}),600);}).call(this,this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" oncontextmenu="event.preventDefault();showMoveCourtAllPopup(${n})" style="cursor:pointer" title="길게 누르면 전체 이동"><span class="ct-name">${CNAMES[n]}${ctTime}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   h+=`</div>`;
@@ -2000,10 +2031,16 @@ function recordCourtGame(n){
     date:dateStr(),time:timeStr(),court:n,courtName:CNAMES[n],
     members:pl.map(a=>({id:a.id,name:a.name,gender:a.gender}))
   };
+  // localStorage 저장
   try{
     const h=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
     h.push(entry);
     localStorage.setItem('tennis_court_hist',JSON.stringify(h));
+  }catch(e){}
+  // Firebase에도 저장 (기기간 공유)
+  try{
+    const key=dateStr()+'_'+n+'_'+Date.now();
+    firebase.database().ref('tennis_court_hist/'+key).set(entry);
   }catch(e){}
 }
 
@@ -2024,13 +2061,15 @@ function saveStatHistory(){
         newList.forEach(a=>{ map[a.id]=a; });
         return Object.values(map);
       }
+      // 게스트 제외 후 저장 (isGuest:true 또는 이름에 '게스트' 포함 또는 HIDDEN)
+      const filterSave=a=>!a.isGuest&&!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id);
       const mergedAtt=mergeMembers(
-        existing?.attendees||[],
-        S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
+        (existing?.attendees||[]).filter(filterSave),
+        S.attendees.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
       );
       const mergedLeft=mergeMembers(
-        existing?.leftMembers||[],
-        S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
+        (existing?.leftMembers||[]).filter(filterSave),
+        S.leftMembers.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
       );
       const allMerged=[...mergedAtt,...mergedLeft];
       const entry={
@@ -2056,17 +2095,38 @@ function saveStatHistory(){
 /* 통계 페이지 렌더링 */
 let statPeriod='day';
 let statView='attend';
+let statEffFrom=''; // 게임 효율 분석 시작일
+let statEffTo='';   // 게임 효율 분석 종료일
 let statCustomFrom='';
 let statCustomTo='';
 let statDetailDate='';
 let statMemberSearch='';
 let adminDeleteDate=''; // 관리 탭: 일자별 DB 삭제용 선택 날짜
+let adminDeleteFrom=''; // 기간 삭제 시작일
+let adminDeleteTo='';   // 기간 삭제 종료일
 let adminExportPeriod='day'; // 관리 탭: 엑셀 다운로드 조회기간
 let adminExportFrom='', adminExportTo='';
 
 function renderStatPage(){
   let st=JSON.parse(localStorage.getItem(STKEY)||'[]');
-  const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+  let ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+  // Firebase court_hist 읽어서 localStorage와 병합
+  try{
+    firebase.database().ref('tennis_court_hist').once('value',snap=>{
+      const fbch=snap.val();
+      if(!fbch)return;
+      const fbList=Object.values(fbch).filter(x=>x&&x.date);
+      let changed=false;
+      fbList.forEach(entry=>{
+        const exists=ch.find(x=>x.date===entry.date&&x.court===entry.court&&x.time===entry.time);
+        if(!exists){ch.push(entry);changed=true;}
+      });
+      if(changed){
+        localStorage.setItem('tennis_court_hist',JSON.stringify(ch));
+        document.getElementById('pg3').innerHTML=renderStatPage();
+      }
+    });
+  }catch(e){}
   // Firebase 우선: 전체 통계 가져와서 localStorage 덮어쓰기 후 재렌더
   try{
     firebase.database().ref('tennis_stats').once('value',snap=>{
@@ -2124,11 +2184,27 @@ function renderStatPage(){
     </div>
   </div>`;
 
+  // 오늘 데이터가 st에 없으면 S 실시간 데이터를 filtered/showDates에 보완
+  const todayStatStr=dateStr();
+  if(!st.find(d=>d.date===todayStatStr) && inRange(todayStatStr)){
+    // 임시 오늘 데이터 생성해서 filtered에 추가
+    const todayEntry={
+      date:todayStatStr,
+      attendees:S.attendees.filter(a=>!a.isGuest).map(a=>({id:a.id,name:a.name,gender:a.gender})),
+      leftMembers:S.leftMembers.filter(a=>!a.isGuest).map(a=>({id:a.id,name:a.name,gender:a.gender}))
+    };
+    filtered.push(todayEntry);
+    if(!allDates.includes(todayStatStr)) allDates.unshift(todayStatStr);
+  }
+
   // 전체 평균 참석률 박스 (누적일수/총게임 제거)
   let avgBox='';
   if(filtered.length>0){
     const avgAttend=(filtered.reduce((s,d)=>{
-      return s+[...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).length;
+      // 중복 제거: attendees+leftMembers에서 같은 id는 한 번만 카운트
+      const seen=new Set();
+      [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.isGuest).forEach(a=>seen.add(a.id));
+      return s+seen.size;
     },0)/filtered.length).toFixed(1);
     const pct=Math.round(parseFloat(avgAttend)/REGULAR*100);
     avgBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
@@ -2158,8 +2234,10 @@ function renderStatPage(){
     const rows=showDates.map(date=>{
       const dd=st.find(x=>x.date===date);
       if(!dd)return'';
+      // 중복 제거: attendees+leftMembers에서 같은 id는 한 번만 카운트
+      const seen=new Set();
       const all=[...(dd.attendees||[]),...(dd.leftMembers||[])]
-        .filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.name.includes('게스트'));
+        .filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.name.includes('게스트')&&!x.isGuest&&!seen.has(x.id)&&seen.add(x.id));
       const mCnt=all.filter(x=>x.gender==='m').length;
       const fCnt=all.filter(x=>x.gender==='f').length;
       const total=all.length;
@@ -2230,7 +2308,11 @@ function renderStatPage(){
     function buildMap(days){
       const map={};
       days.forEach(d=>{
+        // 날짜별로 중복 제거 (attendees+leftMembers에 같은 사람이 있을 수 있음)
+        const seen=new Set();
         [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
+          if(seen.has(a.id)) return; // 같은 날 중복 카운트 방지
+          seen.add(a.id);
           if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,cnt:0};
           map[a.id].cnt++;
         });
@@ -2284,17 +2366,36 @@ function renderStatPage(){
 
   else if(statView==='games'){
     const map={};
+    const nowSecG=nowTs();
+    // 저장된 통계 데이터 누적
     ALL.forEach(d=>{
+      const seen=new Set();
       [...(d.attendees||[]),...(d.leftMembers||[])].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
+        if(seen.has(a.id))return; seen.add(a.id);
         if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,minutes:0};
         map[a.id].games+=a.games||0;
-        const [ih,im]=(a.time||'18:00').split(':').map(Number);
-        const [oh,om]=(a.leftAt||'21:00').split(':').map(Number);
-        const mins=(oh*60+om)-(ih*60+im); if(mins>0)map[a.id].minutes+=mins;
+        const [ih,im]=(a.time||'0:0').split(':').map(Number);
+        const [oh,om]=(a.leftAt||'21:00').split(':').map(Number); // leftAt 없으면 21:00 기본값
+        const mins=(oh*60+om)-(ih*60+im);
+        if(mins>0) map[a.id].minutes+=mins;
       });
     });
+    // 오늘 실시간 데이터 포함 (st에 오늘 날짜 없는 경우)
+    const todayStrG=dateStr();
+    if(!ALL.find(d=>d.date===todayStrG)){
+      const seenT=new Set();
+      [...S.attendees,...S.leftMembers].filter(a=>!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
+        if(seenT.has(a.id))return; seenT.add(a.id);
+        if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,minutes:0};
+        map[a.id].games+=a.games||0;
+        const inTs=a.attendTs||0;
+        const outTs=a.leftTs||(a.leftAt?(()=>{const[h,m]=(a.leftAt||'0:0').split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return Math.floor(d.getTime()/1000);})():nowSecG);
+        const mins=inTs>0?Math.max(0,Math.floor((outTs-inTs)/60)):0;
+        if(mins>0) map[a.id].minutes+=mins;
+      });
+    }
     const list=Object.values(map);
-    const gph=m=>m.minutes>0?(m.games/(m.minutes/60)).toFixed(1):'0.0';
+    const gph=m=>m.minutes>0?(m.games/(m.minutes/30)).toFixed(1):'0.0';
     const males=list.filter(m=>m.gender==='m').sort((a,b)=>parseFloat(gph(b))-parseFloat(gph(a)));
     const females=list.filter(m=>m.gender==='f').sort((a,b)=>parseFloat(gph(b))-parseFloat(gph(a)));
     const calcAvg=arr=>arr.length?(arr.reduce((s,m)=>s+parseFloat(gph(m)),0)/arr.length).toFixed(1):'-';
@@ -2307,7 +2408,7 @@ function renderStatPage(){
       </div>`;
     }
 
-    body=`<div class="stitle">🎾 개인별 시간당 게임수 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적 기준</span></div>`;
+    body=`<div class="stitle">🎾 개인별 30분당 게임수 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적 기준</span></div>`;
     body+=threeBoxes(calcAvg(list),calcAvg(males),calcAvg(females),'회');
     if(!list.length){body+=`<div class="empty" style="padding:20px">데이터가 없습니다.</div>`;}
     else{
@@ -2326,7 +2427,9 @@ function renderStatPage(){
 
   else if(statView==='together'){
     const pairMap={};
-    ch.forEach(entry=>{
+    // ch를 기간 필터 적용 (선택 기간 내 코트 기록만)
+    const chFiltered = ch.filter(entry => inRange(entry.date||''));
+    chFiltered.forEach(entry=>{
       const ng=entry.members.filter(m=>!m.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(m.id));
       if(ng.length<2)return;
       const ids=ng.map(m=>m.id),names={};ng.forEach(m=>{names[m.id]=m.name;});
@@ -2345,7 +2448,7 @@ function renderStatPage(){
     });
     const persons=Object.values(personMap).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
     body=`<div class="stitle">👫 개인별 같이 게임한 인원 <span style="font-size:9px;color:#B25000;font-weight:400">· 전체 누적</span></div>`;
-    if(!persons.length){body+=`<div class="empty" style="padding:20px">코트 확정 기록이 없습니다.</div>`;}
+    if(!persons.length){body+=`<div class="empty" style="padding:20px">해당 기간 코트 확정 기록이 없습니다.<br><small>코트 확정 시 자동으로 기록됩니다</small></div>`;}
     else body+=persons.map(p=>{
       const sorted=p.pairs.sort((a,b)=>b.cnt-a.cnt);
       const allHtml=sorted.map(x=>`<span style="background:#E1F5EE;color:#0F6E56;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">${x.name} ${x.cnt}회</span>`).join(' ');
@@ -2356,101 +2459,121 @@ function renderStatPage(){
     }).join('');
   }
 
-  // ── 당일 게임 효율 분석 ────────────────────────────────────────────────────
+  // ── 일자별 게임 효율 분석 ──────────────────────────────────────────────────
   let todayAnalysisBox = '';
-  // 정회원 + 당일게스트 모두 포함 (HIDDEN_MEMBER_IDS만 제외)
-  const todayAll = [...S.attendees, ...S.leftMembers]
-    .filter(a => !HIDDEN_MEMBER_IDS.includes(a.id));
-
-  if(todayAll.length > 0){
+  try {
+    const todaySt = dateStr();
+    if(!statEffFrom) statEffFrom = todaySt;
+    const selDate = statEffFrom;
     const nowSec = nowTs();
-    const rows = todayAll.map(a => {
-      const inTs = a.attendTs || 0;
-      const outTs = a.leftTs || (a.leftAt ? (()=>{const[h,m]=(a.leftAt||'').split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return Math.floor(d.getTime()/1000);})() : nowSec);
-      const stayMin = inTs > 0 ? Math.max(0, Math.floor((outTs - inTs) / 60)) : 0;
-      const games = a.games || 0;
-      // 30분당 게임수
-      const per30 = stayMin > 0 ? Math.round((games / stayMin) * 30 * 10) / 10 : 0;
-      const valid = stayMin >= 30; // 30분 이상만 유의미
-      return { a, stayMin, games, per30, valid };
-    }).filter(r => r.stayMin > 0 || r.games > 0)
-      // 효율 낮은 순 정렬 (낮은 게 먼저, 30분 미만은 뒤로)
-      .sort((a, b) => {
-        if(a.valid && !b.valid) return -1;
-        if(!a.valid && b.valid) return 1;
-        return a.per30 - b.per30;
-      });
 
-    if(rows.length > 0){
-      const validRows = rows.filter(r => r.valid);
-      const avgPer30 = validRows.length > 0
-        ? Math.round(validRows.reduce((s,r)=>s+r.per30,0) / validRows.length * 10) / 10
-        : 0;
-      const lowThreshold = avgPer30 * 0.6;
+    // 날짜 선택 UI (항상 표시)
+    const effDateUI = '<div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'
+      + '<button onclick="statEffFrom=\'\';document.getElementById(\'pg3\').innerHTML=renderStatPage();" '
+      + 'style="padding:4px 8px;border-radius:6px;border:1.5px solid ' + (selDate===todaySt?'#185FA5':'#D8D5CF') + ';background:' + (selDate===todaySt?'#185FA5':'#fff') + ';color:' + (selDate===todaySt?'#fff':'#666') + ';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>'
+      + '<input type="date" value="' + selDate + '" onchange="statEffFrom=this.value;document.getElementById(\'pg3\').innerHTML=renderStatPage();" style="padding:4px 6px;border:.5px solid #D8D5CF;border-radius:6px;font-size:11px;font-family:inherit">'
+      + '<span style="font-size:10px;color:#888780">' + selDate + '</span>'
+      + '</div>';
 
-      const rowsHtml = rows.map((r,i) => {
-        const { a, stayMin, games, per30, valid } = r;
-        const isLow = valid && avgPer30 > 0 && per30 < lowThreshold;
-        const isLeft = !!(a.leftTs || a.leftAt); // leftAt: 퇴소시각(문자열), leftTs: 퇴소타임스탬프
-        const isGuest = !!a.isGuest;
-        const inT = a.attendTs ? timeStr(new Date(a.attendTs*1000)) : (a.time||'-');
-        const outT = a.leftTs ? timeStr(new Date(a.leftTs*1000)) : (a.leftAt || '게임중');
-        const stayStr = stayMin >= 60
-          ? `${Math.floor(stayMin/60)}시간${stayMin%60>0?` ${stayMin%60}분`:''}`
-          : `${stayMin}분`;
-        const score = valid ? per30.toFixed(1) : '-';
-        const barW = avgPer30>0 ? Math.min(100, Math.round(per30/avgPer30*60)) : 0;
-        const rowBg = isLow ? '#FFF0F0' : '#fff';
-        const rowBorder = isLow ? '#EFBCB0' : '#E0DFDB';
-        const nameColor = isLow ? '#C0392B' : '#1A1A1A';
-        const guestBadge = isGuest ? ' <span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:3px;font-weight:700">게스트</span>' : '';
-        return `<div style="background:${rowBg};border:.5px solid ${rowBorder};border-radius:9px;padding:7px 10px;margin-bottom:5px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <span style="font-size:11px;font-weight:900;color:${isLow?'#C0392B':'#888780'};min-width:18px">${i+1}</span>
-            <span style="font-size:14px;font-weight:800;color:${nameColor};flex:1">${a.name}${isLow?' 🔴':''}${guestBadge}</span>
-            ${isLeft?'<span style="font-size:10px;background:#993C1D;color:#fff;padding:2px 6px;border-radius:5px;font-weight:700">퇴소</span>':''}
-            <span style="font-size:13px;font-weight:900;color:${isLow?'#C0392B':'#185FA5'}">${score}<span style="font-size:9px;font-weight:500">/30분</span></span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#666;flex-wrap:wrap;margin-bottom:${valid?'5':'0'}px">
-            <span>🕐 ${inT} → ${outT}</span>
-            <span style="background:#E1F5EE;color:#0F6E56;padding:1px 5px;border-radius:4px;font-weight:700">${stayStr}</span>
-            <span style="background:#E6F1FB;color:#185FA5;padding:1px 5px;border-radius:4px;font-weight:700">${games}게임</span>
-          </div>
-          ${valid?`<div style="background:#F0EDE8;border-radius:4px;height:6px;overflow:hidden"><div style="width:${barW}%;background:${isLow?'#E74C3C':'#1D9E75'};height:100%;border-radius:4px"></div></div>`:'<div style="font-size:9px;color:#B8B5AF">30분 미만 — 집계 제외</div>'}
-        </div>`;
-      }).join('');
+    const effHeader = '<div class="stitle" style="margin-bottom:6px">⚡ 게임 효율 분석 <span style="font-size:10px;color:#888780;font-weight:400">30분당 게임수 · 낮은 순</span></div>';
+    const effWrap_open = '<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">';
+    const effWrap_close = '</div>';
 
-      const lowCnt = rows.filter(r=>r.valid&&avgPer30>0&&r.per30<lowThreshold).length;
-      const guestCnt = rows.filter(r=>r.a.isGuest).length;
-
-      todayAnalysisBox = `<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-        <div class="stitle" style="margin-bottom:4px">⚡ 당일 게임 효율 분석
-          <span style="font-size:10px;color:#888780;font-weight:400;margin-left:4px">30분당 게임수 · 낮은 순</span>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-          <div style="background:#E1F5EE;border-radius:8px;padding:5px 10px;font-size:11px">
-            <span style="color:#888780">참석</span>
-            <span style="font-size:15px;font-weight:900;color:#0F6E56;margin-left:4px">${rows.length}명</span>
-            ${guestCnt>0?`<span style="font-size:10px;color:#888780"> (게스트 ${guestCnt})</span>`:''}
-          </div>
-          <div style="background:#E6F1FB;border-radius:8px;padding:5px 10px;font-size:11px">
-            <span style="color:#888780">평균</span>
-            <span style="font-size:15px;font-weight:900;color:#185FA5;margin-left:4px">${avgPer30.toFixed(1)}</span>
-            <span style="font-size:10px;color:#888780">/30분</span>
-          </div>
-          ${lowCnt>0?`<div style="background:#FFF0F0;border-radius:8px;padding:5px 10px;font-size:11px">
-            <span style="color:#888780">게임 부족</span>
-            <span style="font-size:15px;font-weight:900;color:#C0392B;margin-left:4px">${lowCnt}명</span>
-            <span style="font-size:10px;color:#888780">(평균 60%↓)</span>
-          </div>`:''}
-        </div>
-        <div style="font-size:10px;color:#B25000;background:#FFF8E1;border-radius:6px;padding:5px 8px;margin-bottom:8px">
-          🔴 = 평균 대비 게임수 부족 · 다음 편성 우선 배정 추천
-        </div>
-        ${rowsHtml}
-      </div>`;
+    // 데이터 수집
+    let effMembers = [];
+    if(selDate === todaySt){
+      effMembers = [...S.attendees, ...S.leftMembers].filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest);
+    } else {
+      const dayData = st.find(d=>d.date===selDate);
+      if(dayData){
+        // 중복 제거 (attendees+leftMembers에 같은 사람 있을 수 있음)
+        const seen = new Set();
+        [...(dayData.attendees||[]),...(dayData.leftMembers||[])].forEach(a=>{
+          if(!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!seen.has(a.id)){seen.add(a.id);effMembers.push(a);}
+        });
+      }
     }
+
+    if(effMembers.length === 0){
+      todayAnalysisBox = effWrap_open + effHeader + effDateUI
+        + '<div style="font-size:13px;color:#888780;text-align:center;padding:20px 0">📭 ' + selDate + ' 데이터가 없습니다</div>'
+        + effWrap_close;
+    } else {
+      // 머문시간 계산
+      const rows = [];
+      effMembers.forEach(a=>{
+        let stayMin=0, inT='-', outT='-';
+        if(selDate===todaySt){
+          const inTs=a.attendTs||0;
+          const outTs=a.leftTs||(a.leftAt?(()=>{const[h,m]=(a.leftAt||'0:0').split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return Math.floor(d.getTime()/1000);})():nowSec);
+          stayMin=inTs>0?Math.max(0,Math.floor((outTs-inTs)/60)):0;
+          inT=a.attendTs?timeStr(new Date(a.attendTs*1000)):(a.time||'-');
+          outT=a.leftTs?timeStr(new Date(a.leftTs*1000)):(a.leftAt||'게임중');
+        } else {
+          inT=a.time||'-'; outT=a.leftAt||'-';
+          const[ih,im]=(inT!=='-'?inT:'0:0').split(':').map(Number);
+          const[oh,om]=(outT!=='-'?outT:'0:0').split(':').map(Number);
+          stayMin=(oh||om||ih||im)?Math.max(0,(oh*60+om)-(ih*60+im)):0;
+          if(outT==='-')outT='기록없음';
+        }
+        const games=a.games||0;
+        const per30=stayMin>0?Math.round((games/stayMin)*30*10)/10:0;
+        const valid=stayMin>=30;
+        const isLeft=!!(a.leftTs||a.leftAt);
+        if(stayMin>0||games>0) rows.push({a,stayMin,games,per30,valid,isLeft,isGuest:!!a.isGuest,inT,outT});
+      });
+      rows.sort((a,b)=>{if(a.valid&&!b.valid)return -1;if(!a.valid&&b.valid)return 1;return a.per30-b.per30;});
+
+      if(rows.length===0){
+        todayAnalysisBox = effWrap_open + effHeader + effDateUI
+          + '<div style="font-size:13px;color:#888780;text-align:center;padding:20px 0">📭 ' + selDate + ' 유효한 데이터가 없습니다</div>'
+          + effWrap_close;
+      } else {
+        const validRows=rows.filter(r=>r.valid);
+        const avgPer30=validRows.length>0?Math.round(validRows.reduce((s,r)=>s+r.per30,0)/validRows.length*10)/10:0;
+        const lowThr=avgPer30*0.6;
+        const lowCnt=rows.filter(r=>r.valid&&avgPer30>0&&r.per30<lowThr).length;
+        const guestCnt=rows.filter(r=>r.isGuest).length;
+
+        let rowsHtml='';
+        rows.forEach((r,i)=>{
+          const{a,stayMin,games,per30,valid,isLeft,isGuest,inT,outT}=r;
+          const isLow=valid&&avgPer30>0&&per30<lowThr;
+          const stayStr=stayMin>=60?Math.floor(stayMin/60)+'시간'+(stayMin%60>0?stayMin%60+'분':''):stayMin+'분';
+          const score=valid?per30.toFixed(1):'-';
+          const barW=avgPer30>0?Math.min(100,Math.round(per30/avgPer30*60)):0;
+          rowsHtml+='<div style="background:'+(isLow?'#FFF0F0':'#fff')+';border:.5px solid '+(isLow?'#EFBCB0':'#E0DFDB')+';border-radius:9px;padding:7px 10px;margin-bottom:5px">'
+            +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+            +'<span style="font-size:11px;font-weight:900;color:'+(isLow?'#C0392B':'#888780')+';min-width:18px">'+(i+1)+'</span>'
+            +'<span style="font-size:14px;font-weight:800;color:'+(isLow?'#C0392B':'#1A1A1A')+';flex:1">'+a.name+(isLow?' 🔴':'')+(isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:3px;margin-left:3px;font-weight:700">게스트</span>':'')+'</span>'
+            +(isLeft?'<span style="font-size:10px;background:#993C1D;color:#fff;padding:2px 6px;border-radius:5px;font-weight:700">퇴소</span>':'')
+            +'<span style="font-size:13px;font-weight:900;color:'+(isLow?'#C0392B':'#185FA5')+'">'+score+'<span style="font-size:9px;font-weight:500">/30분</span></span>'
+            +'</div>'
+            +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#666;flex-wrap:wrap;margin-bottom:'+(valid?'5':'0')+'px">'
+            +'<span>🕐 '+inT+' → '+outT+'</span>'
+            +'<span style="background:#E1F5EE;color:#0F6E56;padding:1px 5px;border-radius:4px;font-weight:700">'+stayStr+'</span>'
+            +'<span style="background:#E6F1FB;color:#185FA5;padding:1px 5px;border-radius:4px;font-weight:700">'+games+'게임</span>'
+            +'</div>'
+            +(valid?'<div style="background:#F0EDE8;border-radius:4px;height:6px;overflow:hidden"><div style="width:'+barW+'%;background:'+(isLow?'#E74C3C':'#1D9E75')+';height:100%;border-radius:4px"></div></div>'
+              :'<div style="font-size:9px;color:#B8B5AF">30분 미만 — 집계 제외</div>')
+            +'</div>';
+        });
+
+        const summaryHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+          +'<div style="background:#E1F5EE;border-radius:8px;padding:5px 10px;font-size:11px"><span style="color:#888780">참석</span><span style="font-size:15px;font-weight:900;color:#0F6E56;margin-left:4px">'+rows.length+'명</span>'+(guestCnt>0?'<span style="font-size:10px;color:#888780"> (게스트 '+guestCnt+')</span>':'')+'</div>'
+          +'<div style="background:#E6F1FB;border-radius:8px;padding:5px 10px;font-size:11px"><span style="color:#888780">평균</span><span style="font-size:15px;font-weight:900;color:#185FA5;margin-left:4px">'+avgPer30.toFixed(1)+'</span><span style="font-size:10px;color:#888780">/30분</span></div>'
+          +(lowCnt>0?'<div style="background:#FFF0F0;border-radius:8px;padding:5px 10px;font-size:11px"><span style="color:#888780">게임 부족</span><span style="font-size:15px;font-weight:900;color:#C0392B;margin-left:4px">'+lowCnt+'명</span></div>':'')
+          +'</div>';
+
+        todayAnalysisBox = effWrap_open + effHeader + effDateUI + summaryHtml
+          + '<div style="font-size:10px;color:#B25000;background:#FFF8E1;border-radius:6px;padding:5px 8px;margin-bottom:8px">🔴 = 평균 대비 게임수 부족 · 다음 편성 우선 배정 추천</div>'
+          + rowsHtml + effWrap_close;
+      }
+    }
+  } catch(e) {
+    todayAnalysisBox = '<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px"><div class="stitle">⚡ 게임 효율 분석</div><div style="font-size:12px;color:#C0392B;padding:10px">오류: ' + e.message + '</div></div>';
   }
+
   return`<div class="pg-inner">
     <div class="stitle">📊 통계</div>
     ${todayAnalysisBox}
@@ -2676,16 +2799,33 @@ function renderAdminPage(){
   if(!allDates.includes(adminDeleteDate)) allDates.push(adminDeleteDate);
   allDates.sort((a,b)=>b.localeCompare(a));
 
+  if(!adminDeleteFrom) adminDeleteFrom='2024-01-01';
+  if(!adminDeleteTo){ const yd=new Date();yd.setDate(yd.getDate()-1);adminDeleteTo=dateStr(yd); }
   const deleteDateBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-    <div class="stitle" style="margin-bottom:8px">🗑 일자별 DB 삭제</div>
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+    <div class="stitle" style="margin-bottom:8px">🗑 DB 삭제</div>
+    <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">단일 날짜 삭제</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
       <input type="date" id="admin-delete-date" value="${adminDeleteDate}"
         onchange="adminDeleteDate=this.value;"
         style="flex:1;padding:7px 9px;border:.5px solid #D8D5CF;border-radius:7px;font-size:13px;font-family:inherit;box-sizing:border-box">
       <button onclick="deleteDBByDate(document.getElementById('admin-delete-date').value)"
         style="padding:7px 14px;background:#C0392B;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">삭제</button>
     </div>
-    <div style="font-size:9px;color:#888780">선택한 날짜의 참석·통계·코트기록 데이터를 완전히 삭제합니다 (오늘 날짜 선택 시 현재 진행중인 참석 데이터도 함께 초기화됩니다)</div>
+    <div style="border-top:.5px solid #E0DFDB;margin-bottom:8px;padding-top:8px">
+      <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">기간 삭제 (시작일 ~ 종료일)</div>
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+        <input type="date" id="admin-delete-from" value="${adminDeleteFrom}"
+          onchange="adminDeleteFrom=this.value;"
+          style="flex:1;padding:6px 8px;border:.5px solid #D8D5CF;border-radius:7px;font-size:12px;font-family:inherit;box-sizing:border-box">
+        <span style="font-size:12px;color:#888780;flex-shrink:0">~</span>
+        <input type="date" id="admin-delete-to" value="${adminDeleteTo}"
+          onchange="adminDeleteTo=this.value;"
+          style="flex:1;padding:6px 8px;border:.5px solid #D8D5CF;border-radius:7px;font-size:12px;font-family:inherit;box-sizing:border-box">
+        <button onclick="deleteDBByRange(document.getElementById('admin-delete-from').value, document.getElementById('admin-delete-to').value)"
+          style="padding:6px 12px;background:#C0392B;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">기간삭제</button>
+      </div>
+    </div>
+    <div style="font-size:9px;color:#888780">참석·통계·코트기록 데이터를 완전히 삭제합니다 (복구 불가)</div>
   </div>`;
 
   // 엑셀 다운로드 박스 (조회기간 설정 — 통계탭과 동일한 패턴)
@@ -2797,6 +2937,47 @@ function exportExcel(fromDate, toDate){
   }).catch(e=>{
     console.error(e);
     toast('엑셀 생성 중 오류가 발생했습니다');
+  });
+}
+
+function deleteDBByRange(fromDate, toDate){
+  if(!fromDate||!toDate){toast('시작일과 종료일을 선택해주세요');return;}
+  if(fromDate>toDate){toast('시작일이 종료일보다 늦습니다');return;}
+  const today=dateStr();
+  // 기간 내 날짜 목록 생성
+  const dates=[];
+  const cur=new Date(fromDate);
+  const end=new Date(toDate);
+  while(cur<=end){
+    const d=dateStr(new Date(cur));
+    dates.push(d);
+    cur.setDate(cur.getDate()+1);
+  }
+  openModal(`⚠️ ${fromDate} ~ ${toDate}\n총 ${dates.length}일 데이터를 삭제합니다\n(복구 불가)`,()=>{
+    let deleted=0;
+    dates.forEach(d=>{
+      // 오늘 날짜면 현재 데이터도 초기화
+      if(d===today){
+        S={attendees:[],leftMembers:[],seqCounter:0};
+        CC={1:false,2:false,3:false,4:false,5:false,6:false};
+        save();
+      }
+      // localStorage 통계에서 삭제
+      try{
+        const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
+        localStorage.setItem(STKEY,JSON.stringify(st.filter(x=>x.date!==d)));
+      }catch(e){}
+      // Firebase 통계 삭제
+      try{ firebase.database().ref('tennis_stats/'+d).remove(); }catch(e){}
+      // 코트 히스토리 삭제
+      try{
+        const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+        localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==d)));
+      }catch(e){}
+      deleted++;
+    });
+    renderAll();
+    toast(`🗑 ${fromDate}~${toDate} (${deleted}일) 삭제 완료`);
   });
 }
 
