@@ -100,10 +100,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
 .ct-hbtn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
 .ct-confirm-btn{background:rgba(255,255,255,.9);color:#1A1A1A;border:none;border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
 .ct-body{padding:5px 6px 7px;}
-.ct-slot{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:6px;background:#F5F4F1;margin-bottom:2px;font-size:13px;font-weight:700;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.ct-slot{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:6px;background:#F5F4F1;margin-bottom:1px;font-size:13px;font-weight:700;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .ct-slot:active{background:#E0DFDB;}
 .ct-slot-hint{font-size:7px;color:#B8B5AF;margin-left:auto;}
-.ct-empty{padding:3px 4px;border-radius:5px;border:1px dashed #D8D5CF;margin-bottom:2px;font-size:8px;color:#B8B5AF;text-align:center;}
+.ct-empty{padding:3px 4px;border-radius:5px;border:1px dashed #D8D5CF;margin-bottom:1px;font-size:8px;color:#B8B5AF;text-align:center;}
 .ct-status{margin-top:3px;padding:3px 5px;border-radius:5px;font-size:8px;text-align:center;}
 .ct-status.full{background:#FFF0E0;color:#B25000;font-weight:700;}
 .ct-status.wait{background:#F5F4F1;color:#888780;}
@@ -214,7 +214,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       <button onclick="if(document.fullscreenElement){document.exitFullscreen();}else{window.close();}" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
     </div>
   </div>
-  <div id="board-content" style="padding:1vw 1.5vw 2vw 1.5vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;background:#EFEDE8;"></div>
+  <div id="board-content" style="padding:0.7vw 1.2vw 1vw 1.2vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;background:#EFEDE8;"></div>
 </div>
 <div id="moverlay">
   <div class="mbox">
@@ -2229,7 +2229,7 @@ function renderBoard(){
     const nameTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
     const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
     const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
-    return`<div style="background:${conf?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.78)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
+    return`<div style="background:${conf?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.78)'};border-radius:1vw;padding:0.6vw 1.0vw;margin-bottom:0.4vw;display:flex;align-items:center;gap:1vw;${ring}">
       <span style="font-size:3.0vw;font-weight:900;color:${nameTc};letter-spacing:-0.02em">${a.name}</span>
       <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
       ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
@@ -2238,7 +2238,7 @@ function renderBoard(){
   function emptySlot(conf){
     const ec = conf ? "rgba(255,255,255,1)" : "rgba(0,0,0,.7)";
     const eb = conf ? "rgba(255,255,255,.7)" : "rgba(0,0,0,.35)";
-    return`<div style="border:0.15vw dashed ${eb};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;text-align:center;color:${ec};font-size:1.6vw;font-weight:700">— 빈자리 —</div>`;
+    return`<div style="border:0.15vw dashed ${eb};border-radius:1vw;padding:0.6vw 1.0vw;margin-bottom:0.4vw;text-align:center;color:${ec};font-size:1.6vw;font-weight:700">— 빈자리 —</div>`;
   }
   function bigCard(n, isNext){
     if(!isNext && !courtActive[n]){
@@ -2325,8 +2325,8 @@ function renderBoard(){
     </div>`;
   }
 
-  h+=`<div style="background:rgba(255,255,255,.85);border-radius:1vw;padding:0.5vw 0.7vw;margin-bottom:${gap}">
-    <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:2px">
+  h+=`<div style="background:rgba(255,255,255,.85);border-radius:1vw;padding:0.3vw 0.7vw;margin-bottom:${gap}">
+    <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:1px">
       <span style="font-size:0.85vw;font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👨남</span>
       <div style="display:flex;flex-wrap:wrap;gap:0;max-height:calc(1.9vw * 2 + 10px);overflow:hidden;flex:1">${maleMembers.map(m=>quickBtn(m,'0.9vw')).join('')}</div>
     </div>
