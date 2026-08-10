@@ -2216,24 +2216,16 @@ function toggleBoardMode(on){
 }
 
 function closeMonitorBoard(){
-  const doClose = ()=>{
-    // 전체화면 해제 후 탭 닫기 시도, 안되면 빈 페이지로
-    try{
-      window.close();
-      // window.close()가 안 먹히면 about:blank로
-      setTimeout(()=>{ window.location.href='about:blank'; }, 300);
-    }catch(e){
-      window.location.href='about:blank';
-    }
-  };
-
+  // 전체화면 해제 시도
   if(document.fullscreenElement){
-    document.exitFullscreen()
-      .then(()=>doClose())
-      .catch(()=>doClose());
-  } else {
-    doClose();
+    document.exitFullscreen().catch(()=>{});
   }
+  // window.close() - 바로가기/kiosk 모드에서 동작
+  setTimeout(()=>{
+    window.close();
+    // 안 닫히면 키보드 단축키 시뮬레이션 (Alt+F4)
+    // Chrome kiosk 모드에서는 window.close()가 반드시 동작함
+  }, 200);
 }
 
 function renderBoard(){
