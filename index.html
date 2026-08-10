@@ -176,6 +176,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
         <span class="hdr-clock" id="hdr-clock"></span>
         <div class="sync-dot" id="sync-dot" title="동기화 상태"></div>
         <button id="mode-toggle-btn" onclick="toggleAppMode()" style="display:none;background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap"></button>
+        <button onclick="doLogout()" style="background:rgba(255,255,255,.18);color:rgba(255,255,255,.8);border:none;border-radius:7px;padding:3px 7px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">로그아웃</button>
       </div>
     </div>
     <div class="stat-row">
@@ -863,6 +864,19 @@ function getCurrentMember(){
   try{const s=localStorage.getItem(LOGIN_KEY);if(s){const o=JSON.parse(s);if(o.expiry&&Date.now()<o.expiry)return o.member;localStorage.removeItem(LOGIN_KEY);}}catch(e){}
   return null;
 }
+function doLogout(){
+  openModal('로그아웃 하시겠습니까?', ()=>{
+    try{localStorage.removeItem(LOGIN_KEY);localStorage.removeItem('tns_mode');}catch(e){}
+    appMode='member';
+    curTab=0;
+    // 하단 버튼 초기화
+    const bb=document.getElementById('bottom-btns-wrap');
+    if(bb) bb.innerHTML='';
+    document.getElementById('app').style.display='none';
+    document.getElementById('login-screen').style.display='flex';
+  });
+}
+
 function saveLoginSession(m){try{localStorage.setItem(LOGIN_KEY,JSON.stringify({member:m,expiry:Date.now()+SESSION_TTL}));}catch(e){}}
 
 function updateModeToggleBtn(){
@@ -1450,10 +1464,12 @@ function confirmNextCourt(n){
 
   // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 ──────────────────
   if(n===5){
+    // 다음차례1 확정 상태 해제 (새 인원이 대기 상태로 와야 함)
+    CC[5]=false;
     const nc2Members=S.attendees.filter(x=>x.nextCourt2);
     if(nc2Members.length){
       nc2Members.forEach(a=>{
-        a.nextCourt1=true;  // 다음차례1로 이동
+        a.nextCourt1=true;  // 다음차례1로 이동 (대기 상태)
         a.nextCourt2=null;  // 다음차례2 해제
       });
       toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
@@ -2127,17 +2143,22 @@ function renderStatPage(){
       }
     });
   }catch(e){}
-  // Firebase 우선: 전체 통계 가져와서 localStorage 덮어쓰기 후 재렌더
+  // Firebase: localStorage에 없는 날짜만 추가 (삭제한 날짜는 복원 안 함)
   try{
     firebase.database().ref('tennis_stats').once('value',snap=>{
       const fbData=snap.val(); if(!fbData)return;
       const fbList=Object.values(fbData).filter(x=>x&&x.date);
+      const lsDates=new Set(st.map(x=>x.date)); // 현재 localStorage에 있는 날짜
       let changed=false;
       fbList.forEach(entry=>{
-        const idx=st.findIndex(x=>x.date===entry.date);
-        if(idx>=0){
-          if(JSON.stringify(st[idx])!==JSON.stringify(entry)){st[idx]=entry;changed=true;}
-        } else {st.push(entry);changed=true;}
+        if(!lsDates.has(entry.date)){
+          // localStorage에 없는 날짜만 추가 (삭제된 날짜는 추가 안 함)
+          st.push(entry);changed=true;
+        } else {
+          // 이미 있는 날짜는 내용이 다를 때만 업데이트
+          const idx=st.findIndex(x=>x.date===entry.date);
+          if(idx>=0&&JSON.stringify(st[idx])!==JSON.stringify(entry)){st[idx]=entry;changed=true;}
+        }
       });
       if(changed){
         localStorage.setItem(STKEY,JSON.stringify(st));
@@ -2375,9 +2396,12 @@ function renderStatPage(){
         if(!map[a.id])map[a.id]={name:a.name,gender:a.gender,games:0,minutes:0};
         map[a.id].games+=a.games||0;
         const [ih,im]=(a.time||'0:0').split(':').map(Number);
-        const [oh,om]=(a.leftAt||'21:00').split(':').map(Number); // leftAt 없으면 21:00 기본값
-        const mins=(oh*60+om)-(ih*60+im);
-        if(mins>0) map[a.id].minutes+=mins;
+        if(a.leftAt){
+          const [oh,om]=a.leftAt.split(':').map(Number);
+          const mins=(oh*60+om)-(ih*60+im);
+          if(mins>0) map[a.id].minutes+=mins;
+        }
+        // leftAt 없으면 머문시간 계산 안 함 (잘못된 기본값 방지)
       });
     });
     // 오늘 실시간 데이터 포함 (st에 오늘 날짜 없는 경우)
@@ -2510,11 +2534,13 @@ function renderStatPage(){
           inT=a.attendTs?timeStr(new Date(a.attendTs*1000)):(a.time||'-');
           outT=a.leftTs?timeStr(new Date(a.leftTs*1000)):(a.leftAt||'게임중');
         } else {
-          inT=a.time||'-'; outT=a.leftAt||'-';
+          inT=a.time||'-';
+          outT=a.leftAt||'-';
           const[ih,im]=(inT!=='-'?inT:'0:0').split(':').map(Number);
           const[oh,om]=(outT!=='-'?outT:'0:0').split(':').map(Number);
-          stayMin=(oh||om||ih||im)?Math.max(0,(oh*60+om)-(ih*60+im)):0;
-          if(outT==='-')outT='기록없음';
+          // leftAt 없으면 stayMin 계산 안 함 (잘못된 기본값 사용 방지)
+          stayMin=(inT!=='-'&&outT!=='-')?Math.max(0,(oh*60+om)-(ih*60+im)):0;
+          if(outT==='-') outT='퇴소기록없음';
         }
         const games=a.games||0;
         const per30=stayMin>0?Math.round((games/stayMin)*30*10)/10:0;
@@ -2953,31 +2979,42 @@ function deleteDBByRange(fromDate, toDate){
     dates.push(d);
     cur.setDate(cur.getDate()+1);
   }
-  openModal(`⚠️ ${fromDate} ~ ${toDate}\n총 ${dates.length}일 데이터를 삭제합니다\n(복구 불가)`,()=>{
-    let deleted=0;
+  const includeToday = dates.includes(today);
+  const modalMsg = includeToday
+    ? `⚠️ ${fromDate} ~ ${toDate}\n총 ${dates.length}일 데이터를 삭제합니다\n\n오늘(${today}) 포함 시 현재 참석/퇴소 데이터가 초기화됩니다\n(복구 불가)`
+    : `⚠️ ${fromDate} ~ ${toDate}\n총 ${dates.length}일 데이터를 삭제합니다\n(복구 불가)`;
+  openModal(modalMsg,()=>{
+    // localStorage 먼저 삭제
     dates.forEach(d=>{
-      // 오늘 날짜면 현재 데이터도 초기화
       if(d===today){
-        S={attendees:[],leftMembers:[],seqCounter:0};
-        CC={1:false,2:false,3:false,4:false,5:false,6:false};
-        save();
+        // 오늘 데이터는 삭제 전 먼저 저장 시도
+        saveStatHistory();
+        setTimeout(()=>{
+          S={attendees:[],leftMembers:[],seqCounter:0};
+          CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
+          save();
+        }, 500); // saveStatHistory 완료 후 초기화
       }
-      // localStorage 통계에서 삭제
-      try{
-        const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
-        localStorage.setItem(STKEY,JSON.stringify(st.filter(x=>x.date!==d)));
-      }catch(e){}
-      // Firebase 통계 삭제
-      try{ firebase.database().ref('tennis_stats/'+d).remove(); }catch(e){}
-      // 코트 히스토리 삭제
-      try{
-        const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
-        localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==d)));
-      }catch(e){}
-      deleted++;
+      try{const st=JSON.parse(localStorage.getItem(STKEY)||'[]');localStorage.setItem(STKEY,JSON.stringify(st.filter(x=>x.date!==d)));}catch(e){}
+      try{const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==d)));}catch(e){}
     });
-    renderAll();
-    toast(`🗑 ${fromDate}~${toDate} (${deleted}일) 삭제 완료`);
+    // Firebase 삭제 (Promise.all로 완료 후 renderAll)
+    const fbPromises = dates.map(d=>
+      firebase.database().ref('tennis_stats/'+d).remove()
+      .catch(e=>console.warn('stats del err:',d,e))
+    );
+    const fbChPromises = dates.map(d=>
+      firebase.database().ref('tennis_court_hist').orderByChild('date').equalTo(d).once('value').then(snap=>{
+        const updates={};
+        snap.forEach(child=>{updates[child.key]=null;});
+        if(Object.keys(updates).length) return firebase.database().ref('tennis_court_hist').update(updates);
+      }).catch(e=>console.warn('ch del err:',d,e))
+    );
+    Promise.all([...fbPromises,...fbChPromises]).then(()=>{
+      toast(`🗑 ${fromDate}~${toDate} (${dates.length}일) 삭제 완료`);
+      renderAll();
+      if(curTab===3) document.getElementById('pg3').innerHTML=renderStatPage();
+    });
   });
 }
 
