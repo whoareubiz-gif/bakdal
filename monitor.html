@@ -211,7 +211,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
     <div style="display:flex;align-items:center;gap:1.2vw">
       <div id="board-clock" style="color:#fff;font-size:1.8vw;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
       <div id="board-sync-dot" style="width:14px;height:14px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
-      <button onclick="if(document.fullscreenElement){document.exitFullscreen();}else{window.close();}" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
+      <button onclick="closeMonitorBoard()" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.6vw 1.2vw;font-size:1.4vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">✕ 닫기</button>
     </div>
   </div>
   <div id="board-content" style="padding:0.7vw 1.2vw 1vw 1.2vw;box-sizing:border-box;flex:1;overflow-y:auto;overflow-x:hidden;background:#EFEDE8;"></div>
@@ -2213,6 +2213,24 @@ function toggleBoardMode(on){
   boardModeOn=on;
   document.getElementById('board-overlay').style.display=on?'flex':'none';
   if(on) renderBoard();
+}
+
+function closeMonitorBoard(){
+  // 전체화면이면 먼저 해제
+  if(document.fullscreenElement){
+    document.exitFullscreen().then(()=>{
+      const ov=document.getElementById('board-overlay');
+      if(ov) ov.style.display='none';
+      boardModeOn=false;
+    }).catch(()=>{});
+  } else {
+    // 전체화면 아니면 오버레이만 숨기기
+    const ov=document.getElementById('board-overlay');
+    if(ov) ov.style.display='none';
+    boardModeOn=false;
+    // window.close() 시도 (스크립트로 열린 탭이면 닫힘)
+    try{ window.close(); }catch(e){}
+  }
 }
 
 function renderBoard(){
