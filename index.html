@@ -2113,6 +2113,7 @@ function saveStatHistory(){
 let statPeriod='day';
 let statView='attend';
 let statEffFrom=''; // 게임 효율 분석 시작일
+let deletedStatDates=new Set(); // 삭제된 날짜 블랙리스트 (Firebase 재복원 방지)
 let statEffTo='';   // 게임 효율 분석 종료일
 let statCustomFrom='';
 let statCustomTo='';
@@ -2149,14 +2150,14 @@ function renderStatPage(){
     firebase.database().ref('tennis_stats').once('value',snap=>{
       const fbData=snap.val(); if(!fbData)return;
       const fbList=Object.values(fbData).filter(x=>x&&x.date);
-      const lsDates=new Set(st.map(x=>x.date)); // 현재 localStorage에 있는 날짜
+      const lsDates=new Set(st.map(x=>x.date));
       let changed=false;
       fbList.forEach(entry=>{
+        // 블랙리스트(삭제된 날짜)는 절대 복원 안 함
+        if(deletedStatDates.has(entry.date)) return;
         if(!lsDates.has(entry.date)){
-          // localStorage에 없는 날짜만 추가 (삭제된 날짜는 추가 안 함)
           st.push(entry);changed=true;
         } else {
-          // 이미 있는 날짜는 내용이 다를 때만 업데이트
           const idx=st.findIndex(x=>x.date===entry.date);
           if(idx>=0&&JSON.stringify(st[idx])!==JSON.stringify(entry)){st[idx]=entry;changed=true;}
         }
@@ -3000,6 +3001,7 @@ function deleteDBByRange(fromDate, toDate){
       try{const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==d)));}catch(e){}
     });
     // Firebase 삭제 (Promise.all로 완료 후 renderAll)
+    dates.forEach(d=>deletedStatDates.add(d)); // 블랙리스트에 추가
     const fbPromises = dates.map(d=>
       firebase.database().ref('tennis_stats/'+d).remove()
       .catch(e=>console.warn('stats del err:',d,e))
@@ -3023,27 +3025,36 @@ function deleteDBByDate(targetDate){
   if(!targetDate){ toast('날짜를 선택해주세요'); return; }
   openModal(`⚠️ ${targetDate} 데이터를 완전 삭제하시겠습니까?\n(참석·통계·코트기록 모두 삭제, 복구 불가)`,()=>{
     const today=dateStr();
-    // 1. 오늘 날짜를 삭제하는 경우 → 현재 진행중인 S도 초기화
+    // 1. 오늘 날짜면 S 초기화
     if(targetDate===today){
       S={attendees:[],leftMembers:[],seqCounter:0};
       CC={1:false,2:false,3:false,4:false,5:false,6:false};
+      CT={1:null,2:null,3:null,4:null,5:null,6:null};
       save();
-      try{ firebase.database().ref('tennis/'+today).remove(); }catch(e){}
     }
-    // 2. localStorage 통계에서 해당 날짜 삭제
+    // 2. localStorage 통계 삭제
     try{
       const st=JSON.parse(localStorage.getItem(STKEY)||'[]');
       localStorage.setItem(STKEY, JSON.stringify(st.filter(x=>x.date!==targetDate)));
     }catch(e){}
-    // 3. Firebase 통계에서 해당 날짜 삭제
-    try{ firebase.database().ref('tennis_stats/'+targetDate).remove(); }catch(e){}
-    // 4. 코트 히스토리(같이한 인원)에서 해당 날짜 기록 삭제
+    // 3. localStorage 코트히스토리 삭제
     try{
       const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
       localStorage.setItem('tennis_court_hist', JSON.stringify(ch.filter(x=>x.date!==targetDate)));
     }catch(e){}
-    renderAll();
-    toast(`🗑 ${targetDate} 데이터 삭제 완료`);
+    // 4. Firebase 삭제 후 renderAll (Promise.all로 완료 확인)
+    deletedStatDates.add(targetDate); // 블랙리스트에 추가
+    const p1=firebase.database().ref('tennis_stats/'+targetDate).remove().catch(e=>console.warn(e));
+    const p2=firebase.database().ref('tennis_court_hist').orderByChild('date').equalTo(targetDate).once('value').then(snap=>{
+      const updates={};
+      snap.forEach(child=>{updates[child.key]=null;});
+      if(Object.keys(updates).length) return firebase.database().ref('tennis_court_hist').update(updates);
+    }).catch(e=>console.warn(e));
+    Promise.all([p1,p2]).then(()=>{
+      renderAll();
+      if(curTab===3) document.getElementById('pg3').innerHTML=renderStatPage();
+      toast(`🗑 ${targetDate} 데이터 삭제 완료`);
+    });
   });
 }
 
