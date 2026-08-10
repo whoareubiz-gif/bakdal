@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오늘의 임원 PIN</title>
+<style>
+  body{font-family:'Apple SD Gothic Neo','맑은 고딕',sans-serif;background:#1D9E75;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
+  .box{background:#fff;border-radius:20px;padding:36px 32px;max-width:340px;width:90%;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);}
+  h2{font-size:16px;color:#888780;margin:0 0 6px;font-weight:500;}
+  .date{font-size:13px;color:#B8B5AF;margin-bottom:24px;}
+  .pin{font-size:56px;font-weight:900;color:#1D9E75;letter-spacing:12px;margin:0 0 8px;}
+  .warn{font-size:11px;color:#B25000;background:#FFF8E1;border-radius:8px;padding:8px 12px;line-height:1.6;margin-top:20px;}
+  .seed-wrap{margin-top:20px;border-top:1px solid #E0DFDB;padding-top:16px;}
+  .seed-label{font-size:11px;color:#B8B5AF;margin-bottom:6px;}
+  .seed-input{width:100%;padding:8px 10px;border:1px solid #D8D5CF;border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box;text-align:center;}
+  button{margin-top:8px;padding:8px 20px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>🔒 박달브라운 테니스 클럽</h2>
+  <div class="date" id="dateStr"></div>
+  <div style="font-size:14px;color:#666;margin-bottom:10px">오늘의 임원 PIN</div>
+  <div class="pin" id="pinDisp">----</div>
+  <div style="font-size:12px;color:#888780">매일 자정에 자동 변경됩니다</div>
+
+  <div class="seed-wrap">
+    <div class="seed-label">시드값 변경 (관리자 전용)</div>
+    <input class="seed-input" id="seedInput" type="password" placeholder="시드값 입력" value="bakdal2026secret">
+    <br>
+    <button onclick="updatePin()">PIN 확인</button>
+  </div>
+
+  <div class="warn">
+    ⚠️ 이 페이지는 관리자만 접근해야 합니다.<br>
+    PIN은 매일 바뀌므로 유출되더라도 다음 날 무효화됩니다.
+  </div>
+</div>
+
+<script>
+function calcDailyOTP(seed, dateStr) {
+  const str = seed + dateStr;
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  const pos = Math.abs(h) % 10000;
+  return String(pos).padStart(4, '0');
+}
+
+function getTodayStr() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+}
+
+function updatePin() {
+  const seed = document.getElementById('seedInput').value || 'bakdal2026secret';
+  const ds = getTodayStr();
+  document.getElementById('pinDisp').textContent = calcDailyOTP(seed, ds);
+}
+
+// 날짜 표시
+const ds = getTodayStr();
+document.getElementById('dateStr').textContent =
+  ds.slice(0,4) + '년 ' + ds.slice(4,6) + '월 ' + ds.slice(6,8) + '일';
+
+// 초기 PIN 표시
+updatePin();
+
+// 자정에 자동 갱신
+const now = new Date();
+const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1) - now;
+setTimeout(() => { location.reload(); }, msToMidnight);
+</script>
+</body>
+</html>
