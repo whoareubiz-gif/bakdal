@@ -1120,8 +1120,28 @@ function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
   checkAutoLeave();
-  // 1분마다 보드 갱신 (확정 경과시간 등 시간 표시 최신화)
-  if(n.getSeconds()===0) renderBoard();
+  // 매 분 0초: 전체 보드 갱신
+  if(n.getSeconds()===0){ renderBoard(); return; }
+  // 매 초: 경과시간 배지만 업데이트 (DOM 직접 수정, 부담 없음)
+  if(boardModeOn) updateElapsedBadges();
+}
+
+function updateElapsedBadges(){
+  [1,2,3,4,5,6].forEach(n=>{
+    if(!CC[n]||!CT[n]) return;
+    const el=document.getElementById('ct-badge-'+n);
+    if(!el) return;
+    let em=0;
+    if(typeof CT[n]==='number'){
+      em=Math.max(0,Math.floor((Date.now()-CT[n])/60000));
+    } else {
+      const[ch,cm]=(CT[n]||'').split(':').map(Number);
+      const now=new Date();
+      em=Math.max(0,Math.floor(((now.getHours()*3600+now.getMinutes()*60+now.getSeconds())-(ch*3600+cm*60))/60));
+    }
+    const ctStr=em>=60?` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}`:` ${em}분`;
+    el.textContent='✅ 확정'+ctStr;
+  });
 }
 
 /* ── 출석/퇴소 ── */
@@ -2289,16 +2309,18 @@ function renderBoard(){
     // 확정 후 경과시간 계산 (CT[n]은 "HH:MM" 문자열)
     let ctStr='';
     if(CT&&CT[n]){
-      const [ch,cm]=(CT[n]||'').split(':').map(Number);
-      const now=new Date();
-      const confSec=ch*3600+cm*60;
-      const nowSec=now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
-      const elapsed=Math.max(0,nowSec-confSec);
-      const em=Math.floor(elapsed/60);
+      let em=0;
+      if(typeof CT[n]==='number'){
+        em=Math.max(0,Math.floor((Date.now()-CT[n])/60000));
+      } else {
+        const[ch,cm]=(CT[n]||'').split(':').map(Number);
+        const now=new Date();
+        em=Math.max(0,Math.floor(((now.getHours()*3600+now.getMinutes()*60+now.getSeconds())-(ch*3600+cm*60))/60));
+      }
       ctStr=em>=60?` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}`:` ${em}분`;
     }
     const statusBadge=conf
-      ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 확정${ctStr}</span>`
+      ? `<span id="ct-badge-${n}" style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">✅ 확정${ctStr}</span>`
       : cnt>=CMAX
         ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">🔴 미확정(대기)</span>`
         : `<span style="background:rgba(0,0,0,.15);color:rgba(255,255,255,.9);${badgeStyle};font-weight:800">${cnt}/${CMAX}명 대기</span>`;
