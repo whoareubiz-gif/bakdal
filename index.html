@@ -157,10 +157,16 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-seri
       </select>
     </div>
     <div id="login-error" style="color:#C0392B;font-size:12px;text-align:center;margin-bottom:10px;min-height:16px"></div>
-    <button onclick="doLogin()"
-      style="width:100%;padding:13px;background:#1D9E75;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
-      출석하기
-    </button>
+    <div style="display:flex;gap:8px">
+      <button onclick="doSpectate()"
+        style="flex:1;padding:13px;background:#888780;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+        👁 관전하기
+      </button>
+      <button onclick="doLogin()"
+        style="flex:2;padding:13px;background:#1D9E75;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+        출석하기
+      </button>
+    </div>
     <div style="text-align:center;font-size:10px;color:#B8B5AF;margin-top:14px;line-height:1.5">
       © 2017 Bakdal Brown Tennis Club. All rights reserved.<br>본 앱의 무단 복제 및 배포를 금합니다.
     </div>
@@ -278,6 +284,7 @@ function normalizeS(raw){
   if(!raw) return;
   // 고정 경로(tennis_current) 사용으로 날짜 체크 필요
   // Firebase 데이터의 날짜가 오늘과 다르면 무시 (어제 데이터 오염 방지)
+  // 날짜 검증: date 필드가 있고 오늘과 다르면 무시 (updatedAt은 UTC 오차 있어서 제외)
   if(raw.date && raw.date !== dateStr()) return;
   const s = raw.state;
   if(s){
@@ -291,6 +298,30 @@ function normalizeS(raw){
     }));
     s.leftMembers = toArr(s.leftMembers);
     S = s;
+    // leftMembers 중 오늘이 아닌 날짜 데이터 제거 (어제 퇴소자 잔류 방지)
+    const _today = dateStr();
+    S.leftMembers = S.leftMembers.filter(a=>{
+      if(a.attendTs){
+        const _d=new Date(a.attendTs*1000);
+        const _ds=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        return _ds===_today;
+      }
+      if(a.leftTs){
+        const _d=new Date(a.leftTs*1000);
+        const _ds=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        return _ds===_today;
+      }
+      return true; // 타임스탬프 없으면 일단 유지
+    });
+    // attendees도 동일하게 정리
+    S.attendees = S.attendees.filter(a=>{
+      if(a.attendTs){
+        const _d=new Date(a.attendTs*1000);
+        const _ds=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        return _ds===_today;
+      }
+      return true;
+    });
   }
   if(raw.CC){
     const c = raw.CC;
@@ -330,7 +361,7 @@ function syncPush(){
   syncPushTimer = setTimeout(()=>{
     const token = DEVICE_ID+'-'+Date.now();
     lastSentToken = token;
-    REF.set({state:S, CC, CT, AT, seq:token, updatedAt:Date.now()})
+    REF.set({state:S, CC, CT, AT, seq:token, date:dateStr(), updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 300);
@@ -881,7 +912,7 @@ let autoFired=false,toastT=null,modalFn=null;
 /* ── 로그인 & 모드 (member: 일반회원 화면 / admin: 관리자 전체화면) ── */
 const LOGIN_KEY='tennis_login_member';
 const SESSION_TTL=5*60*60*1000;
-let appMode='member'; // 'member' | 'admin'
+let appMode='member'; // 'member' | 'admin' | 'spectator'
 
 function getCurrentMember(){
   try{const s=localStorage.getItem(LOGIN_KEY);if(s){const o=JSON.parse(s);if(o.expiry&&Date.now()<o.expiry)return o.member;localStorage.removeItem(LOGIN_KEY);}}catch(e){}
@@ -905,6 +936,8 @@ function saveLoginSession(m){try{localStorage.setItem(LOGIN_KEY,JSON.stringify({
 function updateModeToggleBtn(){
   const btn=document.getElementById('mode-toggle-btn');
   if(!btn) return;
+  // 관전 모드에서는 모드 전환 버튼 숨김
+  if(appMode==='spectator'||appMode==='spectator_admin'){ btn.style.display='none'; return; }
   const me=getCurrentMember();
   if(!me || !isOfficer(me.id)){ btn.style.display='none'; return; }
   btn.style.display='inline-block';
@@ -924,13 +957,27 @@ function toggleAppMode(){
 /* member 모드: 회원명부(0)/통계(3)/관리(4) 탭 숨김, 오늘참석자(1)/코트현황(2)만 노출
    admin 모드: 전체 5탭 노출 (기존 manager20 동작 그대로) */
 function applyModeVisibility(){
+  const isSpec = appMode==='spectator'||appMode==='spectator_admin';
   const isAdmin = appMode==='admin';
-  ['tab0','tab3','tab4'].forEach(id=>{
+  const isSpecAdmin = appMode==='spectator_admin';
+  // tab0(회원명부): admin만
+  // tab3(통계): admin + spectator_admin
+  // tab4(관리): admin + spectator_admin
+  ['tab0'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.style.display = isAdmin ? '' : 'none';
   });
-  // member 모드인데 현재 탭이 숨겨진 탭(0,3,4)이면 코트현황(2)으로 강제 이동
-  if(!isAdmin && (curTab===0 || curTab===3 || curTab===4)){
+  ['tab3'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display = (isAdmin||isSpecAdmin) ? '' : 'none';
+  });
+  // tab4(관리): admin만 (임원 관전 모드에서는 숨김)
+  const tab4el=document.getElementById('tab4');
+  if(tab4el) tab4el.style.display = isAdmin ? '' : 'none';
+  // 일반/관전 모드에서 숨겨진 탭에 있으면 코트현황(2)으로 이동
+  const hiddenForSpec = isSpec && !isSpecAdmin ? (curTab===0||curTab===3||curTab===4) : false;
+  const hiddenForMember = !isAdmin && !isSpec && (curTab===0||curTab===3||curTab===4);
+  if(!isAdmin && (curTab===0 || curTab===4 || (!isSpecAdmin && curTab===3))){
     curTab=2;
     document.getElementById('slide-track').style.transform=`translateX(${-2*100/5}%)`;
     ['tab0','tab1','tab2','tab3','tab4'].forEach((id,i)=>{
@@ -948,6 +995,38 @@ function showLoginGenderPicker(matches){
   sel.innerHTML='<option value="">성별 선택</option>'+genders.map(g=>`<option value="${g}">${g==='m'?'남자':'여자'}</option>`).join('');
   picker.style.display='block';
   document.getElementById('login-error').textContent='';
+}
+
+function doSpectate(){
+  const nameInput = document.getElementById('login-name-input');
+  const errEl = document.getElementById('login-error');
+  const name = (nameInput ? nameInput.value : '').trim();
+  errEl.textContent = '';
+
+  // 이름 없으면 익명 관전
+  let member = null;
+  if(name) {
+    const matches = MEMBERS.filter(x=>x.name===name);
+    if(matches.length === 1) member = matches[0];
+    else if(matches.length > 1) {
+      const gSel = document.getElementById('login-gender-select');
+      const g = gSel ? gSel.value : '';
+      member = matches.find(x=>x.gender===g) || matches[0];
+    }
+  }
+
+  // 관전 모드 진입 (출석 처리 없음)
+  const isOfficerSpec = member && (OFFICER_IDS.includes(member.id) || member.id===998);
+  appMode = isOfficerSpec ? 'spectator_admin' : 'spectator';
+  if(member) saveLoginSession(member);
+
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  updateModeToggleBtn();
+  applyModeVisibility();
+  renderAll();
+  goTab(2); // 관전모드: 코트현황으로 이동
+  toast(`👁 관전 모드${isOfficerSpec?' (임원)':''} — ${member?member.name:'익명'}`);
 }
 
 function doLogin(){
@@ -992,22 +1071,20 @@ function doLogin(){
     return;
   }
 
-  // 기본은 항상 member 모드로 시작 (임원이어도 본인이 직접 전환해야 관리모드 진입)
-  appMode='member';
-  try{localStorage.setItem('tns_mode',JSON.stringify({mode:'member',expiry:Date.now()+SESSION_TTL}));}catch(e){}
+  // 임원(OFFICER_IDS)이면 관리자 모드로 자동 진입
+  const isOfficerLogin = OFFICER_IDS.includes(member.id);
+  appMode = isOfficerLogin ? 'admin' : 'member';
+  try{localStorage.setItem('tns_mode',JSON.stringify({mode:appMode,expiry:Date.now()+SESSION_TTL}));}catch(e){}
 
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='flex';
 
   updateModeToggleBtn();
   applyModeVisibility();
+  if(isOfficerLogin) toast('⚙️ 관리자 모드로 진입했습니다');
 
-  if(!S.attendees.find(x=>x.id===member.id || x.name===member.name)){
-    markAttend(member.id);
-  } else {
-    toast(`${member.name} 님, 이미 출석하셨습니다`);
-    goTab(2);
-  }
+  // 항상 markAttend 호출 (시간 최신화 포함)
+  markAttend(member.id);
 
   if(member.id===999) toggleBoardMode(true); // 모니터링 계정만: 자동 보드모드
 }
@@ -1264,12 +1341,16 @@ function updateElapsedBadgesIndex(){
 
 /* ── 출석/퇴소 ── */
 function markAttend(id){
+  if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 출석 불가');return;}
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
+  const todayStr=dateStr();
+
+  // 이미 attendees에 있으면 제거 후 새 시각으로 재출석 (날짜 무관하게 시간 최신화)
   if(S.attendees.find(x=>x.id===id)){
-    toast(`${m.name} 이미 출석`);
-    if(appMode!=='admin') goTab(2);
-    return;
+    S.attendees=S.attendees.filter(x=>x.id!==id);
   }
+  // leftMembers에 있으면 제거 (어제 데이터 혼재 방지)
+  S.leftMembers=S.leftMembers.filter(x=>x.id!==id);
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);
@@ -1298,6 +1379,7 @@ function restoreAttendee(id){
 }
 
 function doLeave(id, isAuto){
+  if(!isAuto&&(appMode==='spectator'||appMode==='spectator_admin')){toast('👁 관전 모드 - 퇴소 불가');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   // 중복 처리 방지 (두 화면에서 동시에 자동퇴소 시도하는 race condition 방어)
   if(S.leftMembers.find(x=>x.id===id)){
@@ -1313,6 +1395,7 @@ function doLeave(id, isAuto){
   toast(isAuto ? `⏰ ${a.name} 퇴소예정 10분 경과 → 자동 퇴소 처리됨` : `${a.name} 퇴소 처리됨`);
 }
 function leave(id){
+  if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 퇴소 불가');return;}
   // member 모드에서는 본인 또는 모니터링/관리자 계정만 본인을 퇴소시킬 수 있음
   if(appMode!=='admin'){
     const me=getCurrentMember();
@@ -1529,6 +1612,7 @@ function cancelAutoConfirm(n){
 }
 
 function confirmCourt(n){
+  if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 확정 불가');return;}
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
@@ -1622,6 +1706,7 @@ function confirmAssignToOccupied(cn, teamIds){
 }
 
 function assignTeam(cn,teamIds){
+  if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 편성 불가');return;}
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
@@ -1763,6 +1848,7 @@ function renderMembers(){
 
 /* ── 참석자 행 ── */
 function attendRow(a){
+  const isSpectatorMode = appMode==='spectator'||appMode==='spectator_admin';
   const isMemberMode = appMode!=='admin';
   const counts={};[1,2,3,4].forEach(n=>{counts[n]=S.attendees.filter(x=>x.court===n).length;});
   const cBtns=[1,2,3,4].map(n=>{
@@ -1814,6 +1900,7 @@ function attendRow(a){
 /* 관리자가 직접 퇴소예정 설정/해제 */
 const LEAVING_AUTO_MINUTES=10; // 퇴소예정 후 자동 퇴소까지 대기 시간(분)
 function setLeavingScheduled(id){
+  if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드');return;}
   if(appMode!=='admin'){
     const me=getCurrentMember();
     if(!me || me.id!==id){ toast('본인만 설정할 수 있습니다'); return; }
@@ -1957,9 +2044,15 @@ function renderMyStatusBannerHTML(){
 }
 
 function renderCourts(){
+  const isSpectatorMode = appMode==='spectator'||appMode==='spectator_admin';
   const isMemberMode = appMode!=='admin';
   const _me = getCurrentMember();
-  let h = isMemberMode ? renderMyStatusBannerHTML() : '';
+  let h = '';
+  if(isSpectatorMode){
+    h += '<div style="background:#FFF8E1;border-radius:8px;padding:6px 12px;margin-bottom:8px;font-size:11px;font-weight:700;color:#B25000;text-align:center">👁 관전 모드 — 출석·퇴소·편성 불가</div>';
+  } else if(isMemberMode){
+    h += renderMyStatusBannerHTML();
+  }
 
   // ── 일주일 게임효율 하위 5명 박스 (오늘 사용할 코트 위) ───────────────────
   try{
@@ -2266,11 +2359,11 @@ function saveStatHistory(){
       const filterSave=a=>!a.isGuest&&!a.name.includes('게스트')&&!HIDDEN_MEMBER_IDS.includes(a.id);
       const mergedAtt=mergeMembers(
         (existing?.attendees||[]).filter(filterSave),
-        S.attendees.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
+        S.attendees.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,attendTs:a.attendTs||null}))
       );
       const mergedLeft=mergeMembers(
         (existing?.leftMembers||[]).filter(filterSave),
-        S.leftMembers.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
+        S.leftMembers.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt,attendTs:a.attendTs||null,leftTs:a.leftTs||null}))
       );
       const allMerged=[...mergedAtt,...mergedLeft];
       const entry={
@@ -3001,6 +3094,11 @@ function renderDailyGuestBox(){
 }
 
 function renderAdminPage(){
+  // 임원 관전 모드: 관리탭은 보이지만 모든 인터랙션 차단 (포인터 이벤트 없음)
+  const specAdminWrap_open = (appMode==='spectator_admin')
+    ? '<div style="position:relative;pointer-events:none;opacity:0.6"><div style="position:absolute;top:0;left:0;right:0;bottom:0;z-index:10;cursor:not-allowed"></div>'
+    : '';
+  const specAdminWrap_close = (appMode==='spectator_admin') ? '</div>' : '';
   // 회원 추가 박스
   const addMemberBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
     <div class="stitle" style="margin-bottom:8px">➕ 회원 추가</div>
@@ -3101,7 +3199,7 @@ function renderAdminPage(){
     <div style="font-size:9px;color:#888780;margin-top:6px">일자·총참석률(남/여)·참석인원·출석시각·퇴소시각·게임수 포함 (게스트 제외)</div>
   </div>`;
 
-  return`<div class="pg-inner">
+  return specAdminWrap_open+`<div class="pg-inner">
     <div class="stitle">⚙️ 관리</div>
     ${renderNoticeAdminBox()}
     ${addMemberBox}
@@ -3109,7 +3207,7 @@ function renderAdminPage(){
     ${renderDailyGuestBox()}
     ${deleteDateBox}
     ${exportBox}
-  </div>`;
+  </div>`+specAdminWrap_close;
 }
 
 function exportExcel(fromDate, toDate){
