@@ -2216,20 +2216,23 @@ function toggleBoardMode(on){
 }
 
 function closeMonitorBoard(){
-  // 전체화면이면 먼저 해제
+  const doClose = ()=>{
+    // 전체화면 해제 후 탭 닫기 시도, 안되면 빈 페이지로
+    try{
+      window.close();
+      // window.close()가 안 먹히면 about:blank로
+      setTimeout(()=>{ window.location.href='about:blank'; }, 300);
+    }catch(e){
+      window.location.href='about:blank';
+    }
+  };
+
   if(document.fullscreenElement){
-    document.exitFullscreen().then(()=>{
-      const ov=document.getElementById('board-overlay');
-      if(ov) ov.style.display='none';
-      boardModeOn=false;
-    }).catch(()=>{});
+    document.exitFullscreen()
+      .then(()=>doClose())
+      .catch(()=>doClose());
   } else {
-    // 전체화면 아니면 오버레이만 숨기기
-    const ov=document.getElementById('board-overlay');
-    if(ov) ov.style.display='none';
-    boardModeOn=false;
-    // window.close() 시도 (스크립트로 열린 탭이면 닫힘)
-    try{ window.close(); }catch(e){}
+    doClose();
   }
 }
 
