@@ -1127,7 +1127,11 @@ function tick(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
+  // 이미 출석 중
   if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);renderBoard();return;}
+  // 퇴소한 사람이면 복구 처리
+  if(S.leftMembers.find(x=>x.id===id)){restoreAttendee(id);return;}
+  // 신규 출석
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();renderBoard();toast(`${m.name} 출석 ✓  ${t}`);
@@ -1158,7 +1162,8 @@ function doLeave(id, isAuto){
     save();renderAll();
     return;
   }
-  S.leftMembers.push({...a,leftAt:timeStr()});
+  const leftT=timeStr();const leftTs=nowTs();
+  S.leftMembers.push({...a,leftAt:leftT,leftTs:leftTs});
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();
@@ -2332,7 +2337,7 @@ function renderBoard(){
     // 색상으로만 구분: 초록=출석중, 회색=퇴소, 연한=미출석
     const bg = isIn ? '#1D9E75' : isLeft ? '#9C9C98' : '#E0DFDB';
     const tc = isIn ? '#fff' : isLeft ? '#fff' : '#555';
-    const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`;
+    const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`; // 퇴소→재출석도 markAttend가 처리
     return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:2px 5px;margin:1px;cursor:pointer;flex-shrink:0" onclick="${onclick}">
       <span style="font-size:${fs};font-weight:700;color:${tc};white-space:nowrap">${m.name}</span>
     </div>`;

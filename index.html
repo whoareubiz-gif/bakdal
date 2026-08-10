@@ -1226,7 +1226,8 @@ function doLeave(id, isAuto){
     save();renderAll();
     return;
   }
-  S.leftMembers.push({...a,leftAt:timeStr()});
+  const _leftT=timeStr();const _leftTs=nowTs();
+  S.leftMembers.push({...a,leftAt:_leftT,leftTs:_leftTs});
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();
