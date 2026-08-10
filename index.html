@@ -1198,9 +1198,32 @@ function manualResetNoSave(){
 }
 
 /* ── 시계 ── */
+let autoLeave21Fired=false; // 평일 21시 자동퇴소 중복방지
+let autoLeave13Fired=false; // 주말 13시 자동퇴소 중복방지
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
+  const dow=n.getDay(); // 0=일,1=월,...,5=금,6=토
+  const isWeekday=dow>=1&&dow<=5;
+  const isWeekend=dow===0||dow===6;
+  // 평일 21:00 자동퇴소
+  if(isWeekday&&n.getHours()===21&&n.getMinutes()===0){
+    if(!autoLeave21Fired){
+      autoLeave21Fired=true;
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
+    }
+  } else {
+    if(n.getHours()!==21||n.getMinutes()!==0) autoLeave21Fired=false;
+  }
+  // 주말 13:00 자동퇴소
+  if(isWeekend&&n.getHours()===13&&n.getMinutes()===0){
+    if(!autoLeave13Fired){
+      autoLeave13Fired=true;
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
+    }
+  } else {
+    if(n.getHours()!==13||n.getMinutes()!==0) autoLeave13Fired=false;
+  }
   checkAutoLeave();
   // 매 분 0초: 코트현황 전체 갱신
   if(n.getSeconds()===0){
@@ -1775,7 +1798,7 @@ function attendRow(a){
   return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px;${_mBg||_gBg}">
     <div style="display:flex;align-items:center;gap:4px">
       <div class="seq-b" style="flex-shrink:0">${a.seq}</div>
-      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${lowEffIds.has(a.id)?'color:#C0392B;font-weight:900;':''}">${lowEffIds.has(a.id)?'🔴 ':''}${a.name}${leavingMark(a.leavingScheduled)}${a.isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>나</span>':''}</span>
+      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${lowEffIds.has(a.id)?'color:#C0392B;font-weight:900;':''}">${a.name}${leavingMark(a.leavingScheduled)}${a.isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>나</span>':''}</span>
       ${gt(a.gender,true)}${courtTag}
       <span style="flex:1"></span>
       <span class="atime-row" style="margin-top:0;flex-shrink:0">🕐 ${timeLabel}</span>
@@ -1831,7 +1854,7 @@ function renderToday(){
   if(leftOnly){
     const ls=S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!ls.length){h+=`<div class="empty">🚪<br>퇴소한 회원이 없습니다.</div></div>`;return h;}
-    ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${lowEffIds.has(a.id)?'color:#C0392B;font-weight:900;':''}">${lowEffIds.has(a.id)?'🔴 ':''}${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;});
+    ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${lowEffIds.has(a.id)?'color:#C0392B;font-weight:900;':''}">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;});
     h+=`</div>`;return h;
   }
   if(todayGender){
@@ -1981,19 +2004,23 @@ function renderCourts(){
       })
       .filter(r=>r.per30!==null)
       .sort((a,b)=>a.per30-b.per30)
-      .slice(0,5);
+      .slice(0,6);
     // 전역 lowEffIds 업데이트 (다른 탭에서 강조 표시용)
     lowEffIds=new Set(rows.map(r=>r.id));
     if(rows.length>0){
-      const rowHtml=rows.map((r,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:.5px solid #F0EDE8">
-        <span style="font-size:10px;color:#B8B5AF;min-width:14px">${i+1}</span>
-        <span style="font-size:13px;font-weight:800;color:#1A1A1A;flex:1">${r.name}</span>
-        <span style="font-size:10px;color:#888780">${r.days}일 참석</span>
-        <span style="font-size:12px;font-weight:800;color:#C0392B">${r.per30.toFixed(1)}<span style="font-size:9px;font-weight:400">/30분</span></span>
-      </div>`).join('');
-      h+=`<div style="margin:6px 0 4px;padding:8px 10px;background:#FFF8F6;border-radius:9px;border:1px solid #F5C0B0">
-        <div style="font-size:10px;font-weight:700;color:#C0392B;margin-bottom:4px">🔴 최근 7일 게임효율 하위 5명 (오늘 참석자 기준)</div>
-        ${rowHtml}
+      // 3명씩 2줄로 표시
+      const cellHtml=rows.map((r,i)=>
+        `<div style="display:flex;align-items:center;gap:3px;flex:1;min-width:0">
+          <span style="font-size:9px;color:#B8B5AF;flex-shrink:0">${i+1}</span>
+          <span style="font-size:12px;font-weight:900;color:#C0392B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}<span style="font-size:10px;font-weight:700;color:#C0392B;margin-left:2px">${r.per30.toFixed(1)}</span></span>
+        </div>`
+      );
+      const row1=cellHtml.slice(0,3).join('');
+      const row2=cellHtml.slice(3,6).join('');
+      h+=`<div style="margin:6px 0 4px;padding:7px 10px;background:#FFF8F6;border-radius:9px;border:1px solid #F5C0B0">
+        <div style="font-size:10px;font-weight:700;color:#C0392B;margin-bottom:5px">🔴 최근 7일 게임효율 하위 6명 (오늘 참석자)</div>
+        <div style="display:flex;gap:6px;margin-bottom:4px">${row1}</div>
+        <div style="display:flex;gap:6px">${row2}</div>
       </div>`;
     }
   }catch(e){}
