@@ -1677,6 +1677,12 @@ function confirmNextCourt(n){
     toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
   }
   save();renderAll();
+  // 배정된 코트에 자동확정 타이머 시작
+  for(let cn=1;cn<=4;cn++){
+    if(!courtActive[cn]) continue;
+    if(CC[cn]) continue; // 이미 확정된 코트 제외
+    if(S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
+  }
 }
 function reassign(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
