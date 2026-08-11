@@ -310,7 +310,7 @@ function syncPush(){
   syncPushTimer = setTimeout(()=>{
     const token = DEVICE_ID+'-'+Date.now();
     lastSentToken = token;
-    REF.set({state:S, CC, seq:token, updatedAt:Date.now()})
+    REF.set({state:S, CC, CT, AT, seq:token, date:dateStr(), updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 1000);
@@ -822,6 +822,28 @@ const SK='tennis_v7',HK='tennis_hist',STKEY='tennis_stats';
 let S={attendees:[],leftMembers:[],seqCounter:0};
 let CC={1:false,2:false,3:false,4:false,5:false,6:false};
 let CT={1:null,2:null,3:null,4:null,5:null,6:null};
+let AT={1:null,2:null,3:null,4:null}; // 코트별 배정 타임스탬프 (자동확정용)
+let autoConfirmTimers={1:null,2:null,3:null,4:null};
+
+function cancelAutoConfirm(n){
+  if(autoConfirmTimers[n]){ clearTimeout(autoConfirmTimers[n]); autoConfirmTimers[n]=null; }
+  AT[n]=null;
+}
+function scheduleAutoConfirm(n){
+  if(n<1||n>4) return;
+  AT[n]=Date.now();
+  if(autoConfirmTimers[n]) clearTimeout(autoConfirmTimers[n]);
+  autoConfirmTimers[n]=setTimeout(()=>{
+    autoConfirmTimers[n]=null;
+    if(CC[n]) return;
+    const pl=S.attendees.filter(x=>x.court===n);
+    if(pl.length<CMAX) return;
+    pl.forEach(a=>{a.games+=1;});
+    CC[n]=true; CT[n]=Date.now(); AT[n]=null;
+    recordCourtGame(n); save(); renderBoard();
+    toast(`✅ ${CNAMES[n]} 자동 확정 (2분 경과)`);
+  }, 2*60*1000);
+}
 let curTab=0,leftOnly=false,todayGender=null;
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장
 let autoFired=false,toastT=null,modalFn=null;
@@ -1124,6 +1146,54 @@ function tick(){
   if(n.getSeconds()===0){ renderBoard(); return; }
   // 매 초: 경과시간 배지만 업데이트 (DOM 직접 수정, 부담 없음)
   if(boardModeOn) updateElapsedBadges();
+}
+
+// 다음차례 편성: 관리자 권한 없이 누구나 가능
+function assignNextCourtToBoard(n){
+  const nc1=S.attendees.filter(x=>x.nextCourt1);
+  if(!nc1.length){toast('다음차례1에 배정된 인원이 없습니다');return;}
+  // 4명 미만이어도 편성 가능 (경고만)
+  if(nc1.length<CMAX){toast(`⚠️ 다음차례1 ${nc1.length}명 편성 (${CMAX}명 미만)`);}
+
+  // 현재 코트 인원 해제 (코트 비우기)
+  S.attendees.forEach(a=>{
+    if(a.court===n){
+      a.court=null;
+      a.courtFreeAt=timeStr();
+      a.courtFreeTs=nowTs();
+      a.hasCourt=false;
+    }
+  });
+  // 코트 확정 해제
+  CC[n]=false; CT[n]=null; cancelAutoConfirm(n);
+
+  // 다음차례1 → 해당 코트 배정 (미확정 상태)
+  const t=timeStr(); const baseTs=nowTs();
+  nc1.forEach((a,i)=>{
+    a.court=n;
+    a.nextCourt1=null;
+    a.courtFreeAt=t;
+    a.courtFreeTs=baseTs+i;
+    a.hasCourt=true;
+  });
+
+  // 다음차례2 → 다음차례1 자동 이동
+  const nc2=S.attendees.filter(x=>x.nextCourt2);
+  if(nc2.length){
+    nc2.forEach(a=>{
+      a.nextCourt1=true;
+      a.nextCourt2=null;
+    });
+    toast(`▶ ${CNAMES[n]} 편성 완료 · 다음차례2(${nc2.length}명) → 다음차례1 이동`);
+  } else {
+    toast(`▶ ${CNAMES[n]} 편성 완료`);
+  }
+
+  // 2분 자동확정 타이머 시작 (AT는 scheduleAutoConfirm 내부에서 설정)
+  CT[n]=null; // 확정 시각 초기화 (배정 시점 기준으로 새로 시작)
+  if(n>=1&&n<=4) scheduleAutoConfirm(n);
+
+  save(); renderBoard();
 }
 
 function updateElapsedBadges(){
@@ -2305,7 +2375,7 @@ function renderBoard(){
       pl.forEach(a=>{ body+=bigSlot(a,conf); });
       for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
     }
-    const badgeStyle='padding:0.5vw 1.2vw;border-radius:1.5vw;font-size:1.5vw;font-weight:900;white-space:nowrap;letter-spacing:-0.01em';
+    const badgeStyle='padding:0.3vw 0.8vw;border-radius:1.5vw;font-size:1.3vw;font-weight:900;white-space:nowrap;letter-spacing:-0.01em';
     // 확정 후 경과시간 계산 (CT[n]은 "HH:MM" 문자열)
     let ctStr='';
     if(CT&&CT[n]){
@@ -2327,10 +2397,20 @@ function renderBoard(){
     // 확정=녹색, 미확정(대기)·빈코트=중간밝은회색
     const cardBg = conf ? '#1D9E75' : '#9EA8B0';
     const cardTc = '#fff';
+    // 다음차례 편성 버튼: 1~4코트 확정 상태일 때만 표시 (누구나 가능)
+    const nc1Members=S.attendees.filter(x=>x.nextCourt1);
+    const nc1Cnt=nc1Members.length;
+    // 확정 상태 + 1~4코트 + 다음차례1에 1명 이상 있으면 버튼 표시 (4명 미만이어도 표시)
+    const nextBtn=(conf&&n>=1&&n<=4&&nc1Cnt>0)
+      ? `<button onclick="assignNextCourtToBoard(${n})" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:0.6vw;padding:0.3vw 0.8vw;font-size:1.1vw;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;margin-top:0">▶ 다음차례 편성</button>`
+      : '';
     return`<div style="background:${cardBg};border-radius:1.4vw;padding:1.2vw 1.5vw;min-width:0;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1vw;flex-wrap:wrap;gap:0.4vw">
         <span style="color:${cardTc};font-size:2.4vw;font-weight:900;text-shadow:0 2px 6px rgba(0,0,0,.5);letter-spacing:-0.02em">${CNAMES[n]}</span>
-        ${statusBadge}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0">
+          ${statusBadge}
+          ${nextBtn}
+        </div>
       </div>
       ${body}
     </div>`;
@@ -2353,26 +2433,33 @@ function renderBoard(){
   const femaleMembers = allRegular.filter(m=>m.gender==='f');
 
   // 남자 2줄(51명), 여자 1줄(20명) 에 맞는 폰트 크기
+  // 화면 너비에 따라 폰트 크기 동적 결정
+  const vw = window.innerWidth;
+  // 24인치 모니터(1920px~): 0.9vw / 태블릿(768~1199px): 1.4vw / 스마트폰(~767px): 2.0vw
+  const qFs = vw >= 1200 ? '0.9vw' : vw >= 600 ? '1.4vw' : '2.0vw';
+  const qPad = vw >= 1200 ? '2px 5px' : vw >= 600 ? '2px 4px' : '2px 3px';
+  const qGap = vw >= 1200 ? '1px' : '1px';
+  const mMaxH = vw >= 1200 ? 'calc(1.9vw * 2 + 10px)' : vw >= 600 ? 'calc(3.2vw * 2 + 8px)' : 'calc(4.8vw * 2 + 6px)';
+
   function quickBtn(m, fs){
     const isIn = attendIds.has(m.id);
     const isLeft = leftIds.has(m.id);
-    // 색상으로만 구분: 초록=출석중, 회색=퇴소, 연한=미출석
     const bg = isIn ? '#1D9E75' : isLeft ? '#9C9C98' : '#E0DFDB';
     const tc = isIn ? '#fff' : isLeft ? '#fff' : '#555';
-    const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`; // 퇴소→재출석도 markAttend가 처리
-    return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:2px 5px;margin:1px;cursor:pointer;flex-shrink:0" onclick="${onclick}">
+    const onclick = isIn ? `doLeave(${m.id})` : `markAttend(${m.id})`;
+    return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:${qPad};margin:${qGap};cursor:pointer;flex-shrink:0" onclick="${onclick}">
       <span style="font-size:${fs};font-weight:700;color:${tc};white-space:nowrap">${m.name}</span>
     </div>`;
   }
 
   h+=`<div style="background:rgba(255,255,255,.85);border-radius:1vw;padding:0.3vw 0.7vw;margin-bottom:${gap}">
     <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:1px">
-      <span style="font-size:0.85vw;font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👨남</span>
-      <div style="display:flex;flex-wrap:wrap;gap:0;max-height:calc(1.9vw * 2 + 10px);overflow:hidden;flex:1">${maleMembers.map(m=>quickBtn(m,'0.9vw')).join('')}</div>
+      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:#185FA5;margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👨남</span>
+      <div style="display:flex;flex-wrap:wrap;gap:0;max-height:${mMaxH};overflow:hidden;flex:1">${maleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
     </div>
     <div style="display:flex;flex-wrap:nowrap;align-items:center;gap:0;overflow:hidden">
-      <span style="font-size:0.85vw;font-weight:800;color:#993556;margin-right:4px;flex-shrink:0;white-space:nowrap">👩여</span>
-      ${femaleMembers.map(m=>quickBtn(m,'0.9vw')).join('')}
+      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:#993556;margin-right:4px;flex-shrink:0;white-space:nowrap">👩여</span>
+      ${femaleMembers.map(m=>quickBtn(m,qFs)).join('')}
     </div>
   </div>`;
 
