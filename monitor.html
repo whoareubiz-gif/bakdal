@@ -842,7 +842,7 @@ function scheduleAutoConfirm(n){
     CC[n]=true; CT[n]=Date.now(); AT[n]=null;
     recordCourtGame(n); save(); renderBoard();
     toast(`✅ ${CNAMES[n]} 자동 확정 (2분 경과)`);
-  }, 2*60*1000);
+  }, 60*1000); // 1분
 }
 let curTab=0,leftOnly=false,todayGender=null;
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장

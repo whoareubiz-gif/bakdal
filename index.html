@@ -341,27 +341,17 @@ function normalizeS(raw){
   if(raw.AT){
     const at=raw.AT;
     const newAT={1:at['1']||at[1]||null,2:at['2']||at[2]||null,3:at['3']||at[3]||null,4:at['4']||at[4]||null};
-    // 자동확정 타이머 복원 (새로고침 후에도 유지)
     [1,2,3,4].forEach(n=>{
-      if(!newAT[n]||CC[n]) return; // 배정시각 없거나 이미 확정이면 스킵
-      // 이미 타이머 실행 중이면 AT 값만 업데이트하고 타이머는 건드리지 않음
-      if(autoConfirmTimers[n]){
-        AT[n]=newAT[n]; // AT 값만 동기화
-        return;
-      }
+      // 타이머 이미 실행 중이면 절대 건드리지 않음
+      if(autoConfirmTimers[n]) return;
+      // 이미 확정된 코트 스킵
+      if(CC[n]){ AT[n]=null; return; }
+      if(!newAT[n]){ AT[n]=null; return; }
+      // 새로고침 후 타이머 복원
       AT[n]=newAT[n];
-      const elapsed=Date.now()-AT[n];
-      const remain=2*60*1000-elapsed;
-      if(remain<=0){
-        setTimeout(()=>autoConfirmCourtSilent(n),500);
-      } else {
-        scheduleAutoConfirmWithDelay(n, remain);
-      }
-    });
-    // AT null이고 타이머도 없는 코트만 처리 (타이머 실행 중이면 건드리지 않음)
-    [1,2,3,4].forEach(n=>{
-      if(!newAT[n] && !autoConfirmTimers[n]) AT[n]=null;
-      else if(newAT[n]) AT[n]=newAT[n];
+      const remain=60*1000-(Date.now()-AT[n]); // 1분 기준
+      if(remain<=0) setTimeout(()=>autoConfirmCourtSilent(n),300);
+      else scheduleAutoConfirmWithDelay(n, remain);
     });
   }
 }
@@ -1612,9 +1602,8 @@ function scheduleAutoConfirmWithDelay(n, delay){
 
 function scheduleAutoConfirm(n){
   if(n<1||n>4) return;
-  AT[n]=Date.now(); // 배정 타임스탬프 저장
-  scheduleAutoConfirmWithDelay(n, 2*60*1000);
-  // save()는 호출자(assignTeam 등)가 처리 - 여기서 중복 save 불필요
+  AT[n]=Date.now();
+  scheduleAutoConfirmWithDelay(n, 60*1000); // 1분
 }
 
 // 자동확정 타이머 취소 (코트 해제 시)
