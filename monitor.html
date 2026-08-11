@@ -841,7 +841,7 @@ function scheduleAutoConfirm(n){
     pl.forEach(a=>{a.games+=1;});
     CC[n]=true; CT[n]=Date.now(); AT[n]=null;
     recordCourtGame(n); save(); renderBoard();
-    toast(`✅ ${CNAMES[n]} 자동 확정 (2분 경과)`);
+    toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
   }, 60*1000); // 1분
 }
 let curTab=0,leftOnly=false,todayGender=null;

@@ -1418,13 +1418,20 @@ function toggleCourt(id,n){
   if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ⚠️`);return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   if(!NEXT_COURTS.includes(n)){
-    if(a.court&&!NEXT_COURTS.includes(a.court))CC[a.court]=false;
+    if(a.court&&!NEXT_COURTS.includes(a.court)){
+      cancelAutoConfirm(a.court); // 이전 코트 타이머 취소
+      CC[a.court]=false;
+    }
     a.court=n;a.hasCourt=true;
   } else {
     const nc=n===5?'nextCourt1':'nextCourt2';
     a[nc]=a[nc]===n?null:n;save();renderAll();return;
   }
   save();renderAll();
+  // 4명 배정 완료되면 자동확정 타이머 시작
+  if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
+    scheduleAutoConfirm(n);
+  }
 }
 function toggleNextCourt(id,which){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1589,7 +1596,7 @@ function autoConfirmCourtSilent(n){
   pl.forEach(a=>{a.games+=1;});
   CC[n]=true;CT[n]=Date.now();AT[n]=null;
   recordCourtGame(n);save();renderAll();
-  toast(`✅ ${CNAMES[n]} 자동 확정 (2분 경과)`);
+  toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
 }
 
 function scheduleAutoConfirmWithDelay(n, delay, force=false){
