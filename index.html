@@ -2111,14 +2111,14 @@ function renderCourts(){
     const rows=Object.entries(effMap)
       .filter(([id])=>todayAttendIds.has(Number(id)))
       .map(([id,v])=>{
-        const per30=v.stayMin>=30?Math.round(v.games/v.stayMin*30*10)/10:null;
+        // stayMin>=30이면 정확한 per30, 아니면 게임수만으로 순위 계산
+        const per30=v.stayMin>=30?Math.round(v.games/v.stayMin*30*10)/10:v.games;
         return{...v,id:Number(id),per30};
       })
       .filter(r=>r.per30!==null)
       .sort((a,b)=>a.per30-b.per30)
       .slice(0,6);
-    // 전역 lowEffIds 업데이트 (다른 탭에서 강조 표시용)
-    lowEffIds=new Set(rows.map(r=>r.id));
+    // lowEffIds는 renderAll()에서 updateLowEffIds()로 이미 계산됨
     if(rows.length>0){
       // 3명씩 2줄로 표시
       const cellHtml=rows.map((r,i)=>
@@ -2408,7 +2408,62 @@ function saveStatHistory(){
 /* 통계 페이지 렌더링 */
 let statPeriod='day';
 let statView='attend';
-let lowEffIds=new Set(); // 게임효율 하위 5명 ID 집합
+let lowEffIds=new Set(); // 게임효율 하위 6명 ID 집합
+
+// 게임효율 하위6명 계산 (renderAll 호출 시마다 실행)
+function updateLowEffIds(){
+  try{
+    // 오늘 출석자 전체 (실시간)
+    const todayAll=[...S.attendees,...S.leftMembers]
+      .filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.isGuest&&!a.name.includes('게스트'));
+    if(!todayAll.length){ lowEffIds=new Set(); return; }
+
+    // 7일 통계에서 누적 게임수/머문시간 집계
+    const stLocal=JSON.parse(localStorage.getItem(STKEY)||'[]');
+    const weekAgo=new Date(); weekAgo.setDate(weekAgo.getDate()-7);
+    const weekStr=weekAgo.getFullYear()+'-'+String(weekAgo.getMonth()+1).padStart(2,'0')+'-'+String(weekAgo.getDate()).padStart(2,'0');
+    const todaySt=dateStr();
+    const effMap={};
+
+    // 오늘 실시간 데이터 먼저 집계
+    todayAll.forEach(a=>{
+      effMap[a.id]={games:a.games||0, stayMin:0};
+      if(a.attendTs&&!a.leftAt){
+        effMap[a.id].stayMin=Math.max(0,Math.floor((nowTs()-a.attendTs)/60));
+      } else if(a.time&&a.leftAt){
+        const[ih,im]=(a.time||'0:0').split(':').map(Number);
+        const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
+        effMap[a.id].stayMin=Math.max(0,(oh*60+om)-(ih*60+im));
+      }
+    });
+
+    // 7일 통계 누적
+    stLocal.filter(d=>d.date>=weekStr&&d.date<todaySt).forEach(d=>{
+      [...(d.attendees||[]),...(d.leftMembers||[])].forEach(a=>{
+        if(!effMap[a.id]) return; // 오늘 출석자가 아니면 스킵
+        effMap[a.id].games+=(a.games||0);
+        if(a.time&&a.leftAt){
+          const[ih,im]=(a.time||'0:0').split(':').map(Number);
+          const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
+          effMap[a.id].stayMin+=Math.max(0,(oh*60+om)-(ih*60+im));
+        }
+      });
+    });
+
+    // 게임효율(30분당) 낮은 순 정렬 → 하위 6명
+    const rows=todayAll
+      .map(a=>{
+        const v=effMap[a.id]||{games:0,stayMin:0};
+        const per30=v.stayMin>=30?v.games/v.stayMin*30:v.games; // 30분 미만이면 게임수로 대체
+        return{id:a.id,per30};
+      })
+      .sort((a,b)=>a.per30-b.per30)
+      .slice(0,6);
+
+    lowEffIds=new Set(rows.map(r=>r.id));
+    console.log('[lowEff] todayAll:', todayAll.length, '명, lowEffIds:', [...lowEffIds]);
+  }catch(e){ console.log('[lowEff] 오류:', e); lowEffIds=new Set(); }
+}
 let statEffFrom=''; // 게임 효율 분석 시작일
 let deletedStatDates=new Set(); // 삭제된 날짜 블랙리스트 (Firebase 재복원 방지)
 let statEffTo='';   // 게임 효율 분석 종료일
@@ -3003,6 +3058,7 @@ function renderBoard(){
   function bigSlot(a, conf){
     const isMe=me&&a.id===me.id;
     const isLow=lowEffIds.has(a.id); // 게임효율 하위 6명
+    if(isLow) console.log('[bigSlot] 하위6명:', a.name, a.id);
     const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:isLow?`box-shadow:0 0 0 0.4vw #E74C3C;`:'';
     // conf: true=확정(녹색), false=미확정/빈코트(회색)
     // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색, 하위6명 시 빨간색
@@ -3403,6 +3459,7 @@ function clearStatHistory(){
 
 /* ── 전체 렌더 ── */
 function renderAll(){
+  updateLowEffIds(); // 코트현황 강조 전 하위6명 계산
   renderStats();
   renderNoticeBanner();
   // 항상 필요한 탭(오늘참석자/코트현황)은 모드 무관하게 렌더링
