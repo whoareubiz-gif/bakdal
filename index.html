@@ -340,20 +340,29 @@ function normalizeS(raw){
   }
   if(raw.AT){
     const at=raw.AT;
-    AT={1:at['1']||at[1]||null,2:at['2']||at[2]||null,3:at['3']||at[3]||null,4:at['4']||at[4]||null};
+    const newAT={1:at['1']||at[1]||null,2:at['2']||at[2]||null,3:at['3']||at[3]||null,4:at['4']||at[4]||null};
     // 자동확정 타이머 복원 (새로고침 후에도 유지)
     [1,2,3,4].forEach(n=>{
-      if(!AT[n]||CC[n]) return; // 배정시각 없거나 이미 확정이면 스킵
+      if(!newAT[n]||CC[n]) return; // 배정시각 없거나 이미 확정이면 스킵
+      // 이미 타이머 실행 중이면 AT 값만 업데이트하고 타이머는 건드리지 않음
+      if(autoConfirmTimers[n]){
+        AT[n]=newAT[n]; // AT 값만 동기화
+        return;
+      }
+      AT[n]=newAT[n];
       const elapsed=Date.now()-AT[n];
-      const remain=2*60*1000-elapsed; // 2분에서 경과시간 뺀 남은 시간
+      const remain=2*60*1000-elapsed;
       if(remain<=0){
-        // 이미 2분 지남 → 즉시 자동확정
         setTimeout(()=>autoConfirmCourtSilent(n),500);
       } else {
-        // 남은 시간만큼 타이머 재시작
         scheduleAutoConfirmWithDelay(n, remain);
       }
     });
+    // AT null인 코트는 타이머 취소
+    [1,2,3,4].forEach(n=>{
+      if(!newAT[n]) cancelAutoConfirm(n);
+    });
+    AT=newAT;
   }
 }
 
@@ -2986,13 +2995,14 @@ function renderBoard(){
 
   function bigSlot(a, conf){
     const isMe=me&&a.id===me.id;
-    const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:'';
+    const isLow=lowEffIds.has(a.id); // 게임효율 하위 6명
+    const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:isLow?`box-shadow:0 0 0 0.4vw #E74C3C;`:'';
     // conf: true=확정(녹색), false=미확정/빈코트(회색)
-    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색
-    const nameTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색, 하위6명 시 빨간색
+    const nameTc = isLow ? '#C0392B' : conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
     const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
-    const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
-    return`<div style="background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
+    const genderTc = isLow ? '#C0392B' : conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    return`<div style="background:${isLow?(conf?'rgba(255,235,235,0.95)':'rgba(255,235,235,0.7)'):(conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)')};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
       <span style="font-size:2.9vw;font-weight:900;color:${nameTc}">${a.name}</span>
       <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
       ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
