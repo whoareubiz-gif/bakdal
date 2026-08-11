@@ -2083,61 +2083,44 @@ function renderCourts(){
   // ── 일주일 게임효율 하위 5명 박스 (오늘 사용할 코트 위) ───────────────────
   try{
     const stLocal=JSON.parse(localStorage.getItem(STKEY)||'[]');
-    const nowD=new Date();
-    const weekAgo=new Date(nowD);weekAgo.setDate(weekAgo.getDate()-7);
-    const weekStr=weekAgo.getFullYear()+'-'+String(weekAgo.getMonth()+1).padStart(2,'0')+'-'+String(weekAgo.getDate()).padStart(2,'0');
     const todaySt=dateStr();
-    // 최근 7일 통계 데이터
-    const weekDays=stLocal.filter(d=>d.date>=weekStr&&d.date<todaySt);
-    // 오늘 실시간 데이터도 포함
-    const todayEntry={date:todaySt,attendees:S.attendees,leftMembers:S.leftMembers};
-    const allDays=[...weekDays,todayEntry];
-    // 회원별 누적 게임수/머문시간 집계
+    const todayAll=[...S.attendees,...S.leftMembers]
+      .filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.isGuest&&!a.name.includes('게스트'));
+
+    // 각 인원의 가장 최근 참석일 기준 효율 계산
     const effMap={};
-    allDays.forEach(d=>{
-      const seen=new Set();
-      [...(d.attendees||[]),...(d.leftMembers||[])].forEach(a=>{
-        if(HIDDEN_MEMBER_IDS.includes(a.id)||a.isGuest||a.name.includes('게스트')) return;
-        if(seen.has(a.id)) return; seen.add(a.id);
-        if(!effMap[a.id]) effMap[a.id]={name:a.name,gender:a.gender,games:0,stayMin:0,days:0};
-        effMap[a.id].games+=a.games||0;
-        if(a.time&&a.leftAt){
-          const[ih,im]=(a.time||'0:0').split(':').map(Number);
-          const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
-          const sm=Math.max(0,(oh*60+om)-(ih*60+im));
-          if(sm>=30){effMap[a.id].stayMin+=sm;effMap[a.id].days++;}
-        } else if(a.attendTs&&!a.leftAt){
-          // 오늘 아직 퇴소 안 한 경우 현재까지 머문시간
-          const sm=Math.max(0,Math.floor((nowTs()-a.attendTs)/60));
-          if(sm>=30){effMap[a.id].stayMin+=sm;effMap[a.id].days++;}
+    // 항상 과거 최근 참석일 기준 (오늘 데이터 제외)
+    todayAll.forEach(a=>{
+      const pastDays=stLocal.filter(d=>d.date<todaySt).sort((x,y)=>y.date.localeCompare(x.date));
+      for(const d of pastDays){
+        const found=[...(d.attendees||[]),...(d.leftMembers||[])].find(x=>x.id===a.id);
+        if(!found) continue;
+        let psm=0;
+        if(found.time&&found.leftAt){
+          const[ih,im]=(found.time||'0:0').split(':').map(Number);
+          const[oh,om]=(found.leftAt||'0:0').split(':').map(Number);
+          psm=Math.max(0,(oh*60+om)-(ih*60+im));
         }
-      });
+        if(psm>=30){ effMap[a.id]={name:a.name,per30:Math.round((found.games||0)/psm*30*10)/10,date:d.date}; break; }
+      }
     });
-    // 오늘 출석 중인 사람만 대상
-    const todayAttendIds=new Set([...S.attendees,...S.leftMembers].map(a=>a.id));
+
     const rows=Object.entries(effMap)
-      .filter(([id])=>todayAttendIds.has(Number(id)))
-      .map(([id,v])=>{
-        // stayMin>=30이면 정확한 per30, 아니면 게임수만으로 순위 계산
-        const per30=v.stayMin>=30?Math.round(v.games/v.stayMin*30*10)/10:v.games;
-        return{...v,id:Number(id),per30};
-      })
-      .filter(r=>r.per30!==null)
+      .map(([id,v])=>({id:Number(id),name:v.name,per30:v.per30}))
       .sort((a,b)=>a.per30-b.per30)
       .slice(0,6);
-    // lowEffIds는 renderAll()에서 updateLowEffIds()로 이미 계산됨
+    // lowEffIds는 updateLowEffIds()에서 처리
     if(rows.length>0){
-      // 3명씩 2줄로 표시
       const cellHtml=rows.map((r,i)=>
-        `<div style="display:flex;align-items:center;gap:3px;flex:1;min-width:0">
-          <span style="font-size:9px;color:#B8B5AF;flex-shrink:0">${i+1}</span>
-          <span style="font-size:12px;font-weight:900;color:#C0392B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}<span style="font-size:10px;font-weight:700;color:#C0392B;margin-left:2px">${r.per30.toFixed(1)}</span></span>
+        `<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0">
+          <span style="font-size:13px;font-weight:900;color:#1A1A1A;flex-shrink:0">${i+1}</span>
+          <span style="font-size:12px;font-weight:700;color:#185FA5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}<span style="font-size:10px;font-weight:700;color:#C0392B;margin-left:3px">${r.per30.toFixed(1)}</span></span>
         </div>`
       );
       const row1=cellHtml.slice(0,3).join('');
       const row2=cellHtml.slice(3,6).join('');
       h+=`<div style="margin:6px 0 4px;padding:7px 10px;background:#FFF8F6;border-radius:9px;border:1px solid #F5C0B0">
-        <div style="font-size:10px;font-weight:700;color:#C0392B;margin-bottom:5px">🔴 최근 7일 게임효율 하위 6명 (오늘 참석자)</div>
+        <div style="font-size:10px;font-weight:700;color:#C0392B;margin-bottom:5px">🔴 가장 최근 참석일의 게임효율 하위 6명 (오늘 참석자 중)</div>
         <div style="display:flex;gap:6px;margin-bottom:4px">${row1}</div>
         <div style="display:flex;gap:6px">${row2}</div>
       </div>`;
@@ -2424,36 +2407,34 @@ let lowEffIds=new Set(); // 게임효율 하위 6명 ID 집합
 function updateLowEffIds(){
   try{
     const stLocal=JSON.parse(localStorage.getItem(STKEY)||'[]');
-    const nowD=new Date();
-    const weekAgo=new Date(nowD); weekAgo.setDate(weekAgo.getDate()-7);
-    const weekStr=weekAgo.getFullYear()+'-'+String(weekAgo.getMonth()+1).padStart(2,'0')+'-'+String(weekAgo.getDate()).padStart(2,'0');
     const todaySt=dateStr();
-    const weekDays=stLocal.filter(d=>d.date>=weekStr&&d.date<todaySt);
-    const todayEntry={date:todaySt,attendees:S.attendees,leftMembers:S.leftMembers};
-    const allDays=[...weekDays,todayEntry];
-    const effMap={};
-    allDays.forEach(d=>{
-      const seen=new Set();
-      [...(d.attendees||[]),...(d.leftMembers||[])].forEach(a=>{
-        if(HIDDEN_MEMBER_IDS.includes(a.id)||a.isGuest||a.name.includes('게스트')) return;
-        if(seen.has(a.id)) return; seen.add(a.id);
-        if(!effMap[a.id]) effMap[a.id]={games:0,stayMin:0};
-        effMap[a.id].games+=a.games||0;
-        if(a.time&&a.leftAt){
-          const[ih,im]=(a.time||'0:0').split(':').map(Number);
-          const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
-          const sm=Math.max(0,(oh*60+om)-(ih*60+im));
-          if(sm>=30) effMap[a.id].stayMin+=sm;
-        } else if(a.attendTs&&!a.leftAt){
-          const sm=Math.max(0,Math.floor((nowTs()-a.attendTs)/60));
-          if(sm>=30) effMap[a.id].stayMin+=sm;
-        }
-      });
-    });
     const todayAttendIds=new Set([...S.attendees,...S.leftMembers].map(a=>a.id));
+    if(!todayAttendIds.size){ lowEffIds=new Set(); return; }
+
+    // 오늘 참석자 각각의 가장 최근 참석일 데이터 찾기
+    const effMap={};
+    todayAttendIds.forEach(id=>{
+      // 오늘 데이터 먼저 확인
+      const todayA=[...S.attendees,...S.leftMembers].find(a=>a.id===id);
+      if(!todayA) return;
+      // 오늘 데이터에서 stayMin 계산
+      // 항상 과거 최근 참석일 기준 (오늘 데이터 제외)
+      const pastDays=stLocal.filter(d=>d.date<todaySt).sort((a,b)=>b.date.localeCompare(a.date));
+      for(const d of pastDays){
+        const found=[...(d.attendees||[]),...(d.leftMembers||[])].find(a=>a.id===id);
+        if(!found) continue;
+        let psm=0;
+        if(found.time&&found.leftAt){
+          const[ih,im]=(found.time||'0:0').split(':').map(Number);
+          const[oh,om]=(found.leftAt||'0:0').split(':').map(Number);
+          psm=Math.max(0,(oh*60+om)-(ih*60+im));
+        }
+        if(psm>=30){ effMap[id]={per30:Math.round((found.games||0)/psm*30*10)/10,date:d.date}; break; }
+      }
+    });
+
     const rows=Object.entries(effMap)
-      .filter(([id])=>todayAttendIds.has(Number(id)))
-      .map(([id,v])=>({id:Number(id),per30:v.stayMin>=30?Math.round(v.games/v.stayMin*30*10)/10:v.games}))
+      .map(([id,v])=>({id:Number(id),per30:v.per30}))
       .sort((a,b)=>a.per30-b.per30)
       .slice(0,6);
     lowEffIds=new Set(rows.map(r=>r.id));
