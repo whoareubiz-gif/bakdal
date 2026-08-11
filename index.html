@@ -358,11 +358,11 @@ function normalizeS(raw){
         scheduleAutoConfirmWithDelay(n, remain);
       }
     });
-    // AT null인 코트는 타이머 취소
+    // AT null이고 타이머도 없는 코트만 처리 (타이머 실행 중이면 건드리지 않음)
     [1,2,3,4].forEach(n=>{
-      if(!newAT[n]) cancelAutoConfirm(n);
+      if(!newAT[n] && !autoConfirmTimers[n]) AT[n]=null;
+      else if(newAT[n]) AT[n]=newAT[n];
     });
-    AT=newAT;
   }
 }
 
@@ -1612,9 +1612,9 @@ function scheduleAutoConfirmWithDelay(n, delay){
 
 function scheduleAutoConfirm(n){
   if(n<1||n>4) return;
-  AT[n]=Date.now(); // 배정 타임스탬프 저장 (Firebase 동기화됨)
+  AT[n]=Date.now(); // 배정 타임스탬프 저장
   scheduleAutoConfirmWithDelay(n, 2*60*1000);
-  save(); // AT를 Firebase에 즉시 저장
+  // save()는 호출자(assignTeam 등)가 처리 - 여기서 중복 save 불필요
 }
 
 // 자동확정 타이머 취소 (코트 해제 시)
