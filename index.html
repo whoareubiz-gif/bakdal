@@ -1592,8 +1592,12 @@ function autoConfirmCourtSilent(n){
   toast(`✅ ${CNAMES[n]} 자동 확정 (2분 경과)`);
 }
 
-function scheduleAutoConfirmWithDelay(n, delay){
-  if(autoConfirmTimers[n]) clearTimeout(autoConfirmTimers[n]);
+function scheduleAutoConfirmWithDelay(n, delay, force=false){
+  // force=false이면 이미 타이머 실행 중일 때 리셋 안 함
+  if(autoConfirmTimers[n]){
+    if(!force) return; // 기존 타이머 유지
+    clearTimeout(autoConfirmTimers[n]);
+  }
   autoConfirmTimers[n]=setTimeout(()=>{
     autoConfirmTimers[n]=null;
     autoConfirmCourtSilent(n);
@@ -1603,7 +1607,7 @@ function scheduleAutoConfirmWithDelay(n, delay){
 function scheduleAutoConfirm(n){
   if(n<1||n>4) return;
   AT[n]=Date.now();
-  scheduleAutoConfirmWithDelay(n, 60*1000); // 1분
+  scheduleAutoConfirmWithDelay(n, 60*1000, true); // 1분, force=true (새 배정이므로 리셋)
 }
 
 // 자동확정 타이머 취소 (코트 해제 시)
@@ -1677,11 +1681,19 @@ function confirmNextCourt(n){
     toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
   }
   save();renderAll();
-  // 배정된 코트에 자동확정 타이머 시작
+  // 배정된 코트에 자동확정 타이머 시작 (코트별로 10초 간격으로 순차 확정)
+  let _delay=0;
   for(let cn=1;cn<=4;cn++){
     if(!courtActive[cn]) continue;
-    if(CC[cn]) continue; // 이미 확정된 코트 제외
-    if(S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
+    if(CC[cn]) continue;
+    if(S.attendees.filter(x=>x.court===cn).length>=CMAX){
+      if(_delay===0){
+        scheduleAutoConfirm(cn);
+      } else {
+        ((courtN,d)=>setTimeout(()=>scheduleAutoConfirm(courtN),d))(cn,_delay);
+      }
+      _delay+=10000; // 10초 간격
+    }
   }
 }
 function reassign(){
