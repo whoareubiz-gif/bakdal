@@ -138,6 +138,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕','Segoe UI
 .mok{flex:1;padding:10px;background:#1D9E75;border:none;border-radius:9px;font-size:12px;cursor:pointer;font-family:inherit;color:#fff;font-weight:700;-webkit-appearance:none;}
 .pg-inner{padding:9px 11px 6px;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/twemoji.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 <div id="login-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#1D9E75;padding:20px;">
@@ -2936,5 +2937,26 @@ document.addEventListener('click', unlockSpeechSynthesis, {once:true});
 document.addEventListener('touchstart', unlockSpeechSynthesis, {once:true});
 </script>
 
+<script>
+(function(){
+  function applyTwemoji(){
+    if(typeof twemoji==='undefined') return;
+    var el=document.getElementById('board-content');
+    if(el) twemoji.parse(el,{
+      base:'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/',
+      folder:'svg', ext:'.svg'
+    });
+    var hdr=document.querySelector('[data-board-hdr]');
+    if(hdr) twemoji.parse(hdr,{
+      base:'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/',
+      folder:'svg', ext:'.svg'
+    });
+  }
+  // 5초마다 이모지 교체 (동적 렌더링 후 반영)
+  setInterval(applyTwemoji, 5000);
+  // 초기 로드 후 2초 뒤 한번
+  setTimeout(applyTwemoji, 2000);
+})();
+</script>
 </body>
 </html>
