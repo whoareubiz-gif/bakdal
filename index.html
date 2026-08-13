@@ -20,6 +20,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html{height:100%;}
@@ -2752,6 +2754,9 @@ function renderStatPage(){
         if(a.leftAt){
           const [oh,om]=a.leftAt.split(':').map(Number);
           const mins=(oh*60+om)-(ih*60+im);
+          if(mins>0) map[a.id].minutes+=mins;
+        } else if(a.attendTs&&a.leftTs){
+          const mins=Math.max(0,Math.floor((a.leftTs-a.attendTs)/60));
           if(mins>0) map[a.id].minutes+=mins;
         }
         // leftAt 없으면 머문시간 계산 안 함 (잘못된 기본값 방지)
