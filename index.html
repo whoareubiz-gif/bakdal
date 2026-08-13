@@ -1225,7 +1225,7 @@ function leaveAllForSave(){
 }
 
 function autoReset(now){
-  leaveAllForSave();
+  // leaveAllForSave() 제거 - 21시 자동퇴소에서 이미 처리됨 (23:59에 재처리하면 퇴소시간 덮어씌워짐)
   saveStatHistory();
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
