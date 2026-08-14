@@ -386,7 +386,7 @@ function syncListen(){
     if(boardModeOn) renderBoard();
     if(!firstReceived){
       firstReceived=true;
-      setTimeout(()=>{ initialRenderDone=true; }, 1000);
+      setTimeout(()=>{ initialRenderDone=true; checkAutoLeaveOnVisible(); }, 1000);
     }
   }, err=>{ setSyncDot('err'); });
 }
@@ -395,6 +395,8 @@ function syncListen(){
    Firebase on()은 자동 재연결되지만, 백그라운드 중 놓친 데이터를 보충 */
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){
+    // 화면 복귀 시 자동퇴소 시간 놓쳤는지 체크
+    checkAutoLeaveOnVisible();
     REF.once('value', snap=>{
       const raw=snap.val();
       if(!raw) return;
@@ -1279,6 +1281,31 @@ function manualResetNoSave(){
 /* ── 시계 ── */
 let autoLeave21Fired=false; // 평일 21시 자동퇴소 중복방지
 let autoLeave13Fired=false; // 주말 13시 자동퇴소 중복방지
+function checkAutoLeaveOnVisible(){
+  // 앱이 백그라운드였다가 복귀할 때 자동퇴소 시간을 놓쳤으면 즉시 처리
+  const n=new Date();
+  const dow=n.getDay();
+  const h=n.getHours(), m=n.getMinutes();
+  const isWeekday=dow>=1&&dow<=5;
+  const isWeekend=dow===0||dow===6;
+  // 평일: 21:00~23:58 사이에 복귀하면 퇴소 처리
+  if(isWeekday && h>=21 && h<24 && !(h===23&&m===59)){
+    if(!autoLeave21Fired && S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).length>0){
+      autoLeave21Fired=true;
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
+      toast('🌙 21시 자동퇴소 처리됨',3000);
+    }
+  }
+  // 주말: 13:00~23:58 사이에 복귀하면 퇴소 처리
+  if(isWeekend && h>=13 && h<24 && !(h===23&&m===59)){
+    if(!autoLeave13Fired && S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).length>0){
+      autoLeave13Fired=true;
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
+      toast('🌙 13시 자동퇴소 처리됨',3000);
+    }
+  }
+}
+
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
@@ -1286,22 +1313,22 @@ function tick(){
   const isWeekday=dow>=1&&dow<=5;
   const isWeekend=dow===0||dow===6;
   // 평일 21:00 자동퇴소
-  if(isWeekday&&n.getHours()===21&&n.getMinutes()===0){
+  if(isWeekday&&n.getHours()===21&&n.getMinutes()<=1){
     if(!autoLeave21Fired){
       autoLeave21Fired=true;
       S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
     }
   } else {
-    if(n.getHours()!==21||n.getMinutes()!==0) autoLeave21Fired=false;
+    if(n.getHours()!==21) autoLeave21Fired=false;
   }
   // 주말 13:00 자동퇴소
-  if(isWeekend&&n.getHours()===13&&n.getMinutes()===0){
+  if(isWeekend&&n.getHours()===13&&n.getMinutes()<=1){
     if(!autoLeave13Fired){
       autoLeave13Fired=true;
       S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
     }
   } else {
-    if(n.getHours()!==13||n.getMinutes()!==0) autoLeave13Fired=false;
+    if(n.getHours()!==13) autoLeave13Fired=false;
   }
   checkAutoLeave();
   // 매 분 0초: 코트현황 전체 갱신
