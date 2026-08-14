@@ -2973,9 +2973,9 @@ function renderStatPage(){
 
   return`<div class="pg-inner">
     ${todayAnalysisBox}
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${pBtns}</div>
-    ${rangeBox}${avgBox}${detailBox}${divider}
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${vBtns}</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;white-space:nowrap">${pBtns}</div>
+    ${rangeBox}${avgBox}${detailBox}
+    <div style="display:flex;gap:4px;margin-bottom:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;white-space:nowrap">${vBtns}</div>
     <div>${body}</div>
   </div>`;
 }
