@@ -2783,6 +2783,16 @@ function renderStatPage(){
         } else if(a.attendTs&&a.leftTs){
           mins=Math.max(0,Math.floor((a.leftTs-a.attendTs)/60));
           if(mins>0) map[a.id].minutes+=mins;
+        } else if(a.attendTs&&!a.leftAt){
+          // 퇴소기록 없으면 21시 기준으로 계산 (평일) / 13시 기준 (주말)
+          const d=new Date(a.attendTs*1000);
+          const dow=d.getDay();
+          const endH=(dow>=1&&dow<=5)?21:13;
+          const endTs=new Date(d);endTs.setHours(endH,0,0,0);
+          if(endTs.getTime()/1000>a.attendTs){
+            mins=Math.max(0,Math.floor((endTs.getTime()/1000-a.attendTs)/60));
+            if(mins>0) map[a.id].minutes+=mins;
+          }
         }
         // 날별 30분당 게임수 기록
         if(mins>=30) map[a.id].dayScores.push(Math.round((a.games||0)/mins*30*10)/10);
@@ -2934,11 +2944,40 @@ function renderStatPage(){
         } else {
           inT=a.time||'-';
           outT=a.leftAt||'-';
-          const[ih,im]=(inT!=='-'?inT:'0:0').split(':').map(Number);
-          const[oh,om]=(outT!=='-'?outT:'0:0').split(':').map(Number);
-          // leftAt 없으면 stayMin 계산 안 함 (잘못된 기본값 사용 방지)
-          stayMin=(inT!=='-'&&outT!=='-')?Math.max(0,(oh*60+om)-(ih*60+im)):0;
-          if(outT==='-') outT='퇴소기록없음';
+          // attendTs/leftTs 있으면 우선 사용
+          if(a.attendTs&&a.leftTs){
+            stayMin=Math.max(0,Math.floor((a.leftTs-a.attendTs)/60));
+            inT=timeStr(new Date(a.attendTs*1000));
+            outT=timeStr(new Date(a.leftTs*1000));
+          } else if(a.attendTs&&a.leftAt){
+            const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
+            const d=new Date(a.attendTs*1000);
+            const outTs=new Date(d);outTs.setHours(oh,om,0,0);
+            stayMin=Math.max(0,Math.floor((outTs.getTime()/1000-a.attendTs)/60));
+            inT=timeStr(d);
+            outT=a.leftAt;
+          } else {
+            const[ih,im]=(inT!=='-'?inT:'0:0').split(':').map(Number);
+            const[oh,om]=(outT!=='-'?outT:'0:0').split(':').map(Number);
+            stayMin=(inT!=='-'&&outT!=='-')?Math.max(0,(oh*60+om)-(ih*60+im)):0;
+          }
+          if(outT==='-'){
+            // leftAt 없으면 자동퇴소 시각으로 보완 (평일21시/주말13시)
+            if(a.attendTs){
+              const _d=new Date(a.attendTs*1000);
+              const _dow=_d.getDay();
+              const _endH=(_dow>=1&&_dow<=5)?21:13;
+              const _endD=new Date(_d); _endD.setHours(_endH,0,0,0);
+              if(_endD.getTime()/1000>a.attendTs){
+                stayMin=Math.max(0,Math.floor((_endD.getTime()/1000-a.attendTs)/60));
+                outT=_endH+':00 (추정)';
+              } else {
+                outT='퇴소기록없음';
+              }
+            } else {
+              outT='퇴소기록없음';
+            }
+          }
         }
         const games=a.games||0;
         const per30=stayMin>0?Math.round((games/stayMin)*30*10)/10:0;
