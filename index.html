@@ -909,6 +909,7 @@ let CC={1:false,2:false,3:false,4:false,5:false,6:false};
 let CT={1:null,2:null,3:null,4:null,5:null,6:null};
 let AT={1:null,2:null,3:null,4:null}; // 코트별 배정 타임스탬프 (자동확정용)
 let autoConfirmTimers={1:null,2:null,3:null,4:null}; // 코트 1~4 자동확정 타이머 // 코트별 확정 시각
+let pendingGameTimers={1:null,2:null,3:null,4:null}; // 확정 후 30초 유예 타이머 (게임수 반영 대기)
 let curTab=0,leftOnly=false,todayGender=null;
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장
 let autoFired=false,toastT=null,modalFn=null;
@@ -1211,21 +1212,10 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 })();
 
 /* ── 초기화 ── */
-/* 저장 전 전원 퇴소 처리 (퇴소시간 기록) */
-function leaveAllForSave(){
-  const t=timeStr();
-  // 현재 참석자 중 퇴소 안 한 인원 전원 퇴소 처리
-  const remaining=[...S.attendees];
-  remaining.forEach(a=>{
-    S.leftMembers.push({...a,leftAt:t});
-  });
-  S.attendees=[];
-  // 코트 초기화
-  CC={1:false,2:false,3:false,4:false,5:false,6:false};
-}
+/* 일괄(전원) 자동 퇴소 처리는 전부 제거함.
+   퇴소 버튼을 직접 누르지 않은 회원은 '퇴소 안 함(참석중)' 상태 그대로 저장/보관됨. */
 
 function autoReset(now){
-  // leaveAllForSave() 제거 - 21시 자동퇴소에서 이미 처리됨 (23:59에 재처리하면 퇴소시간 덮어씌워짐)
   saveStatHistory();
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
@@ -1234,10 +1224,9 @@ function autoReset(now){
 }
 function manualReset(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
-  openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(참석 중인 회원 전원 퇴소 처리 후 저장)',()=>{
-    leaveAllForSave();   // ① 전원 퇴소 처리 (퇴소시간 기록)
-    saveStatHistory();   // ② 통계 저장 (퇴소시간 포함)
-    archive(S,dateStr());// ③ 이력 보관
+  openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(퇴소 처리하지 않은 회원은 "퇴소 안 함"으로 저장됩니다)',()=>{
+    saveStatHistory();   // 통계 저장 (퇴소한 사람은 퇴소시간 포함, 안 한 사람은 참석중 그대로)
+    archive(S,dateStr());// 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
     clearAllDailyGuests();
@@ -1279,57 +1268,14 @@ function manualResetNoSave(){
 }
 
 /* ── 시계 ── */
-let autoLeave21Fired=false; // 평일 21시 자동퇴소 중복방지
-let autoLeave13Fired=false; // 주말 13시 자동퇴소 중복방지
+/* 21시/13시 일괄(전원) 자동퇴소 처리는 제거함. 퇴소 버튼을 누르지 않으면 계속 '참석중'으로 남음. */
 function checkAutoLeaveOnVisible(){
-  // 앱이 백그라운드였다가 복귀할 때 자동퇴소 시간을 놓쳤으면 즉시 처리
-  const n=new Date();
-  const dow=n.getDay();
-  const h=n.getHours(), m=n.getMinutes();
-  const isWeekday=dow>=1&&dow<=5;
-  const isWeekend=dow===0||dow===6;
-  // 평일: 21:00~23:58 사이에 복귀하면 퇴소 처리
-  if(isWeekday && h>=21 && h<24 && !(h===23&&m===59)){
-    if(!autoLeave21Fired && S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).length>0){
-      autoLeave21Fired=true;
-      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
-      toast('🌙 21시 자동퇴소 처리됨',3000);
-    }
-  }
-  // 주말: 13:00~23:58 사이에 복귀하면 퇴소 처리
-  if(isWeekend && h>=13 && h<24 && !(h===23&&m===59)){
-    if(!autoLeave13Fired && S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).length>0){
-      autoLeave13Fired=true;
-      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
-      toast('🌙 13시 자동퇴소 처리됨',3000);
-    }
-  }
+  // (일괄 자동퇴소 제거로 현재는 아무 동작 없음. 향후 필요한 복귀 체크용으로 자리만 유지)
 }
 
 function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
-  const dow=n.getDay(); // 0=일,1=월,...,5=금,6=토
-  const isWeekday=dow>=1&&dow<=5;
-  const isWeekend=dow===0||dow===6;
-  // 평일 21:00 자동퇴소
-  if(isWeekday&&n.getHours()===21&&n.getMinutes()<=1){
-    if(!autoLeave21Fired){
-      autoLeave21Fired=true;
-      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
-    }
-  } else {
-    if(n.getHours()!==21) autoLeave21Fired=false;
-  }
-  // 주말 13:00 자동퇴소
-  if(isWeekend&&n.getHours()===13&&n.getMinutes()<=1){
-    if(!autoLeave13Fired){
-      autoLeave13Fired=true;
-      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>doLeave(a.id,true));
-    }
-  } else {
-    if(n.getHours()!==13) autoLeave13Fired=false;
-  }
   checkAutoLeave();
   // 매 분 0초: 코트현황 전체 갱신
   if(n.getSeconds()===0){
@@ -1378,8 +1324,8 @@ function markAttend(id){
   if(S.attendees.find(x=>x.id===id)){
     S.attendees=S.attendees.filter(x=>x.id!==id);
   }
-  // leftMembers에 있으면 제거 (어제 데이터 혼재 방지)
-  S.leftMembers=S.leftMembers.filter(x=>x.id!==id);
+  // 재출석(출석→퇴소→재출석) 시 이전 세션(leftMembers) 기록은 그대로 보존한다.
+  // (예전에는 여기서 leftMembers를 지웠는데, 그러면 이전 출석~퇴소 세션이 통계에서 사라졌음)
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();toast(`${m.name} 출석 ✓  ${t}`);
@@ -1390,7 +1336,9 @@ function markAttend(id){
   }
 }
 function restoreAttendee(id){
-  const idx=S.leftMembers.findIndex(x=>x.id===id);
+  // 오늘 같은 사람이 여러 번 퇴소했을 수 있으므로 가장 최근 세션을 복구한다.
+  let idx=-1;
+  for(let i=S.leftMembers.length-1;i>=0;i--){ if(S.leftMembers[i].id===id){ idx=i; break; } }
   if(idx===-1)return;
   const a=S.leftMembers[idx];
   const t=timeStr();const ts=nowTs();
@@ -1411,7 +1359,9 @@ function doLeave(id, isAuto){
   if(!isAuto&&(appMode==='spectator'||appMode==='spectator_admin')){toast('👁 관전 모드 - 퇴소 불가');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   // 중복 처리 방지 (두 화면에서 동시에 자동퇴소 시도하는 race condition 방어)
-  if(S.leftMembers.find(x=>x.id===id)){
+  // id만이 아니라 같은 세션(attendTs)까지 일치할 때만 '이미 처리된 중복'으로 간주
+  // (재출석 후 다시 퇴소하는 경우는 attendTs가 달라서 정상적으로 새 세션이 저장됨)
+  if(S.leftMembers.find(x=>x.id===id && x.attendTs===a.attendTs)){
     S.attendees=S.attendees.filter(x=>x.id!==id);
     save();renderAll();
     return;
@@ -1421,6 +1371,7 @@ function doLeave(id, isAuto){
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();
+  saveStatHistory(); // 퇴소 즉시 통계(tennis_stats)에도 반영 (통계 탭을 열어야만 저장되던 문제 수정)
   toast(isAuto ? `⏰ ${a.name} 퇴소예정 10분 경과 → 자동 퇴소 처리됨` : `${a.name} 퇴소 처리됨`);
 }
 function leave(id){
@@ -1446,7 +1397,7 @@ function toggleCourt(id,n){
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   if(!NEXT_COURTS.includes(n)){
     if(a.court&&!NEXT_COURTS.includes(a.court)){
-      cancelAutoConfirm(a.court); // 이전 코트 타이머 취소
+      cancelAutoConfirm(a.court);cancelPendingGame(a.court); // 이전 코트 타이머/게임수 유예 취소
       CC[a.court]=false;
     }
     a.court=n;a.hasCourt=true;
@@ -1613,16 +1564,31 @@ function clearCourt(n){
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  cancelAutoConfirm(n);CC[n]=false;CT[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
-// 자동확정: assignTeam 후 2분 뒤 자동으로 confirmCourt 호출
+// 확정 후 30초 유예: 유예시간 안에 재편성(전체 해제/일부 교체)하면 게임수에 반영되지 않음
+function cancelPendingGame(n){
+  if(pendingGameTimers[n]){ clearTimeout(pendingGameTimers[n]); pendingGameTimers[n]=null; }
+}
+function scheduleGameCommit(n){
+  cancelPendingGame(n);
+  pendingGameTimers[n]=setTimeout(()=>{
+    pendingGameTimers[n]=null;
+    if(!CC[n]) return; // 그 사이 해제/취소됨 → 반영 안 함
+    const pl=S.attendees.filter(x=>x.court===n);
+    if(pl.length!==CMAX) return; // 그 사이 인원이 바뀜(교체/이탈) → 반영 안 함, 재확정 필요
+    pl.forEach(a=>{a.games+=1;});
+    recordCourtGame(n);save();renderAll();
+  }, 30*1000);
+}
+// 자동확정: assignTeam 후 1분 뒤 자동으로 confirmCourt 호출
 function autoConfirmCourtSilent(n){
   if(CC[n]) return;
   const pl=S.attendees.filter(x=>x.court===n);
   if(pl.length<CMAX||pl.some(a=>a.leavingScheduled)) return;
-  pl.forEach(a=>{a.games+=1;});
   CC[n]=true;CT[n]=Date.now();AT[n]=null;
-  recordCourtGame(n);save();renderAll();
+  scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성 가능)
+  save();renderAll();
   toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
 }
 
@@ -1659,7 +1625,9 @@ function confirmCourt(n){
   const leavingMembers=pl.filter(a=>a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
-  pl.forEach(a=>{a.games+=1;});CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);recordCourtGame(n);save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
+  CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);
+  scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성하면 반영 안 됨)
+  save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1764,9 +1732,9 @@ function assignTeam(cn,teamIds){
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
-  cancelAutoConfirm(cn); // 배정 전 해당 코트 타이머 초기화
+  cancelAutoConfirm(cn);cancelPendingGame(cn); // 배정 전 해당 코트 타이머 초기화 (게임수 유예분도 취소)
   const prevCourts=new Set(teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court));
-  prevCourts.forEach(pc=>{if(pc!==cn)CC[pc]=false;});
+  prevCourts.forEach(pc=>{if(pc!==cn){CC[pc]=false;cancelPendingGame(pc);}});
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
@@ -2389,9 +2357,11 @@ function saveStatHistory(){
     statRef.once('value').then(snap=>{
       const existing=snap.val();
       function mergeMembers(existList, newList){
+        // id만으로 합치면 재출석(같은 사람이 하루에 여러 번 출석/퇴소) 세션이 서로 덮어써짐.
+        // id + 출석시각(attendTs)을 합친 값을 키로 써서 세션별로 따로 저장한다.
         const map={};
-        (existList||[]).forEach(a=>{ map[a.id]=a; });
-        newList.forEach(a=>{ map[a.id]=a; });
+        (existList||[]).forEach(a=>{ map[a.id+'_'+(a.attendTs||0)]=a; });
+        newList.forEach(a=>{ map[a.id+'_'+(a.attendTs||0)]=a; });
         return Object.values(map);
       }
       // 게스트 제외 후 저장 (isGuest:true 또는 이름에 '게스트' 포함 또는 HIDDEN)
@@ -2404,10 +2374,14 @@ function saveStatHistory(){
         (existing?.leftMembers||[]).filter(filterSave),
         S.leftMembers.filter(filterSave).map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt,attendTs:a.attendTs||null,leftTs:a.leftTs||null}))
       );
-      const allMerged=[...mergedAtt,...mergedLeft];
+      // 퇴소 완료된 '세션'(id+attendTs)만 attendees(참석중) 목록에서 제거.
+      // 같은 사람의 다른(재출석) 세션이 attendTs가 달라 그대로 남아있으면 정상.
+      const mergedLeftKeys=new Set(mergedLeft.map(a=>a.id+'_'+(a.attendTs||0)));
+      const mergedAttClean=mergedAtt.filter(a=>!mergedLeftKeys.has(a.id+'_'+(a.attendTs||0)));
+      const allMerged=[...mergedAttClean,...mergedLeft];
       const entry={
         date:today,
-        attendees:mergedAtt,
+        attendees:mergedAttClean,
         leftMembers:mergedLeft,
         totalAttend:allMerged.length,
         totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
@@ -2881,7 +2855,10 @@ function renderStatPage(){
     const nowSec = nowTs();
 
     // 날짜 선택 UI (항상 표시)
+    const ydaySt = (()=>{ const d=new Date(todaySt+'T00:00:00'); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
     const effDateUI = '<div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'
+      + '<button onclick="statEffFrom=\'' + ydaySt + '\';document.getElementById(\'pg3\').innerHTML=renderStatPage();" '
+      + 'style="padding:4px 8px;border-radius:6px;border:1.5px solid ' + (selDate===ydaySt?'#185FA5':'#D8D5CF') + ';background:' + (selDate===ydaySt?'#185FA5':'#fff') + ';color:' + (selDate===ydaySt?'#fff':'#666') + ';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">어제</button>'
       + '<button onclick="statEffFrom=\'\';document.getElementById(\'pg3\').innerHTML=renderStatPage();" '
       + 'style="padding:4px 8px;border-radius:6px;border:1.5px solid ' + (selDate===todaySt?'#185FA5':'#D8D5CF') + ';background:' + (selDate===todaySt?'#185FA5':'#fff') + ';color:' + (selDate===todaySt?'#fff':'#666') + ';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">오늘</button>'
       + '<input type="date" value="' + selDate + '" onchange="statEffFrom=this.value;document.getElementById(\'pg3\').innerHTML=renderStatPage();" style="padding:4px 6px;border:.5px solid #D8D5CF;border-radius:6px;font-size:11px;font-family:inherit">'
@@ -2895,23 +2872,24 @@ function renderStatPage(){
     // 데이터 수집
     let effMembers = [];
     if(selDate === todaySt){
-      // leftMembers 우선: 같은 id가 양쪽에 있으면 leftMembers(퇴소 데이터) 사용
-    const effSeenIds = new Set();
-    // leftMembers 먼저 추가
+      // 세션(id+출석시각) 기준으로 판단: 같은 사람이라도 재출석해서 attendTs가 다르면 별개 세션으로 모두 표시
+    const effSeenKeys = new Set();
+    // leftMembers(완료된 세션) 먼저 추가
     S.leftMembers.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
-      effSeenIds.add(a.id); effMembers.push(a);
+      effSeenKeys.add(a.id+'_'+(a.attendTs||0)); effMembers.push(a);
     });
-    // attendees는 leftMembers에 없는 사람만 추가
-    S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!effSeenIds.has(a.id)).forEach(a=>{
+    // attendees는 같은 세션이 leftMembers에 없는 것만 추가 (재출석 중인 다른 세션은 별도로 표시됨)
+    S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!effSeenKeys.has(a.id+'_'+(a.attendTs||0))).forEach(a=>{
       effMembers.push(a);
     });
     } else {
       const dayData = st.find(d=>d.date===selDate);
       if(dayData){
-        // 중복 제거 (attendees+leftMembers에 같은 사람 있을 수 있음)
+        // 세션(id+출석시각) 기준 중복 제거: 같은 사람의 여러 출석/퇴소 세션은 각각 표시
         const seen = new Set();
         [...(dayData.attendees||[]),...(dayData.leftMembers||[])].forEach(a=>{
-          if(!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!seen.has(a.id)){seen.add(a.id);effMembers.push(a);}
+          const key=a.id+'_'+(a.attendTs||0);
+          if(!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!seen.has(key)){seen.add(key);effMembers.push(a);}
         });
       }
     }
