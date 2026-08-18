@@ -738,12 +738,32 @@ function deleteMember(id){
   });
 }
 
-const TBANDS=[
+const TBANDS_WEEKDAY=[
+  {label:'17:30 이전',s:-Infinity,e:17*60+30},
   {label:'17:30~18:00',s:17*60+30,e:18*60},
   {label:'18:00~19:00',s:18*60,e:19*60},
   {label:'19:00~20:00',s:19*60,e:20*60},
   {label:'20:00~21:00',s:20*60,e:21*60},
 ];
+const TBANDS_WEEKEND=[
+  {label:'07:00 이전',s:-Infinity,e:7*60},
+  {label:'07:00~07:30',s:7*60,e:7*60+30},
+  {label:'07:30~08:00',s:7*60+30,e:8*60},
+  {label:'08:00~08:30',s:8*60,e:8*60+30},
+  {label:'08:30~09:00',s:8*60+30,e:9*60},
+  {label:'09:00~09:30',s:9*60,e:9*60+30},
+  {label:'09:30~10:00',s:9*60+30,e:10*60},
+  {label:'10:00~10:30',s:10*60,e:10*60+30},
+  {label:'10:30~11:00',s:10*60+30,e:11*60},
+  {label:'11:00~11:30',s:11*60,e:11*60+30},
+  {label:'11:30~12:00',s:11*60+30,e:12*60},
+  {label:'12:00~12:30',s:12*60,e:12*60+30},
+  {label:'12:30~13:00',s:12*60+30,e:13*60},
+];
+function getTBands(){
+  const dow=new Date().getDay(); // 0=일,6=토
+  return (dow===0||dow===6) ? TBANDS_WEEKEND : TBANDS_WEEKDAY;
+}
 const CMAX=4;
 const HIDDEN_MEMBER_IDS=[998,999]; // 관리자(998)·모니터링(999) — 숨김 회원, 모든 현황에서 항상 제외
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
@@ -1122,7 +1142,7 @@ function dateStr(d=new Date()){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-
 function timeStr(d=new Date()){return`${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function nowTs(){return Math.floor(Date.now()/1000);}
 function tmins(s){if(!s)return 9999;const[h,m]=s.split(':').map(Number);return h*60+m;}
-function getBand(t){const m=tmins(t);return TBANDS.find(b=>m>=b.s&&m<b.e)||null;}
+function getBand(t){const m=tmins(t);return getTBands().find(b=>m>=b.s&&m<b.e)||null;}
 function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
@@ -1970,21 +1990,23 @@ function renderToday(){
     const lbl=todayGender==='m'?'👨 남자 참석자':'👩 여자 참석자';
     let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">${lbl} (${list.length}명)</div><button onclick="todayGender=null;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!list.length){h+=`<div class="empty">🎾<br>해당 성별 참석자가 없습니다.</div></div>`;return h;}
-    const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
+    const bands=getTBands();
+    const grp={};bands.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
     list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
     Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
-    [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+    [...bands].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
     if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
     h+=`</div>`;return h;
   }
   const list=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
   let h=`<div class="pg-inner"><div class="stitle">📋 오늘 참석자 (${list.length}명)</div>`;
   if(!list.length){h+=`<div class="empty" style="padding:30px 0">🎾<br>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div></div>`;return h;}
-  const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
+  const bands=getTBands();
+  const grp={};bands.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
   list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
   // 각 그룹 안에서 출석시각 내림차순(최신 출석자가 맨 위)
   Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
-  [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+  [...bands].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
   if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
   h+=`</div>`;return h;
 }
