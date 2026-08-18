@@ -175,6 +175,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕','Segoe UI
         <span class="hdr-date" id="hdr-date"></span>
         <span class="hdr-clock" id="hdr-clock"></span>
         <div class="sync-dot" id="sync-dot" title="동기화 상태"></div>
+        <button id="notify-btn" onclick="toggleNotifyPermission()" title="출석/배정 알림" style="background:rgba(255,255,255,.18);color:rgba(255,255,255,.9);border:none;border-radius:6px;padding:3px 7px;font-size:13px;cursor:pointer;font-family:inherit">🔕</button>
         <button id="mode-toggle-btn" onclick="toggleAppMode()" style="display:none;background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap"></button>
       </div>
     </div>
@@ -860,7 +861,14 @@ function scheduleGameCommit(n){
     pendingGameTimers[n]=null;
     if(!CC[n]) return; // 그 사이 해제/취소됨 → 반영 안 함
     const pl=S.attendees.filter(x=>x.court===n);
-    if(pl.length!==CMAX) return; // 그 사이 인원이 바뀜(교체/이탈) → 반영 안 함, 재확정 필요
+    if(pl.length!==CMAX){
+      // 인원이 바뀌어 4명이 아님 → 확정 자체를 취소해서 다시 확정하도록 명확히 알려줌
+      CC[n]=false;CT[n]=null;
+      save();renderAll();
+      toast(`⚠️ ${CNAMES[n]} 인원이 바뀌어 확정이 취소됐습니다. 4명 확인 후 다시 확정해주세요`,4500);
+      notifyEvent('⚠️ 확정 취소됨', `${CNAMES[n]} 인원 변경으로 게임수 반영 취소 - 재확정 필요`);
+      return;
+    }
     pl.forEach(a=>{a.games+=1;});
     recordCourtGame(n);save();renderAll();
   }, 30*1000);
@@ -1068,6 +1076,35 @@ function toast(msg,dur=2400){
   const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');
   if(toastT)clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),dur);
 }
+/* ── 출석/배정 알림(브라우저 알림) ── */
+function updateNotifyBtn(){
+  const btn=document.getElementById('notify-btn');if(!btn)return;
+  if(!('Notification' in window)){ btn.style.display='none'; return; }
+  btn.textContent = Notification.permission==='granted' ? '🔔' : '🔕';
+  btn.title = Notification.permission==='granted' ? '출석/배정 알림 켜짐 (끄려면 브라우저 설정에서 변경)' : '눌러서 출석/배정 알림 켜기';
+}
+function toggleNotifyPermission(){
+  if(!('Notification' in window)){ toast('이 브라우저는 알림을 지원하지 않습니다'); return; }
+  if(Notification.permission==='granted'){
+    toast('🔔 알림이 이미 켜져 있습니다 (끄려면 브라우저/사이트 설정에서 알림 권한을 변경하세요)',3500);
+    return;
+  }
+  if(Notification.permission==='denied'){
+    toast('⚠️ 알림이 차단되어 있습니다. 브라우저 설정 > 사이트 설정 > 알림에서 허용해주세요',4000);
+    return;
+  }
+  Notification.requestPermission().then(p=>{
+    updateNotifyBtn();
+    toast(p==='granted' ? '🔔 알림이 켜졌습니다' : '알림을 켜지 않았습니다');
+  });
+}
+function notifyEvent(title, body){
+  try{
+    if(!('Notification' in window) || Notification.permission!=='granted') return;
+    const n=new Notification(title, {body, icon:'https://em-content.zobj.net/source/apple/391/tennis_1f3be.png', tag:'tennis-'+Date.now()});
+    setTimeout(()=>n.close(), 8000);
+  }catch(e){}
+}
 function openModal(msg,fn){document.getElementById('mmsg').textContent=msg;modalFn=fn;document.getElementById('moverlay').classList.add('show');}
 function closeModal(){document.getElementById('moverlay').classList.remove('show');modalFn=null;}
 document.getElementById('mok').onclick=()=>{if(modalFn)modalFn();closeModal();};
@@ -1249,6 +1286,7 @@ function markAttend(id){
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();renderBoard();toast(`${m.name} 출석   ${t}`);
+  notifyEvent('🎾 출석', `${m.name} 님 출석 (${t})`);
 }
 function restoreAttendee(id){
   // 오늘 같은 사람이 여러 번 퇴소했을 수 있으므로 가장 최근 세션을 복구한다.
@@ -1268,6 +1306,7 @@ function restoreAttendee(id){
     nextCourt1:null,nextCourt2:null
   });
   save();renderAll();toast(`${a.name} 복구 완료 (${t})`);
+  notifyEvent('🎾 출석', `${a.name} 님 재출석 (${t})`);
 }
 
 function doLeave(id, isAuto){
@@ -1342,18 +1381,33 @@ function leave(id){
 function toggleCourt(id,n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  if(a.court===n){a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();save();renderAll();return;}
+  if(a.court===n){
+    a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
+    if(n>=1&&n<=4&&CC[n]){
+      CC[n]=false;CT[n]=null;cancelAutoConfirm(n);cancelPendingGame(n);
+      toast(`⚠️ ${CNAMES[n]} 인원 변경으로 확정 해제됨`);
+    }
+    save();renderAll();return;
+  }
   if(a.leavingScheduled){openModal(`️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ️`);return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ️`);return;}
   if(!NEXT_COURTS.includes(n)){
-    if(a.court&&!NEXT_COURTS.includes(a.court))CC[a.court]=false;
+    if(a.court&&!NEXT_COURTS.includes(a.court)){
+      cancelAutoConfirm(a.court);cancelPendingGame(a.court);
+      CC[a.court]=false;
+    }
     a.court=n;a.hasCourt=true;
+    notifyEvent(`🎾 ${CNAMES[n]} 배정`, `${a.name} 님 배정`);
   } else {
     const nc=n===5?'nextCourt1':'nextCourt2';
     a[nc]=a[nc]===n?null:n;save();renderAll();return;
   }
   save();renderAll();
+  // 4명 배정 완료되면 자동확정 타이머 시작
+  if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
+    scheduleAutoConfirm(n);
+  }
 }
 function toggleNextCourt(id,which){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1479,6 +1533,11 @@ function assignTeam(cn,teamIds){
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
   save();renderAll();toast(`◆ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
+  {
+    const names=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(Boolean).map(a=>a.name).join(', ');
+    notifyEvent(`🎾 ${CNAMES[cn]} 배정`, names);
+  }
+  if(cn>=1&&cn<=4&&!CC[cn]&&S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
 }
 function assignNextTeam(which,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -2801,6 +2860,7 @@ function clearStatHistory(){
 
 /* ── 전체 렌더 ── */
 function renderAll(){
+  updateNotifyBtn();
   renderStats();
   renderNoticeBanner();
   // 항상 필요한 탭(오늘참석자/코트현황)은 모드 무관하게 렌더링
