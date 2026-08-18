@@ -687,12 +687,32 @@ function deleteMember(id){
   });
 }
 
-const TBANDS=[
+const TBANDS_WEEKDAY=[
+  {label:'17:30 이전',s:-Infinity,e:17*60+30},
   {label:'17:30~18:00',s:17*60+30,e:18*60},
   {label:'18:00~19:00',s:18*60,e:19*60},
   {label:'19:00~20:00',s:19*60,e:20*60},
   {label:'20:00~21:00',s:20*60,e:21*60},
 ];
+const TBANDS_WEEKEND=[
+  {label:'07:00 이전',s:-Infinity,e:7*60},
+  {label:'07:00~07:30',s:7*60,e:7*60+30},
+  {label:'07:30~08:00',s:7*60+30,e:8*60},
+  {label:'08:00~08:30',s:8*60,e:8*60+30},
+  {label:'08:30~09:00',s:8*60+30,e:9*60},
+  {label:'09:00~09:30',s:9*60,e:9*60+30},
+  {label:'09:30~10:00',s:9*60+30,e:10*60},
+  {label:'10:00~10:30',s:10*60,e:10*60+30},
+  {label:'10:30~11:00',s:10*60+30,e:11*60},
+  {label:'11:00~11:30',s:11*60,e:11*60+30},
+  {label:'11:30~12:00',s:11*60+30,e:12*60},
+  {label:'12:00~12:30',s:12*60,e:12*60+30},
+  {label:'12:30~13:00',s:12*60+30,e:13*60},
+];
+function getTBands(){
+  const dow=new Date().getDay();
+  return (dow===0||dow===6) ? TBANDS_WEEKEND : TBANDS_WEEKDAY;
+}
 const CMAX=4;
 const HIDDEN_MEMBER_IDS=[998,999]; // 관리자(998)·모니터링(999) — 숨김 회원, 모든 현황에서 항상 제외
 const CNAMES={1:'1코트',2:'2코트',3:'3코트',4:'4코트',5:'다음차례1',6:'다음차례2'};
@@ -825,10 +845,25 @@ let CC={1:false,2:false,3:false,4:false,5:false,6:false};
 let CT={1:null,2:null,3:null,4:null,5:null,6:null};
 let AT={1:null,2:null,3:null,4:null}; // 코트별 배정 타임스탬프 (자동확정용)
 let autoConfirmTimers={1:null,2:null,3:null,4:null};
+let pendingGameTimers={1:null,2:null,3:null,4:null}; // 확정 후 30초 유예 타이머 (게임수 반영 대기)
 
 function cancelAutoConfirm(n){
   if(autoConfirmTimers[n]){ clearTimeout(autoConfirmTimers[n]); autoConfirmTimers[n]=null; }
   AT[n]=null;
+}
+function cancelPendingGame(n){
+  if(pendingGameTimers[n]){ clearTimeout(pendingGameTimers[n]); pendingGameTimers[n]=null; }
+}
+function scheduleGameCommit(n){
+  cancelPendingGame(n);
+  pendingGameTimers[n]=setTimeout(()=>{
+    pendingGameTimers[n]=null;
+    if(!CC[n]) return; // 그 사이 해제/취소됨 → 반영 안 함
+    const pl=S.attendees.filter(x=>x.court===n);
+    if(pl.length!==CMAX) return; // 그 사이 인원이 바뀜(교체/이탈) → 반영 안 함, 재확정 필요
+    pl.forEach(a=>{a.games+=1;});
+    recordCourtGame(n);save();renderAll();
+  }, 30*1000);
 }
 function scheduleAutoConfirm(n){
   if(n<1||n>4) return;
@@ -839,9 +874,9 @@ function scheduleAutoConfirm(n){
     if(CC[n]) return;
     const pl=S.attendees.filter(x=>x.court===n);
     if(pl.length<CMAX) return;
-    pl.forEach(a=>{a.games+=1;});
     CC[n]=true; CT[n]=Date.now(); AT[n]=null;
-    recordCourtGame(n); save(); renderBoard();
+    scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성 가능)
+    save(); renderBoard();
     toast(`◆ ${CNAMES[n]} 자동 확정 (1분 경과)`);
   }, 60*1000); // 1분
 }
@@ -999,7 +1034,7 @@ function dateStr(d=new Date()){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-
 function timeStr(d=new Date()){return`${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function nowTs(){return Math.floor(Date.now()/1000);}
 function tmins(s){if(!s)return 9999;const[h,m]=s.split(':').map(Number);return h*60+m;}
-function getBand(t){const m=tmins(t);return TBANDS.find(b=>m>=b.s&&m<b.e)||null;}
+function getBand(t){const m=tmins(t);return getTBands().find(b=>m>=b.s&&m<b.e)||null;}
 function todayLbl(){const d=new Date(),ds=['일','월','화','수','목','금','토'];return`${d.getMonth()+1}/${d.getDate()}(${ds[d.getDay()]})`;}
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
@@ -1074,20 +1109,10 @@ function showGender(g){todayGender=g;leftOnly=false;curTab=1;
 
 /* ── 초기화 ── */
 /* 저장 전 전원 퇴소 처리 (퇴소시간 기록) */
-function leaveAllForSave(){
-  const t=timeStr();
-  // 현재 참석자 중 퇴소 안 한 인원 전원 퇴소 처리
-  const remaining=[...S.attendees];
-  remaining.forEach(a=>{
-    S.leftMembers.push({...a,leftAt:t});
-  });
-  S.attendees=[];
-  // 코트 초기화
-  CC={1:false,2:false,3:false,4:false,5:false,6:false};
-}
+/* 일괄(전원) 자동 퇴소 처리는 전부 제거함.
+   퇴소 버튼을 직접 누르지 않은 회원은 '퇴소 안 함(참석중)' 상태 그대로 저장/보관됨. */
 
 function autoReset(now){
-  leaveAllForSave();
   saveStatHistory();
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
@@ -1095,10 +1120,9 @@ function autoReset(now){
 }
 function manualReset(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
-  openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(참석 중인 회원 전원 퇴소 처리 후 저장)',()=>{
-    leaveAllForSave();   // ① 전원 퇴소 처리 (퇴소시간 기록)
-    saveStatHistory();   // ② 통계 저장 (퇴소시간 포함)
-    archive(S,dateStr());// ③ 이력 보관
+  openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(퇴소 처리하지 않은 회원은 "퇴소 안 함"으로 저장됩니다)',()=>{
+    saveStatHistory();   // 통계 저장 (퇴소한 사람은 퇴소시간 포함, 안 한 사람은 참석중 그대로)
+    archive(S,dateStr());// 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast(' 오늘 최종 저장 후 초기화 완료');
@@ -1218,17 +1242,18 @@ function updateElapsedBadges(){
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
-  // 이미 출석 중
-  if(S.attendees.find(x=>x.id===id)){toast(`${m.name} 이미 출석`);renderBoard();return;}
-  // 퇴소한 사람이면 복구 처리
-  if(S.leftMembers.find(x=>x.id===id)){restoreAttendee(id);return;}
-  // 신규 출석
+  if(S.attendees.find(x=>x.id===id)){
+    S.attendees=S.attendees.filter(x=>x.id!==id);
+  }
+  // 재출석(출석→퇴소→재출석) 시 이전 세션(leftMembers) 기록은 그대로 보존한다.
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   save();renderBoard();toast(`${m.name} 출석   ${t}`);
 }
 function restoreAttendee(id){
-  const idx=S.leftMembers.findIndex(x=>x.id===id);
+  // 오늘 같은 사람이 여러 번 퇴소했을 수 있으므로 가장 최근 세션을 복구한다.
+  let idx=-1;
+  for(let i=S.leftMembers.length-1;i>=0;i--){ if(S.leftMembers[i].id===id){ idx=i; break; } }
   if(idx===-1)return;
   const a=S.leftMembers[idx];
   const t=timeStr();const ts=nowTs();
@@ -1248,9 +1273,19 @@ function restoreAttendee(id){
 function doLeave(id, isAuto){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   // 중복 처리 방지 (두 화면에서 동시에 자동퇴소 시도하는 race condition 방어)
-  if(S.leftMembers.find(x=>x.id===id)){
+  // id만이 아니라 같은 세션(attendTs)까지 일치할 때만 '이미 처리된 중복'으로 간주
+  if(S.leftMembers.find(x=>x.id===id && x.attendTs===a.attendTs)){
     S.attendees=S.attendees.filter(x=>x.id!==id);
     save();renderAll();
+    return;
+  }
+  // 0게임 상태로 퇴소 → 출석 자체를 없던 일로 간주, 기록을 완전히 삭제 (통계/명단 반영 안 함)
+  if((a.games||0)===0){
+    S.attendees=S.attendees.filter(x=>x.id!==id);
+    if(a.court)CC[a.court]=false;
+    save();renderAll();
+    removeSessionFromStats(id, a.attendTs, dateStr());
+    toast(`${a.name} 0게임 퇴소 → 출석 기록 삭제됨`);
     return;
   }
   const leftT=timeStr();const leftTs=nowTs();
@@ -1258,7 +1293,35 @@ function doLeave(id, isAuto){
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();
+  saveStatHistory(); // 퇴소 즉시 통계(tennis_stats)에도 반영
   toast(isAuto ? `⏰ ${a.name} 퇴소예정 10분 경과 → 자동 퇴소 처리됨` : `${a.name} 퇴소 처리됨`);
+}
+// 0게임 세션을 tennis_stats(해당 날짜)에서 완전히 제거 (이미 저장돼 있었을 경우 대비)
+function removeSessionFromStats(id, attendTs, dateKey){
+  try{
+    const statRef=firebase.database().ref('tennis_stats/'+dateKey);
+    statRef.once('value').then(snap=>{
+      const existing=snap.val();
+      if(!existing) return;
+      const key=id+'_'+(attendTs||0);
+      const newAtt=(existing.attendees||[]).filter(a=>(a.id+'_'+(a.attendTs||0))!==key);
+      const newLeft=(existing.leftMembers||[]).filter(a=>(a.id+'_'+(a.attendTs||0))!==key);
+      const allMerged=[...newAtt,...newLeft];
+      const entry={
+        date:dateKey,
+        attendees:newAtt,
+        leftMembers:newLeft,
+        totalAttend:allMerged.length,
+        totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
+      };
+      statRef.set(entry);
+      try{
+        const stArr=JSON.parse(localStorage.getItem(STKEY)||'[]');
+        const idx=stArr.findIndex(x=>x.date===dateKey);
+        if(idx>=0){ stArr[idx]=entry; localStorage.setItem(STKEY, JSON.stringify(stArr)); }
+      }catch(e){}
+    });
+  }catch(e){}
 }
 function leave(id){
   // member 모드에서는 본인 또는 모니터링/관리자 계정만 본인을 퇴소시킬 수 있음
@@ -1267,7 +1330,10 @@ function leave(id){
     if(!me || me.id!==id){ toast('본인만 퇴소 처리할 수 있습니다'); return; }
   }
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  openModal(`${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`,()=>{
+  const msg=(a.games||0)===0
+    ? `${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: 0게임 → 퇴소 시 출석 기록이 완전히 삭제됩니다)`
+    : `${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`;
+  openModal(msg,()=>{
     doLeave(id, false);
   });
 }
@@ -1320,7 +1386,7 @@ function clearCourt(n){
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1330,7 +1396,9 @@ function confirmCourt(n){
   const leavingMembers=pl.filter(a=>a.leavingScheduled);
   if(leavingMembers.length){openModal(`️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
-  pl.forEach(a=>{a.games+=1;});CC[n]=true;recordCourtGame(n);save();renderAll();toast(`◆ ${CNAMES[n]} 확정`);
+  CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);
+  scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성하면 반영 안 됨)
+  save();renderAll();toast(`◆ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1405,7 +1473,8 @@ function assignTeam(cn,teamIds){
   const prevCourts=new Set(
     teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court)
   );
-  prevCourts.forEach(pc=>{ if(pc!==cn) CC[pc]=false; });
+  cancelAutoConfirm(cn);cancelPendingGame(cn);
+  prevCourts.forEach(pc=>{ if(pc!==cn){ CC[pc]=false;cancelPendingGame(pc); } });
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   CC[cn]=false;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
@@ -1633,21 +1702,23 @@ function renderToday(){
     const lbl=todayGender==='m'?'남 남자 참석자':'여 여자 참석자';
     let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">${lbl} (${list.length}명)</div><button onclick="todayGender=null;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!list.length){h+=`<div class="empty"><br>해당 성별 참석자가 없습니다.</div></div>`;return h;}
-    const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
+    const bands=getTBands();
+    const grp={};bands.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
     list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
     Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
-    [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+    [...bands].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
     if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
     h+=`</div>`;return h;
   }
   const list=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
   let h=`<div class="pg-inner"><div class="stitle"> 오늘 참석자 (${list.length}명)</div>`;
   if(!list.length){h+=`<div class="empty" style="padding:30px 0"><br>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div></div>`;return h;}
-  const grp={};TBANDS.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
+  const bands=getTBands();
+  const grp={};bands.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
   list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
   // 각 그룹 안에서 출석시각 내림차순(최신 출석자가 맨 위)
   Object.keys(grp).forEach(k=>grp[k].sort((a,b)=>(b.attendTs||0)-(a.attendTs||0)));
-  [...TBANDS].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
+  [...bands].reverse().forEach(b=>{if(grp[b.label].length)h+=`<div class="tg"><div class="tg-hdr">⏰ ${b.label} · ${grp[b.label].length}명</div>${grp[b.label].map(attendRow).join('')}</div>`;});
   if(grp['기타'].length)h+=`<div class="tg"><div class="tg-hdr" style="background:#F0EDE8;color:#888780">⏰ 기타</div>${grp['기타'].map(attendRow).join('')}</div>`;
   h+=`</div>`;return h;
 }
@@ -1911,23 +1982,28 @@ function saveStatHistory(){
     statRef.once('value').then(snap=>{
       const existing=snap.val();
       function mergeMembers(existList, newList){
+        // id만으로 합치면 재출석(같은 사람이 하루에 여러 번 출석/퇴소) 세션이 서로 덮어써짐.
+        // id + 출석시각(attendTs)을 합친 값을 키로 써서 세션별로 따로 저장한다.
         const map={};
-        (existList||[]).forEach(a=>{ map[a.id]=a; });
-        newList.forEach(a=>{ map[a.id]=a; });
+        (existList||[]).forEach(a=>{ map[a.id+'_'+(a.attendTs||0)]=a; });
+        newList.forEach(a=>{ map[a.id+'_'+(a.attendTs||0)]=a; });
         return Object.values(map);
       }
       const mergedAtt=mergeMembers(
         existing?.attendees||[],
-        S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time}))
+        S.attendees.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,attendTs:a.attendTs||null}))
       );
       const mergedLeft=mergeMembers(
         existing?.leftMembers||[],
-        S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt}))
+        S.leftMembers.map(a=>({id:a.id,name:a.name,gender:a.gender,games:a.games,time:a.time,leftAt:a.leftAt,attendTs:a.attendTs||null,leftTs:a.leftTs||null}))
       );
-      const allMerged=[...mergedAtt,...mergedLeft];
+      // 퇴소 완료된 '세션'(id+attendTs)만 attendees(참석중) 목록에서 제거.
+      const mergedLeftKeys=new Set(mergedLeft.map(a=>a.id+'_'+(a.attendTs||0)));
+      const mergedAttClean=mergedAtt.filter(a=>!mergedLeftKeys.has(a.id+'_'+(a.attendTs||0)));
+      const allMerged=[...mergedAttClean,...mergedLeft];
       const entry={
         date:today,
-        attendees:mergedAtt,
+        attendees:mergedAttClean,
         leftMembers:mergedLeft,
         totalAttend:allMerged.length,
         totalGames:allMerged.reduce((s,a)=>s+(a.games||0),0),
