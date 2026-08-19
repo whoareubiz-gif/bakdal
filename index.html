@@ -1534,16 +1534,19 @@ function releaseNormal(id,n){
 function releaseMidGameFix(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   const alreadyCommitted = (n>=1&&n<=4) && CC[n] && !pendingGameTimers[n];
-  a.court=null; // courtFreeAt/courtFreeTs는 그대로 둔다 (대기시간 유지)
-  if(alreadyCommitted && a.games>0){
-    a.games -= 1; // 이미 반영된 게임수 되돌림
+  if(alreadyCommitted){
+    // 이미 게임수가 반영된 뒤라면, 그 게임 자체가 무효가 되는 것이므로
+    // 빠지는 사람만이 아니라 그 코트에 함께 확정되어 있던 인원 전원의 게임수를 되돌린다.
+    const pl=S.attendees.filter(x=>x.court===n);
+    pl.forEach(p=>{ if(p.games>0) p.games -= 1; });
   }
+  a.court=null; // courtFreeAt/courtFreeTs는 그대로 둔다 (대기시간 유지)
   if(n>=1&&n<=4&&CC[n]){
     CC[n]=false;CT[n]=null;cancelAutoConfirm(n);cancelPendingGame(n);
   }
   save();renderAll();
   toast(alreadyCommitted
-    ? `🛠 ${a.name} 게임중 수정 → 게임수 되돌림, 대기시간 유지`
+    ? `🛠 ${CNAMES[n]} 게임중 수정 → 코트 전원 게임수 되돌림, 대기시간 유지`
     : `🛠 ${a.name} 게임중 수정 → 게임수 미반영, 대기시간 유지`);
 }
 function toggleNextCourt(id,which){
