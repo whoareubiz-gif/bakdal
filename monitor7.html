@@ -254,7 +254,9 @@ let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 
+let currentSyncStatus='busy'; // 'ok' | 'busy' | 'err'
 function setSyncDot(st){
+  currentSyncStatus=st;
   const d=document.getElementById('sync-dot');
   if(d){d.className='sync-dot'+(st?' '+st:'');}
   // 보드모드 sync dot도 같이 갱신 (모니터링 화면에서 연결 상태 확인용)
@@ -263,6 +265,15 @@ function setSyncDot(st){
     bd.style.background=st==='ok'?'#7FFFB0':st==='err'?'#FF7070':st==='busy'?'#FFD580':'#aaa';
     bd.title='Firebase '+(st==='ok'?'연결됨':st==='err'?'연결 끊김':st==='busy'?'동기화 중':'대기중');
   }
+}
+// 실시간 연동이 끊긴(빨간불) 상태에서는 화면에 오래된 데이터가 남아있을 수 있으므로
+// 배정/확정/출석/퇴소 등 상태를 바꾸는 조작을 막아 "꼬임"을 예방한다.
+function requireSync(){
+  if(currentSyncStatus==='err'){
+    toast('⚠️ 실시간 연동이 끊겨 있습니다. 인터넷 연결 확인 후 새로고침하고 다시 시도해주세요');
+    return false;
+  }
+  return true;
 }
 
 /* Firebase 객체/배열 정규화
@@ -1252,6 +1263,7 @@ function updateElapsedBadges(){
 
 /* ── 출석/퇴소 ── */
 function markAttend(id){
+  if(!requireSync())return;
   const m=MEMBERS.find(x=>x.id===id);if(!m)return;
   if(S.attendees.find(x=>x.id===id)){
     S.attendees=S.attendees.filter(x=>x.id!==id);
@@ -1262,6 +1274,7 @@ function markAttend(id){
   save();renderBoard();toast(`${m.name} 출석   ${t}`);
 }
 function restoreAttendee(id){
+  if(!requireSync())return;
   // 오늘 같은 사람이 여러 번 퇴소했을 수 있으므로 가장 최근 세션을 복구한다.
   let idx=-1;
   for(let i=S.leftMembers.length-1;i>=0;i--){ if(S.leftMembers[i].id===id){ idx=i; break; } }
@@ -1335,6 +1348,7 @@ function removeSessionFromStats(id, attendTs, dateKey){
   }catch(e){}
 }
 function leave(id){
+  if(!requireSync())return;
   // member 모드에서는 본인 또는 모니터링/관리자 계정만 본인을 퇴소시킬 수 있음
   if(appMode!=='admin'){
     const me=getCurrentMember();
@@ -1352,6 +1366,7 @@ function leave(id){
 /* ── 코트 배정 ── */
 function toggleCourt(id,n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  if(!requireSync())return;
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){
     a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
@@ -1407,6 +1422,7 @@ function removeFromCourt(id){
 }
 function clearCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  if(!requireSync())return;
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
@@ -1415,6 +1431,7 @@ function clearCourt(n){
 }
 function confirmCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  if(!requireSync())return;
   const pl=S.attendees.filter(x=>x.court===n);
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   if(CC[n]){toast(`${CNAMES[n]}은 이미 확정`);return;}
@@ -1492,6 +1509,7 @@ function confirmAssignToOccupied(cn, teamIds){
 
 function assignTeam(cn,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  if(!requireSync())return;
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
   const t=timeStr();const baseTs=nowTs();
