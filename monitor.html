@@ -253,6 +253,9 @@ const REF = db.ref('tennis_current');
 
 let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
+// 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
+const recentLocalTouch = {};
+function touchLocal(id, attendTs){ recentLocalTouch[id+'_'+(attendTs||0)] = Date.now(); }
 let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 
 let currentSyncStatus='busy'; // 'ok' | 'busy' | 'err'
@@ -292,14 +295,32 @@ function normalizeS(raw){
   if(raw.date && raw.date !== dateStr()) return;
   const s = raw.state;
   if(s){
-    s.attendees  = toArr(s.attendees).map(a=>({
+    const incomingAtt = toArr(s.attendees).map(a=>({
       ...a,
       court:      a.court      ?? null,
       nextCourt1: a.nextCourt1 ?? null,
       nextCourt2: a.nextCourt2 ?? null,
       hasCourt:   a.hasCourt   ?? false,
     }));
-    s.leftMembers = toArr(s.leftMembers);
+    const incomingLeft = toArr(s.leftMembers);
+    // 세션(id+출석시각) 단위 병합. 원격에 없는 로컬 항목은, 이 기기가 방금(15초 이내) 직접
+    // 만든 것일 때만 짧게 보존한다. 그 외(뷰어 전용 기기, 오래된 로컬 항목)는 원격 데이터를
+    // 그대로 신뢰한다 — 그래야 퇴소 처리된 사람이 유령처럼 계속 남는 일이 없다.
+    const RECENT_TOUCH_MS = 15000;
+    function mergeBySession(localArr, incomingArr){
+      const map={};
+      const incomingKeys=new Set();
+      (incomingArr||[]).forEach(a=>{ const k=a.id+'_'+(a.attendTs||0); map[k]=a; incomingKeys.add(k); });
+      (localArr||[]).forEach(a=>{
+        const k=a.id+'_'+(a.attendTs||0);
+        if(incomingKeys.has(k)) return;
+        const touchedAt=recentLocalTouch[k];
+        if(touchedAt && (Date.now()-touchedAt)<RECENT_TOUCH_MS){ map[k]=a; }
+      });
+      return Object.values(map);
+    }
+    s.attendees = mergeBySession(S && S.attendees, incomingAtt);
+    s.leftMembers = mergeBySession(S && S.leftMembers, incomingLeft);
     S = s;
   }
   if(raw.CC){
@@ -1272,6 +1293,7 @@ function markAttend(id){
   // 재출석(출석→퇴소→재출석) 시 이전 세션(leftMembers) 기록은 그대로 보존한다.
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
+  touchLocal(m.id, ts);
   save();renderBoard();toast(`${m.name} 출석 ✓  ${t}`);
 }
 function restoreAttendee(id){
@@ -1292,6 +1314,7 @@ function restoreAttendee(id){
     courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false,
     nextCourt1:null,nextCourt2:null
   });
+  touchLocal(a.id, ts);
   save();renderAll();toast(`${a.name} 복구 완료 (${t})`);
 }
 
@@ -1316,6 +1339,7 @@ function doLeave(id, isAuto){
   }
   const leftT=timeStr();const leftTs=nowTs();
   S.leftMembers.push({...a,leftAt:leftT,leftTs:leftTs});
+  touchLocal(a.id, a.attendTs);
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();

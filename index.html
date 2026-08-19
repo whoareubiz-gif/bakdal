@@ -262,6 +262,9 @@ const REF = db.ref('tennis_current');
 
 let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
+// 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
+const recentLocalTouch = {};
+function touchLocal(id, attendTs){ recentLocalTouch[id+'_'+(attendTs||0)] = Date.now(); }
 let lastSentToken = ''; // 내가 마지막으로 보낸 토큰
 
 let currentSyncStatus='busy'; // 'ok' | 'busy' | 'err'
@@ -302,7 +305,7 @@ function normalizeS(raw){
   if(raw.date && raw.date !== dateStr()) return;
   const s = raw.state;
   if(s){
-    s.attendees  = toArr(s.attendees).map(a=>({
+    const incomingAtt = toArr(s.attendees).map(a=>({
       ...a,
       court:      a.court      ?? null,
       nextCourt1: a.nextCourt1 ?? null,
@@ -310,7 +313,33 @@ function normalizeS(raw){
       hasCourt:   a.hasCourt   ?? false,
       isGuest:    a.isGuest    ?? false,
     }));
-    s.leftMembers = toArr(s.leftMembers);
+    const incomingLeft = toArr(s.leftMembers);
+    // 세션(id+출석시각) 단위로 병합.
+    // 예전에는 원격에서 온 데이터로 로컬 S를 통째로 교체(S=s)했는데, 그러면 다른 기기와의
+    // 동기화 타이밍에 따라 "방금 이 기기에서 만든 세션"(예: 재출석 두 번째 세션)이
+    // 아직 반영 안 된 원격의 오래된 스냅샷에 의해 사라지는 문제가 있었다.
+    // → 원격에 없는 로컬 항목은, "이 기기에서 방금(수 초 이내) 직접 만든 것"일 때만
+    //   짧은 유예시간(15초) 동안만 보존한다. 그 외(오래된 로컬 항목, 뷰어 전용 기기 등)는
+    //   무조건 원격 데이터를 그대로 신뢰한다 — 그래야 퇴소 처리된 사람이 다른 기기에서
+    //   계속 "참석중"으로 유령처럼 남는 일이 없다.
+    const RECENT_TOUCH_MS = 15000;
+    function mergeBySession(localArr, incomingArr){
+      const map={};
+      const incomingKeys=new Set();
+      (incomingArr||[]).forEach(a=>{ const k=a.id+'_'+(a.attendTs||0); map[k]=a; incomingKeys.add(k); });
+      (localArr||[]).forEach(a=>{
+        const k=a.id+'_'+(a.attendTs||0);
+        if(incomingKeys.has(k)) return; // 원격에 있으면 원격 데이터 우선 (이미 map에 있음)
+        const touchedAt=recentLocalTouch[k];
+        if(touchedAt && (Date.now()-touchedAt)<RECENT_TOUCH_MS){
+          map[k]=a; // 방금 이 기기에서 만든 항목 → 짧은 유예시간 동안만 보존
+        }
+        // 그 외(유예시간 지났거나 이 기기에서 만든 적 없는 로컬 항목)는 버림 → 원격 신뢰
+      });
+      return Object.values(map);
+    }
+    s.attendees = mergeBySession(S && S.attendees, incomingAtt);
+    s.leftMembers = mergeBySession(S && S.leftMembers, incomingLeft);
     S = s;
     // leftMembers 중 오늘이 아닌 날짜 데이터 제거 (어제 퇴소자 잔류 방지)
     const _today = dateStr();
@@ -1360,6 +1389,7 @@ function markAttend(id){
   // (예전에는 여기서 leftMembers를 지웠는데, 그러면 이전 출석~퇴소 세션이 통계에서 사라졌음)
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
+  touchLocal(m.id, ts);
   save();toast(`${m.name} 출석 ✓  ${t}`);
   if(appMode==='admin'){
     renderAll(); // 관리자: 탭 이동 없이 화면만 갱신
@@ -1385,6 +1415,7 @@ function restoreAttendee(id){
     courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false,
     nextCourt1:null,nextCourt2:null
   });
+  touchLocal(a.id, ts);
   save();renderAll();toast(`${a.name} 복구 완료 (${t})`);
 }
 
@@ -1410,6 +1441,7 @@ function doLeave(id, isAuto){
   }
   const _leftT=timeStr();const _leftTs=nowTs();
   S.leftMembers.push({...a,leftAt:_leftT,leftTs:_leftTs});
+  touchLocal(a.id, a.attendTs);
   S.attendees=S.attendees.filter(x=>x.id!==id);
   if(a.court)CC[a.court]=false;
   save();renderAll();
@@ -1972,11 +2004,18 @@ function chip(c,t){return`<span class="chip ${c}">${t}</span>`;}
 /* ── 통계 ── */
 function renderStats(){
   const visibleAttendees=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
-  const visibleLeft=S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
+  const attIds=new Set(visibleAttendees.map(x=>x.id));
+  // 퇴소 인원: leftMembers에 세션 기록이 있어도, 이미 재출석해서 지금 참석중이면 "퇴소"로 세지 않는다.
+  // (사람 기준으로 중복 제거 — 같은 사람이 참석중/퇴소 두 곳에 동시에 잡히는 문제 방지)
+  const visibleLeftIds=new Set(
+    S.leftMembers
+      .filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id) && !attIds.has(x.id))
+      .map(x=>x.id)
+  );
   document.getElementById('st0').textContent=visibleAttendees.length;
   document.getElementById('st1').textContent=visibleAttendees.filter(x=>x.gender==='m').length;
   document.getElementById('st2').textContent=visibleAttendees.filter(x=>x.gender==='f').length;
-  document.getElementById('st3').textContent=visibleLeft.length;
+  document.getElementById('st3').textContent=visibleLeftIds.size;
 }
 
 /* ── 회원명부 ── */
@@ -2010,15 +2049,16 @@ function renderMembers(){
   const females=sortGuestLast(MEMBERS.filter(x=>x.gender==='f'&&!HIDDEN_MEMBER_IDS.includes(x.id)));
   const malesRegular=males.filter(x=>!x.name.includes('게스트'));
   const femalesRegular=females.filter(x=>!x.name.includes('게스트'));
-  const mAtt=malesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
-  const fAtt=femalesRegular.filter(x=>aIds.has(x.id)&&!lIds.has(x.id)).length;
+  const mAtt=malesRegular.filter(x=>aIds.has(x.id)).length;
+  const fAtt=femalesRegular.filter(x=>aIds.has(x.id)).length;
   function card(m){
     const a=aIds.has(m.id),l=lIds.has(m.id);
     const attendee=S.attendees.find(x=>x.id===m.id);
     const isLeaving=attendee&&attendee.leavingScheduled;
-    const chips=(a&&!l?chip('g','✓'):'');
-    const btn=l?`<button class="btn-att" style="background:#FAECE7;color:#993C1D;cursor:default;border:.5px solid #EFBCB0" disabled>퇴소</button>`
-      :a?`<button class="btn-att done" disabled>완료</button>`
+    const chips=(a?chip('g','✓'):'');
+    // 참석중인지(a) 먼저 확인 — 재출석한 사람은 예전 퇴소기록(l)이 남아있어도 "완료"로 표시
+    const btn=a?`<button class="btn-att done" disabled>완료</button>`
+      :l?`<button class="btn-att" style="background:#FAECE7;color:#993C1D;cursor:default;border:.5px solid #EFBCB0" disabled>퇴소</button>`
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
     return`<div class="scard"><span class="sname">${m.name}${leavingMark(isLeaving)}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
   }
@@ -2026,6 +2066,26 @@ function renderMembers(){
 }
 
 /* ── 참석자 행 ── */
+/* 오늘 같은 사람의 모든 세션(완료+진행중)을 출석시각 순으로 모아서 반환.
+   재출석해도 새 카드/줄을 추가하지 않고, 이 함수로 모은 세션들을 "1차/2차..."로 한 줄에 표시하기 위함 */
+function getTodaySessionsFor(id){
+  const sessions=[];
+  S.leftMembers.forEach(x=>{ if(x.id===id) sessions.push({...x,isCurrent:false}); });
+  const cur=S.attendees.find(x=>x.id===id);
+  if(cur) sessions.push({...cur,isCurrent:true});
+  sessions.sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+  return sessions;
+}
+function sessionTimeLabel(sessions){
+  if(sessions.length<=1){
+    const s=sessions[0];if(!s)return'';
+    return s.isCurrent?`출석 ${s.time}`:`출석 ${s.time}→퇴소 ${s.leftAt}`;
+  }
+  return sessions.map((s,i)=>{
+    const ord=(i+1)+'차 ';
+    return s.isCurrent?`${ord}출석 ${s.time}`:`${ord}출석 ${s.time}→퇴소 ${s.leftAt}`;
+  }).join(' · ');
+}
 function attendRow(a){
   const isSpectatorMode = appMode==='spectator'||appMode==='spectator_admin';
   const isMemberMode = appMode!=='admin';
@@ -2040,7 +2100,8 @@ function attendRow(a){
   const nc2full=S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2;
   const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" ${isMemberMode?'disabled':''} onclick="${isMemberMode?'':(nc1full?'':`toggleNextCourt(${a.id},1)`)}" style="font-size:9px;padding:3px 3px;${isMemberMode?'cursor:default;opacity:'+(nc1on?'1':'0.4'):''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" ${isMemberMode?'disabled':''} onclick="${isMemberMode?'':(nc2full?'':`toggleNextCourt(${a.id},2)`)}" style="font-size:9px;padding:3px 3px;${isMemberMode?'cursor:default;opacity:'+(nc2on?'1':'0.4'):''}">다2</button>`;
   const courtTag='';
-  const timeLabel=`출석 ${a.time}`;
+  const _todaySessions=getTodaySessionsFor(a.id);
+  const timeLabel=_todaySessions.length>1?sessionTimeLabel(_todaySessions):`출석 ${a.time}`;
 
   // 일반모드: 본인 행에만 퇴소예정/퇴소 버튼, 다른 회원 행에는 버튼 없음
   const me=getCurrentMember();
@@ -2118,9 +2179,27 @@ function checkAutoLeave(){
 /* ── 오늘 참석자 ── */
 function renderToday(){
   if(leftOnly){
-    const ls=S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
+    // 지금 다시 출석중이 아닌 사람만, 같은 사람의 여러 세션은 한 카드로 묶어서 표시
+    const attIds=new Set(S.attendees.map(x=>x.id));
+    const grouped={};
+    S.leftMembers.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id) && !attIds.has(x.id)).forEach(x=>{
+      if(!grouped[x.id]) grouped[x.id]=[];
+      grouped[x.id].push(x);
+    });
+    const ls=Object.values(grouped).map(sessions=>{
+      sessions.sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+      const first=sessions[0];
+      const totalGames=sessions.reduce((s,x)=>s+(x.games||0),0);
+      return {...first, sessions, games:totalGames};
+    }).sort((a,b)=>(a.sessions[a.sessions.length-1].leftTs||0)-(b.sessions[b.sessions.length-1].leftTs||0));
+    let h=`<div class="pg-inner"><div style="display:flex;align-items:center;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">🚪 퇴소자 (${ls.length}명)</div><button onclick="leftOnly=false;renderAll()" style="font-size:10px;color:#1D9E75;background:none;border:none;cursor:pointer;font-family:inherit">전체 보기 ×</button></div>`;
     if(!ls.length){h+=`<div class="empty">🚪<br>퇴소한 회원이 없습니다.</div></div>`;return h;}
-    ls.forEach(a=>{h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 출석 ${a.time} · 퇴소 ${a.leftAt}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;});
+    ls.forEach(a=>{
+      const timeLabel=a.sessions.length>1
+        ? a.sessions.map((s,i)=>`${i+1}차 출석 ${s.time}→퇴소 ${s.leftAt}`).join(' · ')
+        : `출석 ${a.time} · 퇴소 ${a.leftAt}`;
+      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
+    });
     h+=`</div>`;return h;
   }
   if(todayGender){
@@ -3032,25 +3111,31 @@ function renderStatPage(){
     // 데이터 수집
     let effMembers = [];
     if(selDate === todaySt){
-      // 세션(id+출석시각) 기준으로 판단: 같은 사람이라도 재출석해서 attendTs가 다르면 별개 세션으로 모두 표시
-    const effSeenKeys = new Set();
-    // leftMembers(완료된 세션) 먼저 추가
-    S.leftMembers.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
-      effSeenKeys.add(a.id+'_'+(a.attendTs||0)); effMembers.push(a);
-    });
-    // attendees는 같은 세션이 leftMembers에 없는 것만 추가 (재출석 중인 다른 세션은 별도로 표시됨)
-    S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!effSeenKeys.has(a.id+'_'+(a.attendTs||0))).forEach(a=>{
-      effMembers.push(a);
-    });
+      // 사람(회원 id) 단위로 오늘의 모든 세션(완료+진행중)을 하나로 묶는다.
+      // → 최초 출석시각~최종 퇴소시각으로 표시, 게임수는 세션 합산 (재출석해도 새 줄 추가 안 함)
+      const byId = {};
+      S.leftMembers.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
+        if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
+        byId[a.id].sessions.push(a);
+      });
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
+        if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
+        byId[a.id].sessions.push(a);
+        byId[a.id].ongoing=true; // 아직 퇴소 안 한(진행중) 세션 포함
+      });
+      effMembers = Object.values(byId);
     } else {
       const dayData = st.find(d=>d.date===selDate);
       if(dayData){
-        // 세션(id+출석시각) 기준 중복 제거: 같은 사람의 여러 출석/퇴소 세션은 각각 표시
-        const seen = new Set();
+        // 사람(id) 단위로 그 날의 모든 세션을 하나로 묶는다.
+        const byId = {};
         [...(dayData.attendees||[]),...(dayData.leftMembers||[])].forEach(a=>{
-          const key=a.id+'_'+(a.attendTs||0);
-          if(!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest&&!seen.has(key)){seen.add(key);effMembers.push(a);}
+          if(HIDDEN_MEMBER_IDS.includes(a.id)||a.name.includes('게스트')||a.isGuest) return;
+          if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
+          byId[a.id].sessions.push(a);
+          if(!a.leftAt && !a.leftTs) byId[a.id].ongoing=true; // 퇴소기록 없이 저장된 세션(참석중 상태로 마감)
         });
+        effMembers = Object.values(byId);
       }
     }
 
@@ -3059,42 +3144,39 @@ function renderStatPage(){
         + '<div style="font-size:13px;color:#888780;text-align:center;padding:20px 0">📭 ' + selDate + ' 데이터가 없습니다</div>'
         + effWrap_close;
     } else {
-      // 머문시간 계산
+      // 머문시간 계산 (최초 출석 ~ 최종 퇴소 기준, 게임수는 세션 합산)
       const rows = [];
       effMembers.forEach(a=>{
+        const sessions=a.sessions||[a];
+        const attendTsList=sessions.map(s=>s.attendTs).filter(Boolean);
+        const firstInTs=attendTsList.length?Math.min(...attendTsList):null;
+        const leftTsList=sessions.map(s=>s.leftTs).filter(Boolean);
+        const lastOutTs=leftTsList.length?Math.max(...leftTsList):null;
+
         let stayMin=0, inT='-', outT='-';
-        if(selDate===todaySt){
-          const inTs=a.attendTs||0;
-          const outTs=a.leftTs||(a.leftAt?(()=>{const[h,m]=(a.leftAt||'0:0').split(':').map(Number);const d=new Date();d.setHours(h||0,m||0,0,0);return Math.floor(d.getTime()/1000);})():nowSec);
-          stayMin=inTs>0?Math.max(0,Math.floor((outTs-inTs)/60)):0;
-          inT=a.attendTs?timeStr(new Date(a.attendTs*1000)):(a.time||'-');
-          outT=a.leftTs?timeStr(new Date(a.leftTs*1000)):(a.leftAt||'게임중');
+        if(a.ongoing){
+          // 아직 퇴소 안 한 세션 포함 → 지금(또는 마감 시점)까지로 계산
+          inT=firstInTs?timeStr(new Date(firstInTs*1000)):(sessions[0].time||'-');
+          outT=selDate===todaySt?'게임중':'퇴소기록없음';
+          stayMin=firstInTs?Math.max(0,Math.floor((nowSec-firstInTs)/60)):0;
+        } else if(firstInTs&&lastOutTs){
+          inT=timeStr(new Date(firstInTs*1000));
+          outT=timeStr(new Date(lastOutTs*1000));
+          stayMin=Math.max(0,Math.floor((lastOutTs-firstInTs)/60));
         } else {
-          inT=a.time||'-';
-          outT=a.leftAt||'-';
-          // attendTs/leftTs 있으면 우선 사용
-          if(a.attendTs&&a.leftTs){
-            stayMin=Math.max(0,Math.floor((a.leftTs-a.attendTs)/60));
-            inT=timeStr(new Date(a.attendTs*1000));
-            outT=timeStr(new Date(a.leftTs*1000));
-          } else if(a.attendTs&&a.leftAt){
-            const[oh,om]=(a.leftAt||'0:0').split(':').map(Number);
-            const d=new Date(a.attendTs*1000);
-            const outTs=new Date(d);outTs.setHours(oh,om,0,0);
-            stayMin=Math.max(0,Math.floor((outTs.getTime()/1000-a.attendTs)/60));
-            inT=timeStr(d);
-            outT=a.leftAt;
-          } else {
-            const[ih,im]=(inT!=='-'?inT:'0:0').split(':').map(Number);
-            const[oh,om]=(outT!=='-'?outT:'0:0').split(':').map(Number);
-            stayMin=(inT!=='-'&&outT!=='-')?Math.max(0,(oh*60+om)-(ih*60+im)):0;
+          // attendTs/leftTs가 없는 옛 데이터 대비 (문자열 시각 기반 fallback)
+          const first=sessions[0],last=sessions[sessions.length-1];
+          inT=first.time||'-';outT=last.leftAt||'-';
+          if(inT!=='-'&&outT!=='-'){
+            const[ih,im]=inT.split(':').map(Number);const[oh,om]=outT.split(':').map(Number);
+            stayMin=Math.max(0,(oh*60+om)-(ih*60+im));
           }
-          if(outT==='-') outT='퇴소기록없음';
+          if(outT==='-')outT='퇴소기록없음';
         }
-        const games=a.games||0;
+        const games=sessions.reduce((s,x)=>s+(x.games||0),0);
         const per30=stayMin>0?Math.round((games/stayMin)*30*10)/10:0;
         const valid=stayMin>=30;
-        const isLeft=!!(a.leftTs||a.leftAt);
+        const isLeft=!a.ongoing;
         if(stayMin>0||games>0) rows.push({a,stayMin,games,per30,valid,isLeft,isGuest:!!a.isGuest,inT,outT});
       });
       rows.sort((a,b)=>{if(a.valid&&!b.valid)return -1;if(!a.valid&&b.valid)return 1;return a.per30-b.per30;});
