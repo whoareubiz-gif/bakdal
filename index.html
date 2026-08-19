@@ -1466,13 +1466,14 @@ function toggleCourt(id,n){
   if(!requireSync())return;
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){
-    a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
     if(n>=1&&n<=4&&CC[n]){
-      // 확정된 코트에서 인원이 빠지면(4명이 아니게 되면) 확정을 자동 해제
-      CC[n]=false;CT[n]=null;cancelAutoConfirm(n);cancelPendingGame(n);
-      toast(`⚠️ ${CNAMES[n]} 인원 변경으로 확정 해제됨`);
+      // 확정(게임 진행 중)된 코트에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
+      showReleaseChoicePopup(id,n);
+      return;
     }
-    save();renderAll();return;
+    // 미확정 코트(아직 게임 시작 전)에서 빼는 건 그냥 바로 해제
+    releaseNormal(id,n);
+    return;
   }
   if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ⚠️`);return;}
@@ -1492,6 +1493,58 @@ function toggleCourt(id,n){
   if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
     scheduleAutoConfirm(n);
   }
+}
+/* 확정된(게임 진행중) 코트에서 인원을 뺄 때 — 일반해제 / 게임중수정 선택 팝업 */
+function showReleaseChoicePopup(id,n){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  const old=document.getElementById('release-choice-popup');if(old)old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='release-choice-popup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900';
+  overlay.innerHTML=`<div style="background:#fff;border-radius:18px;padding:22px 18px;width:90%;max-width:340px;box-shadow:0 16px 50px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:900;color:#1A1A1A;margin-bottom:6px">${a.name} 님 해제</div>
+    <div style="font-size:12.5px;color:#888780;margin-bottom:16px;line-height:1.5">${CNAMES[n]}은 이미 확정된 코트입니다. 어떤 방식으로 해제할까요?</div>
+    <button onclick="releaseNormal(${id},${n});document.getElementById('release-choice-popup').remove();" style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:8px;text-align:left">
+      🔁 일반 해제<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px">게임이 끝나서 코트를 비웁니다 (대기시간 새로 시작)</div>
+    </button>
+    <button onclick="releaseMidGameFix(${id},${n});document.getElementById('release-choice-popup').remove();" style="width:100%;padding:12px;background:#B25000;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:14px;text-align:left">
+      🛠 게임중 수정<div style="font-size:11px;font-weight:500;opacity:.85;margin-top:2px">인원 실수 등 교정입니다 (대기시간 유지, 게임수 반영 안 함/되돌림)</div>
+    </button>
+    <button onclick="document.getElementById('release-choice-popup').remove()" style="width:100%;padding:10px;background:#F0EDE8;color:#666;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
+  </div>`;
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  document.body.appendChild(overlay);
+}
+/* 일반 해제: 게임이 끝나서 코트를 비우는 경우 (대기시간 새로 시작) */
+function releaseNormal(id,n){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
+  if(n>=1&&n<=4&&CC[n]){
+    // 확정된 코트에서 인원이 빠지면(4명이 아니게 되면) 확정을 자동 해제
+    CC[n]=false;CT[n]=null;cancelAutoConfirm(n);cancelPendingGame(n);
+    toast(`⚠️ ${CNAMES[n]} 인원 변경으로 확정 해제됨`);
+  } else {
+    toast(`${a.name} → 미배정`);
+  }
+  save();renderAll();
+}
+/* 게임중 수정: 인원 배정 실수 등을 바로잡는 경우
+   - 대기시간(courtFreeAt/Ts)은 건드리지 않고 그대로 유지
+   - 게임수가 이미 반영됐으면(30초 유예 지남) 되돌리고, 아직이면(유예 중) 그대로 미반영 */
+function releaseMidGameFix(id,n){
+  const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  const alreadyCommitted = (n>=1&&n<=4) && CC[n] && !pendingGameTimers[n];
+  a.court=null; // courtFreeAt/courtFreeTs는 그대로 둔다 (대기시간 유지)
+  if(alreadyCommitted && a.games>0){
+    a.games -= 1; // 이미 반영된 게임수 되돌림
+  }
+  if(n>=1&&n<=4&&CC[n]){
+    CC[n]=false;CT[n]=null;cancelAutoConfirm(n);cancelPendingGame(n);
+  }
+  save();renderAll();
+  toast(alreadyCommitted
+    ? `🛠 ${a.name} 게임중 수정 → 게임수 되돌림, 대기시간 유지`
+    : `🛠 ${a.name} 게임중 수정 → 게임수 미반영, 대기시간 유지`);
 }
 function toggleNextCourt(id,which){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1635,10 +1688,16 @@ function moveToCourt(id,toCourt){
 
 function removeFromCourt(id){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
-  const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  if(a.court)CC[a.court]=false;
-  a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
-  save();renderAll();toast(`${a.name} → 미배정`);
+  if(!requireSync())return;
+  const a=S.attendees.find(x=>x.id===id);if(!a||!a.court)return;
+  const n=a.court;
+  if(n>=1&&n<=4&&CC[n]){
+    // 확정(게임 진행중)된 코트에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
+    showReleaseChoicePopup(id,n);
+    return;
+  }
+  // 미확정 코트(아직 게임 시작 전)에서 빼는 건 그냥 바로 해제
+  releaseNormal(id,n);
 }
 function clearCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
