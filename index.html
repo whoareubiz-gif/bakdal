@@ -1374,8 +1374,11 @@ function updateElapsedBadgesIndex(){
   });
 }
 
-/* ── 게스트 게임수 vs 정회원 평균 경고 ── */
+/* ── 게스트 게임효율 상위 70% 경고 ── */
 function isGuestAttendee(a){ return !!(a&&(a.isGuest||(a.name&&a.name.includes('게스트')))); }
+function guestTagSmall(a){
+  return isGuestAttendee(a) ? '<span style="font-size:8px;background:#F5C842;color:#7A5F00;padding:0 3px;border-radius:3px;margin-left:2px;font-weight:800;vertical-align:1px">게</span>' : '';
+}
 function todayTotalGamesFor(id){
   let sum=0;
   S.leftMembers.forEach(x=>{ if(x.id===id) sum+=(x.games||0); });
@@ -1383,26 +1386,53 @@ function todayTotalGamesFor(id){
   if(cur) sum+=(cur.games||0);
   return sum;
 }
-function todayRegularAvgGames(){
+// 오늘 이 사람의 30분당 게임수(게임효율) 계산 - 최초 출석~최종 퇴소(진행중이면 지금) 기준.
+// 30분 미만 머문 경우 신뢰할 수 없어 null(집계 제외) 반환 (게임효율분석 화면과 동일 기준)
+function todayEfficiencyFor(id){
+  const leftSessions=S.leftMembers.filter(x=>x.id===id);
+  const curSession=S.attendees.find(x=>x.id===id);
+  const sessions=curSession?[...leftSessions,curSession]:leftSessions;
+  if(!sessions.length) return null;
+  const attendTsList=sessions.map(s=>s.attendTs).filter(Boolean);
+  if(!attendTsList.length) return null;
+  const firstInTs=Math.min(...attendTsList);
+  const lastOutTs=curSession?nowTs():(()=>{
+    const leftTsList=sessions.map(s=>s.leftTs).filter(Boolean);
+    return leftTsList.length?Math.max(...leftTsList):null;
+  })();
+  if(!lastOutTs) return null;
+  const stayMin=Math.max(0,Math.floor((lastOutTs-firstInTs)/60));
+  if(stayMin<30) return null;
+  const games=sessions.reduce((s,x)=>s+(x.games||0),0);
+  return (games/stayMin)*30;
+}
+// 게스트의 오늘 게임효율이 정회원들 사이에서 상위 pct%(기본 70%) 안에 드는지 판정
+function guestInTopEfficiencyPercentile(guestId, pct){
   const ids=new Set();
   [...S.attendees,...S.leftMembers].forEach(a=>{
     if(!HIDDEN_MEMBER_IDS.includes(a.id) && !isGuestAttendee(a)) ids.add(a.id);
   });
-  if(!ids.size) return 0;
-  let total=0;
-  ids.forEach(id=>{ total+=todayTotalGamesFor(id); });
-  return total/ids.size;
+  const memberScores=[];
+  ids.forEach(id=>{ const e=todayEfficiencyFor(id); if(e!==null) memberScores.push(e); });
+  if(!memberScores.length) return {inTop:false};
+  const guestEff=todayEfficiencyFor(guestId);
+  if(guestEff===null) return {inTop:false};
+  const worseCount=memberScores.filter(s=>s<guestEff).length;
+  const worsePct=worseCount/memberScores.length*100; // 게스트보다 효율 낮은 정회원 비율
+  const inTop = worsePct >= (100-pct); // 상위 pct%에 들려면, 게스트보다 못한 사람이 (100-pct)%↑ 있어야 함
+  return {inTop, guestEff};
 }
-// 게스트를 코트에 배정하기 전 체크: 이미 정회원 평균 이상이면 확인 팝업, 계속 진행 시 proceedFn 실행
+// 게스트를 코트에 배정하기 전 체크: 게임효율이 정회원 상위 70% 안에 들면 확인 팝업, 계속 진행 시 proceedFn 실행
+const GUEST_WARN_TOP_PCT = 70;
 function checkGuestGamesBeforeAssign(ids, proceedFn){
-  const avg=todayRegularAvgGames();
-  if(avg<=0){ proceedFn(); return; } // 아직 평균 낼 데이터가 없으면 그냥 진행
-  const overGuest=ids
-    .map(id=>S.attendees.find(x=>x.id===id))
-    .filter(a=>a && isGuestAttendee(a) && todayTotalGamesFor(a.id)>=avg);
+  const guestCandidates=ids.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a && isGuestAttendee(a));
+  if(!guestCandidates.length){ proceedFn(); return; }
+  const overGuest=guestCandidates
+    .map(a=>({a, ...guestInTopEfficiencyPercentile(a.id, GUEST_WARN_TOP_PCT)}))
+    .filter(x=>x.inTop);
   if(!overGuest.length){ proceedFn(); return; }
-  const names=overGuest.map(a=>`${a.name}(${todayTotalGamesFor(a.id)}게임)`).join(', ');
-  openModal(`⚠️ 게스트 ${names}님이 이미 정회원 평균(${avg.toFixed(1)}게임) 이상입니다.\n그래도 배정하시겠습니까?`, proceedFn);
+  const names=overGuest.map(x=>`${x.a.name}(${x.guestEff.toFixed(1)}/30분)`).join(', ');
+  openModal(`⚠️ 게스트 ${names}님의 오늘 게임효율이 정회원 상위 ${GUEST_WARN_TOP_PCT}% 안에 듭니다.\n그래도 배정하시겠습니까?`, proceedFn);
 }
 
 
@@ -2102,7 +2132,8 @@ function renderMembers(){
     const btn=a?`<button class="btn-att done" disabled>완료</button>`
       :l?`<button class="btn-att" style="background:#FAECE7;color:#993C1D;cursor:default;border:.5px solid #EFBCB0" disabled>퇴소</button>`
       :`<button class="btn-att" onclick="markAttend(${m.id})">출석</button>`;
-    return`<div class="scard"><span class="sname">${m.name}${leavingMark(isLeaving)}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
+    const guestBadge=m.name.includes('게스트')?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':'';
+    return`<div class="scard"><span class="sname">${m.name}${guestBadge}${leavingMark(isLeaving)}</span><div style="display:flex;align-items:center;gap:3px">${chips}${btn}</div></div>`;
   }
   return`<div class="split-wrap"><div class="split-col lcol"><div class="split-hdr m">👨 남자 (${mAtt}/${malesRegular.length})</div>${males.map(card).join('')}</div><div class="split-col"><div class="split-hdr f">👩 여자 (${fAtt}/${femalesRegular.length})</div>${females.map(card).join('')}</div></div>`;
 }
@@ -2240,7 +2271,7 @@ function renderToday(){
       const timeLabel=a.sessions.length>1
         ? a.sessions.map((s,i)=>`${i+1}차 출석 ${s.time}→퇴소 ${s.leftAt}`).join(' · ')
         : `출석 ${a.time} · 퇴소 ${a.leftAt}`;
-      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
+      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}${isGuestAttendee(a)?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
     });
     h+=`</div>`;return h;
   }
@@ -2433,7 +2464,7 @@ function renderCourts(){
       const isLow=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));
       const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':isLow?'border:1.5px solid #E74C3C;border-radius:8px;':'';
       const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':isLow?'font-size:13px;font-weight:900;color:#C0392B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" oncontextmenu="event.preventDefault();showMoveCourtPopup(${a.id})" ontouchstart="(function(){const t=setTimeout(()=>showMoveCourtPopup(${a.id}),600);this._lpt=t;}).call(this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">짧게:해제 길게:이동</span></div>`;
+      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" oncontextmenu="event.preventDefault();showMoveCourtPopup(${a.id})" ontouchstart="(function(){const t=setTimeout(()=>showMoveCourtPopup(${a.id}),600);this._lpt=t;}).call(this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">짧게:해제 길게:이동</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -2474,7 +2505,7 @@ function renderCourts(){
       const isLow2=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));
       const meSt2=isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':isLow2?'background:#FFF0F0;border:1.5px solid #E74C3C;border-radius:8px;':'';
       const meNm2=isMe2?'font-size:16px;font-weight:900;color:#B8860B':isLow2?'font-size:13px;font-weight:900;color:#C0392B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
+      slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -2537,7 +2568,7 @@ function renderCourts(){
       const divider=a.court&&!NEXT_COURTS.includes(a.court)&&!CC[a.court]&&gInCourt.indexOf(a)===0?`<div style="font-size:13px;color:#888780;padding:4px 0 2px;font-weight:700">─── 코트 배정 중 (미확정) ───</div>`:'';
       return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'1.5px solid #E74C3C':'.5px solid #E0DFDB'};border-radius:9px;margin-bottom:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px">
         <div style="display:flex;align-items:center;gap:4px">
-          <span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>
+          <span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>
           ${waitMinutesLabel(a)}
         </div>
         <div style="display:flex;gap:3px">${cBtns}${ncBtns}</div>
@@ -2555,7 +2586,7 @@ function renderCourts(){
       const nc2full=(S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2)||isLv;
       const courtTag=`<span style="font-size:8px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 4px;border-radius:4px;flex-shrink:0">${CNAMES[a.court]}</span>`;
       const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다2</button>`;
-      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':'#185FA5'};flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
+      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':'#185FA5'};flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
     }
     const mConf=inCourtConfirmed.filter(x=>x.gender==='m');
     const fConf=inCourtConfirmed.filter(x=>x.gender==='f');
@@ -2579,7 +2610,7 @@ function renderCourts(){
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
       const members=team.map(a=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';const isLowM=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));return`<div class="rec-member" style="${isLowM?'border:1px solid #E74C3C;border-radius:6px;padding:0 3px;':''}">
-<span class="rec-name" style="flex:0;white-space:nowrap;${isLowM?'color:#C0392B;font-weight:900;':''}">${a.name}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
+<span class="rec-name" style="flex:0;white-space:nowrap;${isLowM?'color:#C0392B;font-weight:900;':''}">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
       h+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
