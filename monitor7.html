@@ -395,7 +395,11 @@ function pushCourtStateDiff(){
   lastPushedCourtSnapshot = current;
 }
 function applyCourtState(courtState){
-  if(!courtState) return;
+  if(!courtState){
+    S.attendees.forEach(a=>{ a.court=null; a.nextCourt1=null; a.nextCourt2=null; a.hasCourt=false; });
+    lastPushedCourtSnapshot={};
+    return;
+  }
   S.attendees.forEach(a=>{
     const cs = courtState[a.id];
     if(cs){
@@ -440,7 +444,10 @@ function pushAttendStateDiff(){
   lastPushedAttendSnapshot = current;
 }
 function applyAttendState(attendState){
-  if(!attendState) return;
+  if(!attendState){
+    lastPushedAttendSnapshot={};
+    return;
+  }
   S.attendees.forEach(a=>{
     const s = attendState[a.id];
     if(s){
@@ -504,7 +511,11 @@ function pushLeftStateDiff(){
   lastPushedLeftSnapshot = current;
 }
 function applyLeftState(leftState){
-  if(!leftState) return;
+  if(!leftState){
+    S.leftMembers = [];
+    lastPushedLeftSnapshot={};
+    return;
+  }
   const localByKey = {};
   S.leftMembers.forEach(x=>{ localByKey[leftKeyFor(x)] = x; });
   const _today = dateStr();
@@ -551,7 +562,11 @@ function pushConfirmStateDiff(){
   if(hasChange){ try{ COURT_CONFIRM_REF.update(update); }catch(e){} }
 }
 function applyConfirmState(confirmState){
-  if(!confirmState) return;
+  if(!confirmState){
+    [1,2,3,4].forEach(n=>{ CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;AT[n]=null; });
+    lastPushedConfirmSnapshot={};
+    return;
+  }
   [1,2,3,4].forEach(n=>{
     const c = confirmState[n];
     if(c){
