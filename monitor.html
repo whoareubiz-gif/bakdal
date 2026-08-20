@@ -339,6 +339,14 @@ function normalizeS(raw){
     const ct=raw.CT;
     CT={1:ct['1']||ct[1]||null,2:ct['2']||ct[2]||null,3:ct['3']||ct[3]||null,4:ct['4']||ct[4]||null,5:ct['5']||ct[5]||null,6:ct['6']||ct[6]||null};
   }
+  if(raw.GC){
+    const gc=raw.GC;
+    GC={1:!!(gc['1']||gc[1]),2:!!(gc['2']||gc[2]),3:!!(gc['3']||gc[3]),4:!!(gc['4']||gc[4])};
+  }
+  if(raw.CS){
+    const cs=raw.CS;
+    CS={1:cs['1']||cs[1]||null,2:cs['2']||cs[2]||null,3:cs['3']||cs[3]||null,4:cs['4']||cs[4]||null};
+  }
 }
 
 /* 서버로 push (debounce 1초) */
@@ -348,7 +356,7 @@ function syncPush(){
   syncPushTimer = setTimeout(()=>{
     const token = DEVICE_ID+'-'+Date.now();
     lastSentToken = token;
-    REF.set({state:S, CC, CT, AT, seq:token, date:dateStr(), updatedAt:Date.now()})
+    REF.set({state:S, CC, CT, AT, GC, CS, seq:token, date:dateStr(), updatedAt:Date.now()})
       .then(()=>setSyncDot('ok'))
       .catch(()=>setSyncDot('err'));
   }, 1000);
@@ -364,6 +372,7 @@ function syncListen(){
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
+    checkPendingGameCommits(); // 백그라운드 중 놓친 30초 유예 반영을 여기서 따라잡음
     // monitor.html: renderAll() 대신 필요한 것만 직접 호출
     // (pg1/pg2 등 DOM 탭이 없어서 renderAll 에러 방지)
     checkAttendanceAnnouncements();    // 출석/퇴소 음성
@@ -389,6 +398,7 @@ document.addEventListener('visibilitychange', ()=>{
       const incomingToken=raw.seq??'';
       if(incomingToken && incomingToken===lastSentToken) return;
       normalizeS(raw);
+      checkPendingGameCommits(); // 화면 꺼져있는 동안 30초 타이머가 씹혔을 수 있으니 복귀 즉시 확인
       renderAll();
       if(boardModeOn) renderBoard();
     });
@@ -881,6 +891,8 @@ let S={attendees:[],leftMembers:[],seqCounter:0};
 let CC={1:false,2:false,3:false,4:false,5:false,6:false};
 let CT={1:null,2:null,3:null,4:null,5:null,6:null};
 let AT={1:null,2:null,3:null,4:null}; // 코트별 배정 타임스탬프 (자동확정용)
+let GC={1:false,2:false,3:false,4:false}; // 코트별 게임수 반영 완료 여부 (30초 유예 커밋 완료 플래그)
+let CS={1:null,2:null,3:null,4:null};     // 확정 시점의 인원 스냅샷(정렬된 id 문자열) - 새로고침/백그라운드 복원용
 let autoConfirmTimers={1:null,2:null,3:null,4:null};
 let pendingGameTimers={1:null,2:null,3:null,4:null}; // 확정 후 30초 유예 타이머 (게임수 반영 대기)
 
@@ -891,26 +903,38 @@ function cancelAutoConfirm(n){
 function cancelPendingGame(n){
   if(pendingGameTimers[n]){ clearTimeout(pendingGameTimers[n]); pendingGameTimers[n]=null; }
 }
+// 코트 n의 30초 유예가 끝났는지 확인해서, 아직 반영 안 됐으면 지금 반영하거나 취소한다.
+// setTimeout 하나에만 의존하지 않고(모바일 백그라운드에서 타이머가 씹힐 수 있음),
+// 주기적 체크 시점마다 이 함수로 "놓친 반영"을 뒤늦게라도 따라잡는다.
+function commitOrCancelCourtGame(n){
+  if(!CC[n] || GC[n] || !CT[n]) return;
+  if(Date.now()-CT[n] < 30*1000) return;
+  const pl=S.attendees.filter(x=>x.court===n);
+  const currentIds=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
+  if(pl.length!==CMAX || currentIds!==CS[n] || !CS[n]){
+    CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;
+    save();renderAll();
+    toast(`⚠️ ${CNAMES[n]} 인원이 바뀌어 확정이 취소됐습니다. 4명 확인 후 다시 확정해주세요`,4500);
+    return;
+  }
+  pl.forEach(a=>{a.games+=1;});
+  GC[n]=true;
+  recordCourtGame(n);save();renderAll();
+}
+function checkPendingGameCommits(){
+  [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
+}
 function scheduleGameCommit(n){
   cancelPendingGame(n);
-  // 확정 시점의 인원 구성을 스냅샷으로 저장 (다른 기기와의 동기화 과정에서
-  // CC[n] 플래그가 일시적으로 흔들려도, 실제 인원이 그대로면 게임수가 정상 반영되도록)
-  const snapshotIds = S.attendees.filter(x=>x.court===n).map(a=>a.id).sort((a,b)=>a-b).join(',');
+  // 확정 시점의 인원 구성을 스냅샷으로 저장 (Firebase에도 CS로 함께 저장돼 새로고침/백그라운드에도 유지)
+  CS[n] = S.attendees.filter(x=>x.court===n).map(a=>a.id).sort((a,b)=>a-b).join(',');
+  GC[n] = false;
+  // 빠른 경로: 탭이 계속 열려있으면 정확히 30초 뒤 반영 시도.
+  // 모바일에서 화면이 꺼지거나 백그라운드로 가면 이 타이머가 지연/누락될 수 있어서,
+  // 주기적 checkPendingGameCommits()가 놓친 반영을 뒤늦게라도 따라잡는 진짜 안전장치다.
   pendingGameTimers[n]=setTimeout(()=>{
     pendingGameTimers[n]=null;
-    const pl=S.attendees.filter(x=>x.court===n);
-    const currentIds = pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
-    if(pl.length!==CMAX || currentIds!==snapshotIds || !snapshotIds){
-      // 실제로 인원 구성이 바뀐 경우에만 확정 취소
-      if(CC[n]){ CC[n]=false;CT[n]=null; }
-      save();renderAll();
-      toast(`⚠️ ${CNAMES[n]} 인원이 바뀌어 확정이 취소됐습니다. 4명 확인 후 다시 확정해주세요`,4500);
-      return;
-    }
-    // 같은 4명이 그대로 있으면, 중간에 다른 기기와의 동기화로 CC가 false가 됐어도 게임수는 정상 반영
-    pl.forEach(a=>{a.games+=1;});
-    CC[n]=true;if(!CT[n])CT[n]=Date.now();
-    recordCourtGame(n);save();renderAll();
+    commitOrCancelCourtGame(n);
   }, 30*1000);
 }
 function scheduleAutoConfirm(n){
@@ -1215,6 +1239,7 @@ function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
   checkAutoLeave();
+  checkPendingGameCommits(); // 확정 후 30초 지난 코트가 있으면 지금 반영 (타이머가 씹혀도 여기서 매초 따라잡음)
   // 매 분 0초: 전체 보드 갱신
   if(n.getSeconds()===0){ renderBoard(); return; }
   // 매 초: 경과시간 배지만 업데이트 (DOM 직접 수정, 부담 없음)
@@ -1335,7 +1360,7 @@ function doLeave(id, isAuto){
   // 0게임 상태로 퇴소 → 출석 자체를 없던 일로 간주, 기록을 완전히 삭제 (통계/명단 반영 안 함)
   if((a.games||0)===0){
     S.attendees=S.attendees.filter(x=>x.id!==id);
-    if(a.court)CC[a.court]=false;
+    if(a.court){CC[a.court]=false;CT[a.court]=null;GC[a.court]=false;CS[a.court]=null;cancelPendingGame(a.court);}
     save();renderAll();
     removeSessionFromStats(id, a.attendTs, dateStr());
     toast(`${a.name} 0게임 퇴소 → 출석 기록 삭제됨`);
@@ -1345,7 +1370,7 @@ function doLeave(id, isAuto){
   S.leftMembers.push({...a,leftAt:leftT,leftTs:leftTs});
   touchLocal(a.id, a.attendTs);
   S.attendees=S.attendees.filter(x=>x.id!==id);
-  if(a.court)CC[a.court]=false;
+  if(a.court){CC[a.court]=false;CT[a.court]=null;GC[a.court]=false;CS[a.court]=null;cancelPendingGame(a.court);}
   save();renderAll();
   saveStatHistory(); // 퇴소 즉시 통계(tennis_stats)에도 반영
   toast(isAuto ? `⏰ ${a.name} 퇴소예정 10분 경과 → 자동 퇴소 처리됨` : `${a.name} 퇴소 처리됨`);
@@ -1413,7 +1438,7 @@ function toggleCourt(id,n){
   if(!NEXT_COURTS.includes(n)){
     if(a.court&&!NEXT_COURTS.includes(a.court)){
       cancelAutoConfirm(a.court);cancelPendingGame(a.court); // 이전 코트 타이머/게임수 유예 취소
-      CC[a.court]=false;
+      CC[a.court]=false;CT[a.court]=null;GC[a.court]=false;CS[a.court]=null;
     }
     a.court=n;a.hasCourt=true;
   } else {
@@ -1447,7 +1472,7 @@ function toggleNextCourt(id,which){
 function removeFromCourt(id){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  if(a.court)CC[a.court]=false;
+  if(a.court){CC[a.court]=false;CT[a.court]=null;GC[a.court]=false;CS[a.court]=null;cancelPendingGame(a.court);}
   a.court=null;a.courtFreeAt=timeStr();a.courtFreeTs=nowTs();
   save();renderAll();toast(`${a.name} → 미배정`);
 }
@@ -1458,7 +1483,7 @@ function clearCourt(n){
   if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
 function confirmCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -1548,9 +1573,9 @@ function assignTeam(cn,teamIds){
     teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court)
   );
   cancelAutoConfirm(cn);cancelPendingGame(cn);
-  prevCourts.forEach(pc=>{ if(pc!==cn){ CC[pc]=false;cancelPendingGame(pc); } });
+  prevCourts.forEach(pc=>{ if(pc!==cn){ CC[pc]=false;CT[pc]=null;GC[pc]=false;CS[pc]=null;cancelPendingGame(pc); } });
   shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  CC[cn]=false;
+  CC[cn]=false;CT[cn]=null;GC[cn]=false;CS[cn]=null;
   teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
   save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
   // 4명 다 찼고 미확정이면 자동확정 타이머 시작
