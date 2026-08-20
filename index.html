@@ -1374,6 +1374,38 @@ function updateElapsedBadgesIndex(){
   });
 }
 
+/* ── 게스트 게임수 vs 정회원 평균 경고 ── */
+function isGuestAttendee(a){ return !!(a&&(a.isGuest||(a.name&&a.name.includes('게스트')))); }
+function todayTotalGamesFor(id){
+  let sum=0;
+  S.leftMembers.forEach(x=>{ if(x.id===id) sum+=(x.games||0); });
+  const cur=S.attendees.find(x=>x.id===id);
+  if(cur) sum+=(cur.games||0);
+  return sum;
+}
+function todayRegularAvgGames(){
+  const ids=new Set();
+  [...S.attendees,...S.leftMembers].forEach(a=>{
+    if(!HIDDEN_MEMBER_IDS.includes(a.id) && !isGuestAttendee(a)) ids.add(a.id);
+  });
+  if(!ids.size) return 0;
+  let total=0;
+  ids.forEach(id=>{ total+=todayTotalGamesFor(id); });
+  return total/ids.size;
+}
+// 게스트를 코트에 배정하기 전 체크: 이미 정회원 평균 이상이면 확인 팝업, 계속 진행 시 proceedFn 실행
+function checkGuestGamesBeforeAssign(ids, proceedFn){
+  const avg=todayRegularAvgGames();
+  if(avg<=0){ proceedFn(); return; } // 아직 평균 낼 데이터가 없으면 그냥 진행
+  const overGuest=ids
+    .map(id=>S.attendees.find(x=>x.id===id))
+    .filter(a=>a && isGuestAttendee(a) && todayTotalGamesFor(a.id)>=avg);
+  if(!overGuest.length){ proceedFn(); return; }
+  const names=overGuest.map(a=>`${a.name}(${todayTotalGamesFor(a.id)}게임)`).join(', ');
+  openModal(`⚠️ 게스트 ${names}님이 이미 정회원 평균(${avg.toFixed(1)}게임) 이상입니다.\n그래도 배정하시겠습니까?`, proceedFn);
+}
+
+
 /* ── 출석/퇴소 ── */
 function markAttend(id){
   if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 출석 불가');return;}
@@ -1511,19 +1543,25 @@ function toggleCourt(id,n){
   if(!NEXT_COURTS.includes(n) && !courtActive[n]){toast(`${CNAMES[n]}은 오늘 비활성화된 코트입니다 ⚠️`);return;}
   if(S.attendees.filter(x=>x.court===n).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
   if(!NEXT_COURTS.includes(n)){
-    if(a.court&&!NEXT_COURTS.includes(a.court)){
-      cancelAutoConfirm(a.court);cancelPendingGame(a.court); // 이전 코트 타이머/게임수 유예 취소
-      CC[a.court]=false;
-    }
-    a.court=n;a.hasCourt=true;
+    checkGuestGamesBeforeAssign([id], ()=>{
+      if(a.court&&!NEXT_COURTS.includes(a.court)){
+        cancelAutoConfirm(a.court);cancelPendingGame(a.court); // 이전 코트 타이머/게임수 유예 취소
+        CC[a.court]=false;
+      }
+      a.court=n;a.hasCourt=true;
+      save();renderAll();
+      // 4명 배정 완료되면 자동확정 타이머 시작
+      if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
+        scheduleAutoConfirm(n);
+      }
+    });
   } else {
     const nc=n===5?'nextCourt1':'nextCourt2';
-    a[nc]=a[nc]===n?null:n;save();renderAll();return;
-  }
-  save();renderAll();
-  // 4명 배정 완료되면 자동확정 타이머 시작
-  if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
-    scheduleAutoConfirm(n);
+    if(a[nc]){ a[nc]=null; save();renderAll(); return; } // 이미 배정돼 있으면 그냥 해제 (경고 필요 없음)
+    checkGuestGamesBeforeAssign([id], ()=>{
+      a[nc]=n; save();renderAll();
+    });
+    return;
   }
 }
 /* 확정된(게임 진행중) 코트에서 인원을 뺄 때 — 일반해제 / 게임중수정 선택 팝업 */
@@ -1921,34 +1959,38 @@ function assignTeam(cn,teamIds){
   if(!requireSync())return;
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
-  const t=timeStr();const baseTs=nowTs();
-  cancelAutoConfirm(cn);cancelPendingGame(cn); // 배정 전 해당 코트 타이머 초기화 (게임수 유예분도 취소)
-  const prevCourts=new Set(teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court));
-  prevCourts.forEach(pc=>{if(pc!==cn){CC[pc]=false;cancelPendingGame(pc);}});
-  shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  CC[cn]=false;
-  teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
-  save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
-  // 4명 다 찼고 미확정이면 자동확정 타이머 시작
-  if(cn>=1&&cn<=4&&!CC[cn]&&S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
+  checkGuestGamesBeforeAssign(teamIds, ()=>{
+    const t=timeStr();const baseTs=nowTs();
+    cancelAutoConfirm(cn);cancelPendingGame(cn); // 배정 전 해당 코트 타이머 초기화 (게임수 유예분도 취소)
+    const prevCourts=new Set(teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.court).map(a=>a.court));
+    prevCourts.forEach(pc=>{if(pc!==cn){CC[pc]=false;cancelPendingGame(pc);}});
+    shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
+    CC[cn]=false;
+    teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
+    save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
+    // 4명 다 찼고 미확정이면 자동확정 타이머 시작
+    if(cn>=1&&cn<=4&&!CC[cn]&&S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
+  });
 }
 function assignNextTeam(which,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
-  const t=timeStr();const baseTs=nowTs();
-  const nc1cnt=S.attendees.filter(a=>a.nextCourt1).length;
-  let targetWhich=which;
-  if(which===1&&nc1cnt>=CMAX){
-    if(S.attendees.filter(a=>a.nextCourt2).length>=CMAX){toast('⚠️ 다음차례1,2 모두 꽉 찼습니다.',3000);return;}
-    targetWhich=2;toast('다음차례가 꽉 차 있어 다음차례2에 배정합니다.',2500);
-  }
-  const nc=targetWhich===1?'nextCourt1':'nextCourt2';
-  const n=targetWhich===1?5:6;
-  shuffle(S.attendees.filter(a=>a[nc])).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
-  CC[n]=false;
-  teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a)a[nc]=n;});
-  save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
+  checkGuestGamesBeforeAssign(teamIds, ()=>{
+    const t=timeStr();const baseTs=nowTs();
+    const nc1cnt=S.attendees.filter(a=>a.nextCourt1).length;
+    let targetWhich=which;
+    if(which===1&&nc1cnt>=CMAX){
+      if(S.attendees.filter(a=>a.nextCourt2).length>=CMAX){toast('⚠️ 다음차례1,2 모두 꽉 찼습니다.',3000);return;}
+      targetWhich=2;toast('다음차례가 꽉 차 있어 다음차례2에 배정합니다.',2500);
+    }
+    const nc=targetWhich===1?'nextCourt1':'nextCourt2';
+    const n=targetWhich===1?5:6;
+    shuffle(S.attendees.filter(a=>a[nc])).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
+    CC[n]=false;
+    teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a)a[nc]=n;});
+    save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
+  });
 }
 
 /* ── 대기/추천 ── */
