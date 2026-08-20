@@ -250,6 +250,11 @@ const db = firebase.database();
 // 고정 경로 사용 (날짜별로 분리하면 디바이스 접속 시점에 따라 경로가 달라지는 버그 발생)
 // 날짜 구분은 REF 경로가 아닌 저장 데이터 내 date 필드로 처리
 const REF = db.ref('tennis_current');
+const COURT_STATE_REF = db.ref('tennis_court_state'); // 코트 배정만 별도 경로에 "바뀐 사람만" 부분 업데이트
+const ATTEND_STATE_REF = db.ref('tennis_attend_state'); // 출석자 정보(게임수 등, 코트배정 제외)만 별도 경로
+const LEFT_STATE_REF = db.ref('tennis_left_state');     // 퇴소자(세션) 기록만 별도 경로 (세션 단위로 분리)
+const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상태(CC/CT/GC/CS/AT)만 별도 경로 (코트 단위로 분리)
+const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
 
 let syncPushTimer = null;
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
@@ -350,19 +355,247 @@ function normalizeS(raw){
 }
 
 /* 서버로 push (debounce 1초) */
+// 여러 필드를 "직전에 보낸 값과 달라진 것만" 부분 업데이트하는 공통 유틸.
+// state 전체를 통째로 덮어쓰는 기존 방식의 근본적 약점(다른 기기의 동시 변경이 지워짐)을
+// 코트배정/출석정보/퇴소기록/코트확정상태 각각에 대해 동일한 패턴으로 해소한다.
+function shallowEq(a,b){
+  if(a===b) return true;
+  if(!a||!b) return false;
+  const ka=Object.keys(a), kb=Object.keys(b);
+  if(ka.length!==kb.length) return false;
+  return ka.every(k=>a[k]===b[k]);
+}
+// 각 채널마다 "서버로부터 최초 동기화를 한 번이라도 받았는지" 플래그.
+// games처럼 계속 바뀌는 숫자 필드는 "값이 비어있으면 스킵" 방식으로는 막을 수 없어서
+// (0도 유효한 값이므로), 아예 진짜 기준값을 받기 전에는 push 자체를 하지 않도록 막는다.
+let courtStateReady=false, attendStateReady=false, leftStateReady=false, confirmStateReady=false;
+
+// ── 1) 코트 배정 (court/nextCourt1/nextCourt2) ──
+let lastPushedCourtSnapshot = {};
+function pushCourtStateDiff(){
+  if(!courtStateReady) return;
+  const current = {};
+  S.attendees.forEach(a=>{
+    current[a.id] = { c: a.court ?? null, n1: a.nextCourt1 ?? null, n2: a.nextCourt2 ?? null };
+  });
+  const update = {};
+  let hasChange = false;
+  Object.keys(current).forEach(id=>{
+    const prev = lastPushedCourtSnapshot[id];
+    const cur = current[id];
+    if(prev){
+      if(!shallowEq(prev,cur)){ update[id]=cur; hasChange=true; }
+    } else if(cur.c!==null || cur.n1!==null || cur.n2!==null){
+      update[id]=cur; hasChange=true;
+    }
+  });
+  Object.keys(lastPushedCourtSnapshot).forEach(id=>{
+    if(!(id in current)){ update[id] = null; hasChange = true; }
+  });
+  if(hasChange){ try{ COURT_STATE_REF.update(update); }catch(e){} }
+  lastPushedCourtSnapshot = current;
+}
+function applyCourtState(courtState){
+  if(!courtState) return;
+  S.attendees.forEach(a=>{
+    const cs = courtState[a.id];
+    if(cs){
+      a.court = cs.c ?? null;
+      a.nextCourt1 = cs.n1 ?? null;
+      a.nextCourt2 = cs.n2 ?? null;
+      a.hasCourt = !!a.court;
+      lastPushedCourtSnapshot[a.id] = { c: cs.c ?? null, n1: cs.n1 ?? null, n2: cs.n2 ?? null };
+    }
+  });
+}
+
+// ── 2) 출석자 정보 (시각/게스트여부/퇴소예정 등 - games는 아래 3)에서 별도의 트랜잭션 방식으로 처리) ──
+let lastPushedAttendSnapshot = {};
+function attendFieldsFor(a){
+  return {
+    name:a.name??null, gender:a.gender??null, time:a.time??null, attendTs:a.attendTs??null,
+    isGuest:!!a.isGuest, leavingScheduled:!!a.leavingScheduled,
+    leavingScheduledAt:a.leavingScheduledAt??null,
+    courtFreeAt:a.courtFreeAt??null, courtFreeTs:a.courtFreeTs??null,
+  };
+}
+function pushAttendStateDiff(){
+  if(!attendStateReady) return;
+  const current = {};
+  S.attendees.forEach(a=>{ current[a.id] = attendFieldsFor(a); });
+  const update = {};
+  let hasChange = false;
+  Object.keys(current).forEach(id=>{
+    const prev = lastPushedAttendSnapshot[id];
+    const cur = current[id];
+    if(prev){
+      if(!shallowEq(prev,cur)){ update[id]=cur; hasChange=true; }
+    } else if(cur.attendTs){
+      update[id]=cur; hasChange=true;
+    }
+  });
+  Object.keys(lastPushedAttendSnapshot).forEach(id=>{
+    if(!(id in current)){ update[id] = null; hasChange = true; }
+  });
+  if(hasChange){ try{ ATTEND_STATE_REF.update(update); }catch(e){} }
+  lastPushedAttendSnapshot = current;
+}
+function applyAttendState(attendState){
+  if(!attendState) return;
+  S.attendees.forEach(a=>{
+    const s = attendState[a.id];
+    if(s){
+      if(s.name!=null) a.name=s.name;
+      if(s.gender!=null) a.gender=s.gender;
+      if(s.time!=null) a.time=s.time;
+      if(s.attendTs!=null) a.attendTs=s.attendTs;
+      a.isGuest = !!s.isGuest;
+      a.leavingScheduled = !!s.leavingScheduled;
+      a.leavingScheduledAt = s.leavingScheduledAt ?? null;
+      if(s.courtFreeAt!=null) a.courtFreeAt=s.courtFreeAt;
+      if(s.courtFreeTs!=null) a.courtFreeTs=s.courtFreeTs;
+      lastPushedAttendSnapshot[a.id] = attendFieldsFor(a);
+    }
+  });
+}
+
+// ── 3) 게임수(games) — Firebase 트랜잭션으로 "서버의 진짜 현재값을 읽어서 +delta/-delta"를 원자적으로 적용 ──
+function applyGamesDelta(ids, delta){
+  ids.forEach(id=>{
+    try{
+      GAMES_STATE_REF.child(id).transaction(cur=>{
+        const base = (typeof cur === 'number') ? cur : 0;
+        return Math.max(0, base + delta);
+      });
+    }catch(e){}
+  });
+}
+function setGamesState(id, value){
+  try{ GAMES_STATE_REF.child(id).set(Math.max(0, value||0)); }catch(e){}
+}
+function applyGamesState(gamesState){
+  S.attendees.forEach(a=>{
+    const g = gamesState ? gamesState[a.id] : undefined;
+    a.games = (typeof g === 'number') ? g : 0;
+  });
+}
+
+// ── 4) 퇴소자(세션) 기록 — 세션(id_출석시각) 단위로 분리 저장 ──
+let lastPushedLeftSnapshot = {};
+function leftKeyFor(x){ return x.id+'_'+(x.attendTs||0); }
+function leftFieldsFor(x){
+  return { id:x.id, name:x.name??null, gender:x.gender??null, games:x.games??0, time:x.time??null,
+    attendTs:x.attendTs??null, leftAt:x.leftAt??null, leftTs:x.leftTs??null, isGuest:!!x.isGuest };
+}
+function pushLeftStateDiff(){
+  if(!leftStateReady) return;
+  const current = {};
+  S.leftMembers.forEach(x=>{ current[leftKeyFor(x)] = leftFieldsFor(x); });
+  const update = {};
+  let hasChange = false;
+  Object.keys(current).forEach(k=>{
+    const prev = lastPushedLeftSnapshot[k];
+    const cur = current[k];
+    if(!prev || !shallowEq(prev,cur)){ update[k]=cur; hasChange=true; }
+  });
+  Object.keys(lastPushedLeftSnapshot).forEach(k=>{
+    if(!(k in current)){ update[k] = null; hasChange = true; }
+  });
+  if(hasChange){ try{ LEFT_STATE_REF.update(update); }catch(e){} }
+  lastPushedLeftSnapshot = current;
+}
+function applyLeftState(leftState){
+  if(!leftState) return;
+  const localByKey = {};
+  S.leftMembers.forEach(x=>{ localByKey[leftKeyFor(x)] = x; });
+  const _today = dateStr();
+  Object.keys(leftState).forEach(k=>{
+    const remote = leftState[k];
+    if(!remote) return;
+    if(remote.attendTs){
+      const _d=new Date(remote.attendTs*1000);
+      const _ds=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+      if(_ds!==_today) return;
+    }
+    if(localByKey[k]){ Object.assign(localByKey[k], remote); }
+    else { S.leftMembers.push({...remote}); }
+    lastPushedLeftSnapshot[k] = leftFieldsFor(remote);
+  });
+  Object.keys(lastPushedLeftSnapshot).forEach(k=>{
+    if(!(k in leftState)){
+      S.leftMembers = S.leftMembers.filter(x=>leftKeyFor(x)!==k);
+      delete lastPushedLeftSnapshot[k];
+    }
+  });
+}
+
+// ── 5) 코트 확정 상태 (CC/CT/GC/CS/AT) — 코트(1~4) 단위로 분리 저장 ──
+let lastPushedConfirmSnapshot = {};
+function confirmFieldsFor(n){
+  return { CC: !!CC[n], CT: CT[n]??null, GC: !!GC[n], CS: CS[n]??null, AT: AT[n]??null };
+}
+function pushConfirmStateDiff(){
+  if(!confirmStateReady) return;
+  const update = {};
+  let hasChange = false;
+  [1,2,3,4].forEach(n=>{
+    const cur = confirmFieldsFor(n);
+    const prev = lastPushedConfirmSnapshot[n];
+    const curIsBlank = !cur.CC && cur.CT===null && !cur.GC && cur.CS===null && cur.AT===null;
+    if(prev){
+      if(!shallowEq(prev,cur)){ update[n]=cur; hasChange=true; }
+    } else if(!curIsBlank){
+      update[n]=cur; hasChange=true;
+    }
+    lastPushedConfirmSnapshot[n] = cur;
+  });
+  if(hasChange){ try{ COURT_CONFIRM_REF.update(update); }catch(e){} }
+}
+function applyConfirmState(confirmState){
+  if(!confirmState) return;
+  [1,2,3,4].forEach(n=>{
+    const c = confirmState[n];
+    if(c){
+      CC[n]=!!c.CC; CT[n]=c.CT??null; GC[n]=!!c.GC; CS[n]=c.CS??null; AT[n]=c.AT??null;
+      lastPushedConfirmSnapshot[n] = confirmFieldsFor(n);
+    }
+  });
+}
+
+function doSyncPushNow(){
+  if(syncPushTimer){ clearTimeout(syncPushTimer); syncPushTimer=null; }
+  const token = DEVICE_ID+'-'+Date.now();
+  lastSentToken = token;
+  pushCourtStateDiff();
+  pushAttendStateDiff();
+  pushLeftStateDiff();
+  pushConfirmStateDiff();
+  return REF.set({state:S, CC, CT, AT, GC, CS, seq:token, date:dateStr(), updatedAt:Date.now()})
+    .then(()=>setSyncDot('ok'))
+    .catch(()=>setSyncDot('err'));
+}
 function syncPush(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   setSyncDot('busy');
-  syncPushTimer = setTimeout(()=>{
-    const token = DEVICE_ID+'-'+Date.now();
-    lastSentToken = token;
-    REF.set({state:S, CC, CT, AT, GC, CS, seq:token, date:dateStr(), updatedAt:Date.now()})
-      .then(()=>setSyncDot('ok'))
-      .catch(()=>setSyncDot('err'));
-  }, 1000);
+  syncPushTimer = setTimeout(doSyncPushNow, 80); // 대기시간을 짧게 줄여 "저장 전 새로고침"으로 유실되는 창을 최소화
 }
+// 새로고침/탭 닫기/다른 화면 전환 직전, 아직 저장 안 된(디바운스 대기 중인) 변경사항을 즉시 반영
+window.addEventListener('beforeunload', ()=>{ if(syncPushTimer) doSyncPushNow(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden' && syncPushTimer) doSyncPushNow(); });
 
 /* 서버에서 실시간 listen */
+let latestCourtState=null;   // tennis_court_state 최신 값 (코트 배정의 진짜 소스)
+let latestAttendState=null;  // tennis_attend_state 최신 값
+let latestLeftState=null;    // tennis_left_state 최신 값
+let latestConfirmState=null; // tennis_court_confirm 최신 값
+let latestGamesState=null;   // tennis_games_state 최신 값 (게임수의 진짜 소스)
+function applyAllGranularStates(){
+  applyCourtState(latestCourtState);
+  applyAttendState(latestAttendState);
+  applyLeftState(latestLeftState);
+  applyConfirmState(latestConfirmState);
+  applyGamesState(latestGamesState);
+}
 function syncListen(){
   let firstReceived = false;
   REF.on('value', snap=>{
@@ -372,6 +605,7 @@ function syncListen(){
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
+    applyAllGranularStates(); // state 전체 동기화가 각 필드를 덮어써도, 별도 경로들이 항상 최신값으로 재적용
     checkPendingGameCommits(); // 백그라운드 중 놓친 30초 유예 반영을 여기서 따라잡음
     // monitor.html: renderAll() 대신 필요한 것만 직접 호출
     // (pg1/pg2 등 DOM 탭이 없어서 renderAll 에러 방지)
@@ -386,6 +620,36 @@ function syncListen(){
   }, err=>{
     setSyncDot('err');
   });
+  // 필드별 전용 경로: 바뀔 때마다 즉시(다른 동기화와 무관하게) 로컬에 반영
+  COURT_STATE_REF.on('value', snap=>{
+    latestCourtState = snap.val();
+    applyCourtState(latestCourtState);
+    courtStateReady=true;
+    renderBoard();
+  });
+  ATTEND_STATE_REF.on('value', snap=>{
+    latestAttendState = snap.val();
+    applyAttendState(latestAttendState);
+    attendStateReady=true;
+    renderBoard();
+  });
+  LEFT_STATE_REF.on('value', snap=>{
+    latestLeftState = snap.val();
+    applyLeftState(latestLeftState);
+    leftStateReady=true;
+    renderBoard();
+  });
+  COURT_CONFIRM_REF.on('value', snap=>{
+    latestConfirmState = snap.val();
+    applyConfirmState(latestConfirmState);
+    confirmStateReady=true;
+    renderBoard();
+  });
+  GAMES_STATE_REF.on('value', snap=>{
+    latestGamesState = snap.val();
+    applyGamesState(latestGamesState);
+    renderBoard();
+  });
 }
 
 /* 화면 복귀 시(백그라운드→포그라운드) 최신 데이터 한 번 직접 가져옴
@@ -398,6 +662,7 @@ document.addEventListener('visibilitychange', ()=>{
       const incomingToken=raw.seq??'';
       if(incomingToken && incomingToken===lastSentToken) return;
       normalizeS(raw);
+      applyAllGranularStates();
       checkPendingGameCommits(); // 화면 꺼져있는 동안 30초 타이머가 씹혔을 수 있으니 복귀 즉시 확인
       renderAll();
       if(boardModeOn) renderBoard();
@@ -917,7 +1182,8 @@ function commitOrCancelCourtGame(n){
     toast(`⚠️ ${CNAMES[n]} 인원이 바뀌어 확정이 취소됐습니다. 4명 확인 후 다시 확정해주세요`,4500);
     return;
   }
-  pl.forEach(a=>{a.games+=1;});
+  pl.forEach(a=>{a.games+=1;}); // 로컬 즉시 반영(낙관적 업데이트)
+  applyGamesDelta(pl.map(a=>a.id), +1); // 서버에는 트랜잭션으로 원자적 +1 (레이스 방지)
   GC[n]=true;
   recordCourtGame(n);save();renderAll();
 }
@@ -1188,6 +1454,13 @@ function autoReset(now){
   saveStatHistory();
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};
+  GC={1:false,2:false,3:false,4:false};CS={1:null,2:null,3:null,4:null};
+  lastPushedCourtSnapshot={};lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedConfirmSnapshot={};
+  try{COURT_STATE_REF.set(null);}catch(e){}
+  try{ATTEND_STATE_REF.set(null);}catch(e){}
+  try{LEFT_STATE_REF.set(null);}catch(e){}
+  try{COURT_CONFIRM_REF.set(null);}catch(e){}
+  try{GAMES_STATE_REF.set(null);}catch(e){}
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
 function manualReset(){
@@ -1197,6 +1470,13 @@ function manualReset(){
     archive(S,dateStr());// 이력 보관
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};
+    GC={1:false,2:false,3:false,4:false};CS={1:null,2:null,3:null,4:null};
+    lastPushedCourtSnapshot={};lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedConfirmSnapshot={};
+    try{COURT_STATE_REF.set(null);}catch(e){}
+    try{ATTEND_STATE_REF.set(null);}catch(e){}
+    try{LEFT_STATE_REF.set(null);}catch(e){}
+    try{COURT_CONFIRM_REF.set(null);}catch(e){}
+    try{GAMES_STATE_REF.set(null);}catch(e){}
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🔄 오늘 최종 저장 후 초기화 완료');
   });
 }
@@ -1323,6 +1603,7 @@ function markAttend(id){
   const t=timeStr();const ts=nowTs();S.seqCounter++;
   S.attendees.push({id:m.id,name:m.name,gender:m.gender,seq:S.seqCounter,games:0,time:t,court:null,courtFreeAt:t,courtFreeTs:ts,attendTs:ts,hasCourt:false});
   touchLocal(m.id, ts);
+  setGamesState(m.id, 0); // 새 세션이므로 이전 세션의 게임수가 남아있지 않도록 명시적으로 0 초기화
   save();renderBoard();toast(`${m.name} 출석 ✓  ${t}`);
 }
 function restoreAttendee(id){
@@ -1344,6 +1625,7 @@ function restoreAttendee(id){
     nextCourt1:null,nextCourt2:null
   });
   touchLocal(a.id, ts);
+  setGamesState(a.id, a.games); // 복구는 이전 세션 게임수를 그대로 이어받음
   save();renderAll();toast(`${a.name} 복구 완료 (${t})`);
 }
 
