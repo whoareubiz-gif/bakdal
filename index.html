@@ -2009,13 +2009,14 @@ function toggleCourt(id,n){
   if(!requireSync())return;
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
   if(a.court===n){
-    if(n>=1&&n<=4&&CC[n]){
-      // 확정(게임 진행 중)된 코트에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
+    if(n>=1&&n<=4&&GC[n]){
+      // 게임수가 이미 반영된 상태(확정되어 게임이 실제로 커밋됨)에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
       showReleaseChoicePopup(id,n);
       return;
     }
-    // 미확정 코트(아직 게임 시작 전)에서 빼는 건 그냥 바로 해제
-    releaseNormal(id,n);
+    // 아직 게임수가 반영되지 않은 상태(배정만 했거나, 확정은 됐어도 게임수 커밋 전) → 실제 게임을 안 한 것이므로
+    // 대기시간을 건드리지 않고 그대로 보존한다 (게임중 수정과 동일하게 처리)
+    releaseMidGameFix(id,n);
     return;
   }
   if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
@@ -2105,7 +2106,8 @@ function releaseNormal(id,n){
    - 게임수가 이미 반영됐으면(GC[n]=true, 30초 유예 지남) 되돌리고, 아직이면(유예 중) 그대로 미반영 */
 function releaseMidGameFix(id,n){
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  const alreadyCommitted = (n>=1&&n<=4) && CC[n] && GC[n];
+  const wasConfirmed = (n>=1&&n<=4) && CC[n];
+  const alreadyCommitted = wasConfirmed && GC[n];
   if(alreadyCommitted){
     // 이미 게임수가 반영된 뒤라면, 그 게임 자체가 무효가 되는 것이므로
     // 빠지는 사람만이 아니라 그 코트에 함께 확정되어 있던 인원 전원의 게임수를 되돌린다.
@@ -2120,7 +2122,9 @@ function releaseMidGameFix(id,n){
   save();renderAll();
   toast(alreadyCommitted
     ? `🛠 ${CNAMES[n]} 게임중 수정 → 코트 전원 게임수 되돌림, 대기시간 유지`
-    : `🛠 ${a.name} 게임중 수정 → 게임수 미반영, 대기시간 유지`);
+    : wasConfirmed
+      ? `🛠 ${a.name} 게임중 수정 → 게임수 미반영, 대기시간 유지`
+      : `${a.name} → 배정 취소 (게임 안 함, 대기시간 유지)`);
 }
 function toggleNextCourt(id,which){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -2219,24 +2223,31 @@ function removeFromCourt(id){
   if(!requireSync())return;
   const a=S.attendees.find(x=>x.id===id);if(!a||!a.court)return;
   const n=a.court;
-  if(n>=1&&n<=4&&CC[n]){
-    // 확정(게임 진행중)된 코트에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
+  if(n>=1&&n<=4&&GC[n]){
+    // 게임수가 이미 반영된 상태에서 빼는 경우 → 일반해제/게임중수정 선택 팝업
     showReleaseChoicePopup(id,n);
     return;
   }
-  // 미확정 코트(아직 게임 시작 전)에서 빼는 건 그냥 바로 해제
-  releaseNormal(id,n);
+  // 아직 게임수가 반영되지 않은 상태 → 실제 게임을 안 한 것이므로 대기시간을 그대로 보존
+  releaseMidGameFix(id,n);
 }
 function clearCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   if(!requireSync())return;
   const pl=S.attendees.filter(x=>x.court===n);
-  const t=timeStr();const baseTs=nowTs();
-  shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
+  // 게임수가 실제로 반영된 적 없으면(GC[n]=false) 아무도 게임을 안 한 것이므로 대기시간을 그대로 보존.
+  // 반영된 적 있으면(진짜 게임을 했으면) 기존처럼 그 순간부터 새 대기시간을 시작한다.
+  const hadRealGame = n>=1 && n<=4 && GC[n];
+  if(hadRealGame){
+    const t=timeStr();const baseTs=nowTs();
+    shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
+  } else {
+    pl.forEach(a=>{a.court=null;}); // courtFreeAt/Ts는 건드리지 않음 (대기시간 유지)
+  }
   // 사람이 0명이어도(다른 기기가 이미 다 뺐는데 확정 상태만 유령처럼 남은 경우 등) 항상 강제로 초기화한다.
   // 예전엔 "배정 인원 없음"이면 그냥 끝내버려서, 이런 유령 상태를 "해제" 버튼으로도 못 풀었었다.
   cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;save();renderAll();
-  toast(pl.length?`${CNAMES[n]} 해제 완료`:`${CNAMES[n]} 상태 초기화 완료`);
+  toast(!pl.length?`${CNAMES[n]} 상태 초기화 완료`:hadRealGame?`${CNAMES[n]} 해제 완료`:`${CNAMES[n]} 해제 완료 (게임 안 함, 대기시간 유지)`);
 }
 // 확정 후 30초 유예: 유예시간 안에 재편성(전체 해제/일부 교체)하면 게임수에 반영되지 않음
 function cancelPendingGame(n){
