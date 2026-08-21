@@ -2231,10 +2231,12 @@ function clearCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   if(!requireSync())return;
   const pl=S.attendees.filter(x=>x.court===n);
-  if(!pl.length){toast(`${CNAMES[n]}에 배정 인원 없음`);return;}
   const t=timeStr();const baseTs=nowTs();
   shuffle(pl.slice()).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
-  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
+  // 사람이 0명이어도(다른 기기가 이미 다 뺐는데 확정 상태만 유령처럼 남은 경우 등) 항상 강제로 초기화한다.
+  // 예전엔 "배정 인원 없음"이면 그냥 끝내버려서, 이런 유령 상태를 "해제" 버튼으로도 못 풀었었다.
+  cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;save();renderAll();
+  toast(pl.length?`${CNAMES[n]} 해제 완료`:`${CNAMES[n]} 상태 초기화 완료`);
 }
 // 확정 후 30초 유예: 유예시간 안에 재편성(전체 해제/일부 교체)하면 게임수에 반영되지 않음
 function cancelPendingGame(n){
@@ -4342,6 +4344,12 @@ function clearStatHistory(){
 
 /* ── 전체 렌더 ── */
 function renderAll(){
+  // 렌더링 시점마다 "코트에 사람 0명인데 확정정보가 남은" 유령 상태를 스스로 확인해서 고친다.
+  // (사용자가 별도로 뭔가를 조작해야만 save()가 불려서 고쳐지는 게 아니라, 화면을 열기만 해도
+  // 자동으로 정리되도록 함. renderAll 안에서 save()를 바로 부르면 재귀호출이 되므로, 다음 tick으로 지연)
+  if(enforceEmptyCourtsCleared()){
+    setTimeout(()=>{ try{ syncPush(); }catch(e){} }, 0);
+  }
   renderStats();
   renderNoticeBanner();
   // 항상 필요한 탭(오늘참석자/코트현황)은 모드 무관하게 렌더링
