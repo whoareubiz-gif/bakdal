@@ -704,7 +704,7 @@ function syncListen(){
     if(incomingToken && incomingToken === lastSentToken) return;
     normalizeS(raw);
     applyAllGranularStates(); // state 전체 동기화가 각 필드를 덮어써도, 별도 경로들이 항상 최신값으로 재적용
-    checkPendingGameCommits(); // 백그라운드 중 놓친 30초 유예 반영을 여기서 따라잡음
+    checkPendingGameCommits(); checkPendingAutoConfirms(); // 백그라운드 중 놓친 30초/1분 유예 반영을 여기서 따라잡음
     renderAll();
     if(boardModeOn) renderBoard();
     if(!firstReceived){
@@ -763,7 +763,7 @@ document.addEventListener('visibilitychange', ()=>{
       if(incomingToken && incomingToken===lastSentToken) return;
       normalizeS(raw);
       applyAllGranularStates();
-      checkPendingGameCommits(); // 화면 꺼져있는 동안 30초 타이머가 씹혔을 수 있으니 복귀 즉시 확인
+      checkPendingGameCommits(); checkPendingAutoConfirms(); // 화면 꺼져있는 동안 타이머가 씹혔을 수 있으니 복귀 즉시 확인
       renderAll();
       if(boardModeOn) renderBoard();
     });
@@ -1294,7 +1294,7 @@ let GC={1:false,2:false,3:false,4:false}; // 코트별 게임수 반영 완료 �
 let CS={1:null,2:null,3:null,4:null};     // 확정 시점의 인원 스냅샷(정렬된 id 문자열) - 새로고침/백그라운드 복원용
 let autoConfirmTimers={1:null,2:null,3:null,4:null}; // 코트 1~4 자동확정 타이머 // 코트별 확정 시각
 let pendingGameTimers={1:null,2:null,3:null,4:null}; // 확정 후 30초 유예 타이머 (게임수 반영 대기)
-let curTab=0,leftOnly=false,todayGender=null;
+let curTab=0,leftOnly=false,todayGender=null,todaySortMode='time'; // todaySortMode: 'time'(출석순) | 'games'(게임수순)
 let prevState=null,prevCC=null; // 재편성 이전 상태 저장
 let autoFired=false,toastT=null,modalFn=null;
 
@@ -1418,31 +1418,8 @@ function doSpectate(){
   toast(`👁 관전 모드${isOfficerSpec?' (임원)':''} — ${member?member.name:'익명'}`);
 }
 
-function doLogin(){
-  unlockSpeechSynthesis(); // 사용자가 직접 누른 버튼이므로 이 시점에 음성엔진 활성화
-  const nameInput=document.getElementById('login-name-input');
-  const errEl=document.getElementById('login-error');
-  const name=(nameInput.value||'').trim();
-  errEl.textContent='';
-  if(!name){ errEl.textContent='이름을 입력해주세요.'; return; }
-
-  const matches=MEMBERS.filter(x=>x.name===name);
-  if(!matches.length){
-    errEl.textContent=`"${name}" 회원이 아닙니다. 이름을 다시 확인해주세요.`;
-    return;
-  }
-  // 동명이인(게스트1/2/3/4 남·여 등)이 있으면 성별을 선택하게 함
-  let member=matches[0];
-  if(matches.length>1){
-    const genderSel=document.getElementById('login-gender-select');
-    const chosenGender=genderSel ? genderSel.value : null;
-    if(!chosenGender){
-      showLoginGenderPicker(matches);
-      return;
-    }
-    member = matches.find(x=>x.gender===chosenGender) || matches[0];
-  }
-
+/* 실제 로그인 완료 처리 */
+function completeLogin(member){
   saveLoginSession(member);
 
   // 관리자 계정(998): 출석 처리 자체를 하지 않고 곧바로 관리 모드로 진입
@@ -1476,6 +1453,34 @@ function doLogin(){
   markAttend(member.id);
 
   if(member.id===999) toggleBoardMode(true); // 모니터링 계정만: 자동 보드모드
+}
+
+function doLogin(){
+  unlockSpeechSynthesis(); // 사용자가 직접 누른 버튼이므로 이 시점에 음성엔진 활성화
+  const nameInput=document.getElementById('login-name-input');
+  const errEl=document.getElementById('login-error');
+  const name=(nameInput.value||'').trim();
+  errEl.textContent='';
+  if(!name){ errEl.textContent='이름을 입력해주세요.'; return; }
+
+  const matches=MEMBERS.filter(x=>x.name===name);
+  if(!matches.length){
+    errEl.textContent=`"${name}" 회원이 아닙니다. 이름을 다시 확인해주세요.`;
+    return;
+  }
+  // 동명이인(게스트1/2/3/4 남·여 등)이 있으면 성별을 선택하게 함
+  let member=matches[0];
+  if(matches.length>1){
+    const genderSel=document.getElementById('login-gender-select');
+    const chosenGender=genderSel ? genderSel.value : null;
+    if(!chosenGender){
+      showLoginGenderPicker(matches);
+      return;
+    }
+    member = matches.find(x=>x.gender===chosenGender) || matches[0];
+  }
+
+  completeLogin(member);
 }
 
 function checkExistingLogin(){
@@ -1604,6 +1609,7 @@ function autoReset(now){
   archive(S,dateStr(now));
   S={attendees:[],leftMembers:[],seqCounter:0};CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
   GC={1:false,2:false,3:false,4:false};CS={1:null,2:null,3:null,4:null};
+  clearRecSwapOverrides();
   lastPushedCourtSnapshot={};lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedConfirmSnapshot={};
   try{COURT_STATE_REF.set(null);}catch(e){}
   try{ATTEND_STATE_REF.set(null);}catch(e){}
@@ -1621,6 +1627,7 @@ function manualReset(){
     S={attendees:[],leftMembers:[],seqCounter:0};
     CC={1:false,2:false,3:false,4:false,5:false,6:false};CT={1:null,2:null,3:null,4:null,5:null,6:null};
     GC={1:false,2:false,3:false,4:false};CS={1:null,2:null,3:null,4:null};
+    clearRecSwapOverrides();
     lastPushedCourtSnapshot={};lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedConfirmSnapshot={};
     try{COURT_STATE_REF.set(null);}catch(e){}
     try{ATTEND_STATE_REF.set(null);}catch(e){}
@@ -1675,7 +1682,7 @@ function tick(){
   const n=new Date();document.getElementById('hdr-clock').textContent=timeStr(n);
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
   checkAutoLeave();
-  checkPendingGameCommits(); // 확정 후 30초 지난 코트가 있으면 지금 반영 (타이머가 씹혀도 여기서 매초 따라잡음)
+  checkPendingGameCommits(); checkPendingAutoConfirms(); // 확정/자동확정 유예가 지난 코트가 있으면 지금 반영 (타이머가 씹혀도 여기서 매초 따라잡음)
   // 매 분 0초: 코트현황 전체 갱신
   if(n.getSeconds()===0){
     const pg2=document.getElementById('pg2');
@@ -1684,16 +1691,6 @@ function tick(){
   }
   // 매 초: 경과시간 배지만 DOM 직접 업데이트
   updateElapsedBadgesIndex();
-}
-
-// 게임효율 하위 5명 강조 스타일
-function lowEffStyle(id){
-  if(!lowEffIds.has(id)) return '';
-  return 'color:#C0392B;font-weight:900;';
-}
-function lowEffBadge(id){
-  if(!lowEffIds.has(id)) return '';
-  return '<span style="font-size:8px;background:#C0392B;color:#fff;padding:1px 3px;border-radius:3px;margin-left:2px;vertical-align:middle">↑게임필요</span>';
 }
 
 function updateElapsedBadgesIndex(){
@@ -1774,6 +1771,21 @@ function checkGuestGamesBeforeAssign(ids, proceedFn){
   openModal(`⚠️ 게스트 ${names}님의 오늘 게임효율이 정회원 상위 ${GUEST_WARN_TOP_PCT}% 안에 듭니다.\n그래도 배정하시겠습니까?`, proceedFn);
 }
 
+// 이미 확정된(게임 진행 중인) 코트에 있는 사람은, 다른 코트나 다음차례로 재배정하려 하면 무조건 막는다.
+// (예전엔 조용히 기존 확정 코트에서 빼내버려서, 그 코트가 3명으로 깨져 게임이 무효화되는 문제가 있었음)
+function findConfirmedElsewhere(ids, excludeCourt){
+  return ids
+    .map(id=>S.attendees.find(x=>x.id===id))
+    .filter(a=>a && a.court && a.court!==excludeCourt && a.court>=1 && a.court<=4 && CC[a.court]);
+}
+function blockIfConfirmedElsewhere(ids, excludeCourt){
+  const blocked = findConfirmedElsewhere(ids, excludeCourt);
+  if(!blocked.length) return false;
+  const detail = blocked.map(a=>`${a.name}(${CNAMES[a.court]} 확정중)`).join(', ');
+  openModal(`⚠️ ${detail}\n이미 확정되어 게임이 진행 중입니다.\n다른 코트/다음차례로 재배정할 수 없습니다.\n먼저 해당 코트를 해제한 뒤 다시 시도해주세요.`, null);
+  return true;
+}
+
 
 /* ── 출석/퇴소 ── */
 function markAttend(id){
@@ -1825,6 +1837,13 @@ function restoreAttendee(id){
 function doLeave(id, isAuto){
   if(!isAuto&&(appMode==='spectator'||appMode==='spectator_admin')){toast('👁 관전 모드 - 퇴소 불가');return;}
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
+  // 코트에 배정/확정된 인원은 자동퇴소 타이머가 지나도 방어적으로 막는다 (게임 도중 사라지는 것 방지)
+  // - 일반 leave() 진입점에서 이미 막고 있지만, 자동퇴소(isAuto) 경로는 여기서 조용히 skip하고
+  //   다음 tick에 다시 시도한다 (코트에서 빠지는 순간 정상적으로 처리됨)
+  if(a.court && a.court>=1 && a.court<=4){
+    if(isAuto) return;
+    return;
+  }
   // 중복 처리 방지 (두 화면에서 동시에 자동퇴소 시도하는 race condition 방어)
   // id만이 아니라 같은 세션(attendTs)까지 일치할 때만 '이미 처리된 중복'으로 간주
   // (재출석 후 다시 퇴소하는 경우는 attendTs가 달라서 정상적으로 새 세션이 저장됨)
@@ -1887,6 +1906,15 @@ function leave(id){
     if(!me || me.id!==id){ toast('본인만 퇴소 처리할 수 있습니다'); return; }
   }
   const a=S.attendees.find(x=>x.id===id);if(!a)return;
+
+  // 코트에 배정되어 있거나(미확정 포함) 확정된 인원은 퇴소 불가 - 임원에게 알리도록 안내
+  if(a.court && a.court>=1 && a.court<=4){
+    const stateLabel = CC[a.court]?'확정':'배정';
+    openModal(`⚠️ ${a.name}님은 현재 ${CNAMES[a.court]}에 ${stateLabel}되어 있어 퇴소할 수 없습니다.\n임원에게 말씀해주세요.`, null);
+    speakStatus(`${a.name}님이 퇴소를 시도했습니다. 코트에 ${stateLabel}된 상태이니 임원에게 알려주세요.`, {icon:'⚠️', label:`${a.name} 퇴소 시도`, bg:'#FDECEA', tc:'#C0392B'});
+    return;
+  }
+
   const msg=(a.games||0)===0
     ? `${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: 0게임 → 퇴소 시 출석 기록이 완전히 삭제됩니다)`
     : `${a.name} 회원을 퇴소 처리하시겠습니까?\n(게임: ${a.games}게임)`;
@@ -1920,6 +1948,8 @@ function toggleCourt(id,n){
     openModal(`⚠️ ${CNAMES[n]}은 이미 4명 배정된 상태입니다.\n먼저 해제한 뒤 다시 배정해주세요.`, null);
     return;
   }
+  // 다른 코트에서 이미 확정(게임 진행 중)된 사람은 여기로 재배정 불가
+  if(blockIfConfirmedElsewhere([id], NEXT_COURTS.includes(n)?null:n)) return;
   if(!NEXT_COURTS.includes(n)){
     checkGuestGamesBeforeAssign([id], ()=>{
       if(a.court&&!NEXT_COURTS.includes(a.court)){
@@ -2017,45 +2047,6 @@ function toggleNextCourt(id,which){
   save();renderAll();
 }
 /* 코트 이동 팝업 (길게 누르면 호출) */
-function showMoveCourtPopup(id){
-  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
-  const a=S.attendees.find(x=>x.id===id);if(!a||!a.court)return;
-  const fromCourt=a.court;
-  if(fromCourt>=1&&fromCourt<=4&&CC[fromCourt]){
-    openModal(`⚠️ ${CNAMES[fromCourt]}은 이미 확정된 상태입니다.\n확정된 코트에서는 개별 이동이 제한됩니다.\n먼저 해제한 뒤 이동해주세요.`, null);
-    return;
-  }
-
-  // 이동 가능한 코트 목록 (자신이 있는 코트 제외, 활성화된 코트, 확정 안 된 코트만)
-  const targets=[1,2,3,4].filter(n=>n!==fromCourt&&courtActive[n]&&!CC[n]);
-
-  // 팝업 생성
-  const old=document.getElementById('move-court-popup');if(old)old.remove();
-  const overlay=document.createElement('div');
-  overlay.id='move-court-popup';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900';
-
-  const btns=targets.map(n=>{
-    const cnt=S.attendees.filter(x=>x.court===n).length;
-    const conf=CC[n];
-    const status=cnt===0?'빈코트':conf?`확정(${cnt}명)`:`배정중(${cnt}명)`;
-    const bg=cnt===0?'#1D9E75':conf?'#185FA5':'#B25000';
-    return`<button onclick="moveToCourt(${id},${n})" style="flex:1;padding:12px 6px;background:${bg};color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px">
-      <span>${CNAMES[n]}</span>
-      <span style="font-size:11px;font-weight:500;opacity:.85">${status}</span>
-    </button>`;
-  }).join('');
-
-  overlay.innerHTML=`<div style="background:#fff;border-radius:18px;padding:22px 18px;width:90%;max-width:340px;box-shadow:0 16px 50px rgba(0,0,0,.3)">
-    <div style="font-size:16px;font-weight:900;color:#1A1A1A;margin-bottom:6px">🔀 코트 이동</div>
-    <div style="font-size:13px;color:#888780;margin-bottom:14px">${a.name} · 현재 ${CNAMES[fromCourt]}${CC[fromCourt]?'(확정)':''}</div>
-    <div style="display:flex;gap:6px;margin-bottom:14px">${btns}</div>
-    <button onclick="document.getElementById('move-court-popup').remove()" style="width:100%;padding:10px;background:#F0EDE8;color:#666;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
-  </div>`;
-  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
-  document.body.appendChild(overlay);
-}
-
 /* 코트 전체 인원 이동 팝업 (코트 헤더 길게 누름) */
 function showMoveCourtAllPopup(fromCourt){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
@@ -2122,38 +2113,6 @@ function moveCourtAll(fromCourt,toCourt){
   toast(`${CNAMES[fromCourt]} ↔ ${CNAMES[toCourt]} 교환 완료`);
 }
 
-function moveToCourt(id,toCourt){
-  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
-  const a=S.attendees.find(x=>x.id===id);if(!a)return;
-  const fromCourt=a.court;
-  // 확정된 코트(출발지/도착지 둘 다)에서는 개별 이동 금지
-  if(fromCourt>=1&&fromCourt<=4&&CC[fromCourt]){
-    openModal(`⚠️ ${CNAMES[fromCourt]}은 이미 확정된 상태라 이동할 수 없습니다.\n먼저 해제한 뒤 이동해주세요.`, null);
-    return;
-  }
-  if(toCourt>=1&&toCourt<=4&&CC[toCourt]){
-    openModal(`⚠️ ${CNAMES[toCourt]}은 이미 확정된 상태라 이동할 수 없습니다.\n먼저 해제한 뒤 이동해주세요.`, null);
-    return;
-  }
-  // 기존 코트 확정 관련 상태 초기화 (미확정 코트라 CC는 이미 false겠지만, 방어적으로 같이 정리)
-  if(fromCourt&&fromCourt>=1&&fromCourt<=4){
-    CC[fromCourt]=false;CT[fromCourt]=null;GC[fromCourt]=false;CS[fromCourt]=null;cancelPendingGame(fromCourt);
-  }
-  // 이동할 코트가 꽉 찼으면 기존 인원 한 명 밀어내기 (가장 늦게 들어온 순)
-  const t=timeStr();const ts=nowTs();
-  const destPl=S.attendees.filter(x=>x.court===toCourt);
-  if(destPl.length>=CMAX){
-    // 확정 상태도 해제
-    CC[toCourt]=false;CT[toCourt]=null;GC[toCourt]=false;CS[toCourt]=null;cancelPendingGame(toCourt);
-    // 마지막 배정 인원 해제
-    const last=destPl[destPl.length-1];
-    last.court=null;last.courtFreeAt=t;last.courtFreeTs=ts-1;
-  }
-  a.court=toCourt;a.hasCourt=true;
-  document.getElementById('move-court-popup')?.remove();
-  save();renderAll();toast(`${a.name} → ${CNAMES[toCourt]} 이동`);
-}
-
 function removeFromCourt(id){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   if(!requireSync())return;
@@ -2204,6 +2163,16 @@ function commitOrCancelCourtGame(n){
 function checkPendingGameCommits(){
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
+// 확정 즉시 게임수 반영 (예전엔 30초 유예를 뒀었지만, 요청에 따라 확정 즉시 반영으로 변경.
+// 실수로 잘못 확정한 경우 되돌리는 것은 "게임중 수정" 기능으로 처리한다.)
+function commitCourtGamesImmediately(n){
+  const pl=S.attendees.filter(x=>x.court===n);
+  CS[n]=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
+  pl.forEach(a=>{a.games+=1;}); // 로컬 즉시 반영(낙관적 업데이트)
+  applyGamesDelta(pl.map(a=>a.id), +1); // 서버에는 트랜잭션으로 원자적 +1 (레이스 방지)
+  GC[n]=true;
+  recordCourtGame(n);
+}
 function scheduleGameCommit(n){
   cancelPendingGame(n);
   // 확정 시점의 인원 구성을 스냅샷으로 저장 (Firebase에도 CS로 함께 저장됨 - 새로고침/백그라운드에도 유지)
@@ -2223,9 +2192,19 @@ function autoConfirmCourtSilent(n){
   const pl=S.attendees.filter(x=>x.court===n);
   if(pl.length!==CMAX||pl.some(a=>a.leavingScheduled)) return; // 4명 미만/초과 모두 자동확정 안 함
   CC[n]=true;CT[n]=Date.now();AT[n]=null;
-  scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성 가능)
+  commitCourtGamesImmediately(n); // 게임수 즉시 반영
   save();renderAll();
   toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
+}
+// 1분이 지났는데도 자동확정이 안 됐는지 확인해서 뒤늦게라도 처리한다.
+// setTimeout 하나에만 의존하면(모바일 백그라운드에서 타이머가 씹히는 경우), 4명이 꽉 찬 채로
+// 1분이 훌쩍 지나도 확정이 안 되는 문제가 있었다 — 게임수 반영 때와 동일한 원인/해법.
+function checkPendingAutoConfirms(){
+  [1,2,3,4].forEach(n=>{
+    if(CC[n] || !AT[n]) return;
+    if(Date.now()-AT[n] < 60*1000) return;
+    autoConfirmCourtSilent(n);
+  });
 }
 
 function scheduleAutoConfirmWithDelay(n, delay, force=false){
@@ -2264,7 +2243,7 @@ function confirmCourt(n){
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   if(pl.length>CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명이 배정되어 있습니다.\n4명을 초과해서 확정할 수 없습니다.\n(${pl.length-CMAX}명을 다른 곳으로 옮기거나 해제해주세요)`,null);return;}
   CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);
-  scheduleGameCommit(n); // 게임수는 30초 뒤 반영 (그 사이 재편성하면 반영 안 됨)
+  commitCourtGamesImmediately(n); // 게임수 즉시 반영
   save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
@@ -2346,7 +2325,7 @@ function reassign(){
   const inC=shuffle(S.attendees.filter(a=>a.court!==null));
   inC.forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
   S.attendees.forEach(a=>{a.nextCourt1=null;a.nextCourt2=null;});
-  CC={1:false,2:false,3:false,4:false,5:false,6:false};save();renderAll();toast('🔄 전체 재편성 완료 (복구 가능)');
+  CC={1:false,2:false,3:false,4:false,5:false,6:false};clearRecSwapOverrides();save();renderAll();toast('🔄 전체 재편성 완료 (복구 가능)');
 }
 function restorePrevState(){
   if(!prevState){toast('복구할 이전 상태가 없습니다.');return;}
@@ -2379,6 +2358,8 @@ function assignTeam(cn,teamIds){
   }
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
+  // 다른 코트에서 이미 확정(게임 진행 중)된 사람이 팀에 포함돼 있으면 배정 자체를 막는다
+  if(blockIfConfirmedElsewhere(teamIds, cn)) return;
   checkGuestGamesBeforeAssign(teamIds, ()=>{
     const t=timeStr();const baseTs=nowTs();
     cancelAutoConfirm(cn);cancelPendingGame(cn); // 배정 전 해당 코트 타이머 초기화 (게임수 유예분도 취소)
@@ -2387,7 +2368,7 @@ function assignTeam(cn,teamIds){
     shuffle(S.attendees.filter(a=>a.court===cn)).forEach((a,i)=>{a.court=null;a.courtFreeAt=t;a.courtFreeTs=baseTs+i;});
     CC[cn]=false;CT[cn]=null;GC[cn]=false;CS[cn]=null;
     teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a){a.court=cn;a.hasCourt=true;}});
-    save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
+    clearRecSwapOverrides();save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
     // 4명 다 찼고 미확정이면 자동확정 타이머 시작
     if(cn>=1&&cn<=4&&!CC[cn]&&S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
   });
@@ -2396,6 +2377,8 @@ function assignNextTeam(which,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
+  // 다른 코트에서 이미 확정(게임 진행 중)된 사람이 팀에 포함돼 있으면 배정 자체를 막는다
+  if(blockIfConfirmedElsewhere(teamIds, null)) return;
   checkGuestGamesBeforeAssign(teamIds, ()=>{
     const t=timeStr();const baseTs=nowTs();
     const nc1cnt=S.attendees.filter(a=>a.nextCourt1).length;
@@ -2409,7 +2392,7 @@ function assignNextTeam(which,teamIds){
     shuffle(S.attendees.filter(a=>a[nc])).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
     CC[n]=false;
     teamIds.forEach(id=>{const a=S.attendees.find(x=>x.id===id);if(a)a[nc]=n;});
-    save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
+    clearRecSwapOverrides();save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
   });
 }
 
@@ -2421,43 +2404,82 @@ function getSortedWaiting(){
   // 추천 알고리즘에서만 별도로 제외 처리
   return S.attendees.filter(x=>x.court===null&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>getTs(a)-getTs(b));
 }
+function waitMinutesRaw(a){
+  const baseTs = a.courtFreeTs || a.attendTs || nowTs();
+  return Math.max(0, Math.floor((nowTs()-baseTs)/60));
+}
+// 추천팀 개별 인원 수동 교체 오버라이드: "팀인덱스_슬롯인덱스" → 교체할 회원id
+let recSwapOverrides={};
+function clearRecSwapOverrides(){ recSwapOverrides={}; }
+
 function buildRecommendedTeams(){
   const waiting=getSortedWaiting();
   function buildPool(gender){
-    // 추천 대상에서는 퇴소예정 회원 제외 (화면 표시는 getSortedWaiting에서 그대로 유지)
-    const w=waiting.filter(x=>x.gender===gender&&!x.leavingScheduled);
-    const c=S.attendees.filter(x=>x.gender===gender&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.leavingScheduled).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
+    // 추천 대상에서는 퇴소예정 회원, 다음차례1/2에 이미 배정된 회원 제외
+    // (다음차례에 배정된 사람은 이미 예약된 상태라 대기시간이 있어도 또 추천되면 안 됨)
+    const w=waiting.filter(x=>(!gender||x.gender===gender)&&!x.leavingScheduled&&!x.nextCourt1&&!x.nextCourt2);
+    const c=S.attendees.filter(x=>(!gender||x.gender===gender)&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.leavingScheduled).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
     return{all:[...w,...c]};
   }
-  // 강한 섞기: 상위 절반(올림)은 무조건 확정, 나머지 절반(내림)은
-  // "확정 인원 수 + 섞을 인원 수" 범위(상위 확정 다음 순번들) 안에서 랜덤 추출.
-  // 예) n=4 → 상위 1,2번 확정 + 3,4번 자리는 원래 3~6번 순번 중 랜덤 2명
-  //     n=2 → 상위 1번 확정 + 2번 자리는 원래 2~3번 순번 중 랜덤 1명
+  // 무조건 대기시간(=원래 순번) 순으로만 뽑는다 (섞기 없음)
   function pick(n,pool){
-    const all=pool.all;const M=all.length;
-    if(!M)return[];
-    if(M<=n)return shuffle(all).slice(0,n);
-    const lockCount=Math.ceil(n/2);           // 상위 확정 인원 수
-    const shuffleCount=n-lockCount;            // 랜덤으로 뽑을 인원 수
-    const locked=all.slice(0,lockCount);       // 상위 확정 인원
-    // 랜덤 풀: 확정 다음 순번부터, 섞을 인원 수만큼의 여유 폭(shuffleCount명 분량)을 더 확보
-    const poolEnd=Math.min(M, lockCount + shuffleCount*2);
-    const shufflePool=all.slice(lockCount, poolEnd);
-    const picked=shuffle(shufflePool).slice(0,shuffleCount);
-    return[...locked,...picked];
+    return pool.all.slice(0,n);
   }
-  const mp=buildPool('m'),fp=buildPool('f');
+  const mp=buildPool('m'),fp=buildPool('f'),allp=buildPool(null);
   const teams=[];
   if(mp.all.length>=1){const t=pick(4,mp);if(t.length)teams.push({label:'추천1팀 — 남자',color:'#185FA5',badge:'👨',team:t});}
   if(fp.all.length>=1){const t=pick(4,fp);if(t.length)teams.push({label:'추천2팀 — 여자',color:'#993556',badge:'👩',team:t});}
-  /* 추천3팀(혼성) 비활성화 — 필요시 아래 주석 해제
-  if(mp.all.length>=1&&fp.all.length>=1){
-    const tm=pick(2,mp),tf=pick(2,fp);const t=[...tm,...tf];
-    if(t.length>=2)teams.push({label:'추천3팀 — 혼성(남2여2)',color:'#7B3FA0',badge:'👫',team:t});
-  }
-  */
+  // 추천3팀: 남녀 구분 없이 무조건 대기시간 순 (1팀/2팀과 인원이 겹칠 수 있음)
+  if(allp.all.length>=1){const t=pick(4,allp);if(t.length)teams.push({label:'추천3팀 — 혼성(대기순)',color:'#7B3FA0',badge:'👫',team:t});}
+  // 수동 교체 오버라이드 적용
+  teams.forEach((teamObj,tIdx)=>{
+    teamObj.team = teamObj.team.map((a,slotIdx)=>{
+      const overrideId = recSwapOverrides[tIdx+'_'+slotIdx];
+      if(overrideId!=null){
+        const ov = S.attendees.find(x=>x.id===overrideId && x.court===null && !x.leavingScheduled && !x.nextCourt1 && !x.nextCourt2);
+        if(ov) return ov;
+      }
+      return a;
+    });
+  });
   return teams;
 }
+
+function showSwapMemberPopup(teamIdx, slotIdx){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const waiting=getSortedWaiting().filter(x=>!x.leavingScheduled);
+  if(!waiting.length){toast('대기 중인 회원이 없습니다');return;}
+
+  const old=document.getElementById('swap-member-popup');if(old)old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='swap-member-popup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:900';
+
+  const rows=waiting.map(a=>{
+    const wm=waitMinutesRaw(a);
+    const inC=a.court&&!NEXT_COURTS.includes(a.court);
+    const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:3px">${CNAMES[a.court]}</span>`:'';
+    return `<div onclick="applySwapMember(${teamIdx},${slotIdx},${a.id})" style="display:flex;align-items:center;gap:5px;padding:9px 10px;border-bottom:1px solid #F0EDE8;cursor:pointer">
+      <span style="font-size:14px;font-weight:700;flex:1">${a.name}</span>${gt(a.gender,true)}${cb}
+      <span style="font-size:12px;font-weight:700;color:${wm>=30?'#C0392B':'#1A1A1A'}">${wm}분 대기</span>
+    </div>`;
+  }).join('');
+
+  overlay.innerHTML=`<div style="background:#fff;border-radius:18px;padding:20px 16px;width:92%;max-width:360px;max-height:76vh;display:flex;flex-direction:column;box-shadow:0 16px 50px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:900;color:#1A1A1A;margin-bottom:2px">🔁 인원 변경</div>
+    <div style="font-size:12px;color:#888780;margin-bottom:10px">대기시간 순 · 남/여 구분 없음</div>
+    <div style="overflow-y:auto;border-top:1px solid #F0EDE8">${rows}</div>
+    <button onclick="document.getElementById('swap-member-popup').remove()" style="width:100%;padding:10px;margin-top:12px;background:#F0EDE8;color:#666;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">취소</button>
+  </div>`;
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+  document.body.appendChild(overlay);
+}
+function applySwapMember(teamIdx, slotIdx, newId){
+  recSwapOverrides[teamIdx+'_'+slotIdx]=newId;
+  document.getElementById('swap-member-popup')?.remove();
+  renderAll();
+}
+
 
 /* ── HTML 헬퍼 ── */
 function gt(g,sm){return`<span class="gt ${g}${sm?' sm':''}">${g==='m'?'남':'여'}</span>`;}
@@ -2587,9 +2609,10 @@ function attendRow(a){
   return`<div class="acard" style="flex-direction:column;align-items:stretch;padding:6px 8px;gap:4px;${_mBg||_gBg}">
     <div style="display:flex;align-items:center;gap:4px">
       <div class="seq-b" style="flex-shrink:0">${a.seq}</div>
-      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}${leavingMark(a.leavingScheduled)}${a.isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>나</span>':''}</span>
+      <span class="aname" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${leavingMark(a.leavingScheduled)}${a.isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}${isMemberMode&&isMe?' <span style=\'font-size:10px;color:#B8860B;font-weight:900\'>나</span>':''}</span>
       ${gt(a.gender,true)}${courtTag}
       <span style="flex:1"></span>
+      ${(isMemberMode&&isMe&&!a.court)?`<span style="margin-right:2px">${waitMinutesLabel(a)}</span>`:''}
       <span class="atime-row" style="margin-top:0;flex-shrink:0">🕐 ${timeLabel}</span>
     </div>
     <div style="display:flex;align-items:center;gap:3px">
@@ -2661,7 +2684,7 @@ function renderToday(){
       const timeLabel=a.sessions.length>1
         ? a.sessions.map((s,i)=>`${i+1}차 출석 ${s.time}→퇴소 ${s.leftAt}`).join(' · ')
         : `출석 ${a.time} · 퇴소 ${a.leftAt}`;
-      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname" style="${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'color:#C0392B;font-weight:900;':''}">${a.name}${isGuestAttendee(a)?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
+      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}${isGuestAttendee(a)?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
     });
     h+=`</div>`;return h;
   }
@@ -2679,8 +2702,17 @@ function renderToday(){
     h+=`</div>`;return h;
   }
   const list=S.attendees.filter(x=>!HIDDEN_MEMBER_IDS.includes(x.id));
-  let h=`<div class="pg-inner"><div class="stitle">📋 오늘 참석자 (${list.length}명)</div>`;
+  let h=`<div class="pg-inner"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><div class="stitle" style="border:none;padding-bottom:0;margin:0;flex:1">📋 오늘 참석자 (${list.length}명)</div>
+    <button onclick="todaySortMode='time';renderAll()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid ${todaySortMode==='time'?'#1D9E75':'#D8D5CF'};background:${todaySortMode==='time'?'#E1F5EE':'#fff'};color:${todaySortMode==='time'?'#0F6E56':'#888780'};font-weight:700;cursor:pointer;font-family:inherit">⏰ 출석순</button>
+    <button onclick="todaySortMode='games';renderAll()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid ${todaySortMode==='games'?'#1D9E75':'#D8D5CF'};background:${todaySortMode==='games'?'#E1F5EE':'#fff'};color:${todaySortMode==='games'?'#0F6E56':'#888780'};font-weight:700;cursor:pointer;font-family:inherit">🎾 게임수순</button>
+    </div>`;
   if(!list.length){h+=`<div class="empty" style="padding:30px 0">🎾<br>아직 출석한 회원이 없습니다.<div style="font-size:11px;margin-top:4px">회원명부에서 출석 버튼을 눌러주세요</div></div></div>`;return h;}
+  if(todaySortMode==='games'){
+    // 게임수 많은 사람이 위로 (동률이면 출석 빠른 순)
+    const sorted=list.slice().sort((a,b)=>(b.games||0)-(a.games||0) || (a.attendTs||0)-(b.attendTs||0));
+    h+=`<div class="tg"><div class="tg-hdr">🎾 게임수 많은 순</div>${sorted.map(attendRow).join('')}</div>`;
+    h+=`</div>`;return h;
+  }
   const bands=getTBands();
   const grp={};bands.forEach(b=>{grp[b.label]=[];});grp['기타']=[];
   list.forEach(a=>{const b=getBand(a.time);grp[b?b.label:'기타'].push(a);});
@@ -2777,53 +2809,6 @@ function renderCourts(){
     h += renderMyStatusBannerHTML();
   }
 
-  // ── 일주일 게임효율 하위 5명 박스 (오늘 사용할 코트 위) ───────────────────
-  try{
-    const stLocal=JSON.parse(localStorage.getItem(STKEY)||'[]');
-    const todaySt=dateStr();
-    const todayAll=[...S.attendees,...S.leftMembers]
-      .filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.isGuest&&!a.name.includes('게스트'));
-
-    // 각 인원의 가장 최근 참석일 기준 효율 계산
-    const effMap={};
-    // 항상 과거 최근 참석일 기준 (오늘 데이터 제외)
-    todayAll.forEach(a=>{
-      const pastDays=stLocal.filter(d=>d.date<todaySt).sort((x,y)=>y.date.localeCompare(x.date));
-      for(const d of pastDays){
-        const found=[...(d.attendees||[]),...(d.leftMembers||[])].find(x=>x.id===a.id);
-        if(!found) continue;
-        let psm=0;
-        if(found.time&&found.leftAt){
-          const[ih,im]=(found.time||'0:0').split(':').map(Number);
-          const[oh,om]=(found.leftAt||'0:0').split(':').map(Number);
-          psm=Math.max(0,(oh*60+om)-(ih*60+im));
-        }
-        if(psm>=30){ effMap[a.id]={name:a.name,per30:Math.round((found.games||0)/psm*30*10)/10,date:d.date}; break; }
-      }
-    });
-
-    const rows=Object.entries(effMap)
-      .map(([id,v])=>({id:Number(id),name:v.name,per30:v.per30}))
-      .sort((a,b)=>a.per30-b.per30)
-      .slice(0,6);
-    // lowEffIds는 updateLowEffIds()에서 처리
-    if(rows.length>0){
-      const cellHtml=rows.map((r,i)=>
-        `<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0">
-          <span style="font-size:13px;font-weight:900;color:#1A1A1A;flex-shrink:0">${i+1}</span>
-          <span style="font-size:12px;font-weight:700;color:#185FA5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}<span style="font-size:10px;font-weight:700;color:#C0392B;margin-left:3px">${r.per30.toFixed(1)}</span></span>
-        </div>`
-      );
-      const row1=cellHtml.slice(0,3).join('');
-      const row2=cellHtml.slice(3,6).join('');
-      h+=`<div style="margin:6px 0 4px;padding:7px 10px;background:#FFF8F6;border-radius:9px;border:1px solid #F5C0B0">
-        <div style="font-size:10px;font-weight:700;color:#C0392B;margin-bottom:5px">🔴 가장 최근 참석일의 게임효율 하위 6명 (오늘 참석자 중)</div>
-        <div style="display:flex;gap:6px;margin-bottom:4px">${row1}</div>
-        <div style="display:flex;gap:6px">${row2}</div>
-      </div>`;
-    }
-  }catch(e){}
-
   // 코트 사용 설정 토글 바 (관리모드만)
   if(!isMemberMode){
     h+=`<div style="padding:9px 11px 0">
@@ -2851,10 +2836,9 @@ function renderCourts(){
     const pl=S.attendees.filter(x=>x.court===n);const cnt=pl.length,full=cnt>=CMAX,over=cnt>CMAX,conf=CC[n];
     let slots='';pl.forEach(a=>{
       const isMe=_me&&a.id===_me.id&&isMemberMode;
-      const isLow=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));
-      const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':isLow?'border:1.5px solid #E74C3C;border-radius:8px;':'';
-      const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':isLow?'font-size:13px;font-weight:900;color:#C0392B':'font-size:13px;font-weight:700';
-      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" oncontextmenu="event.preventDefault();showMoveCourtPopup(${a.id})" ontouchstart="(function(){const t=setTimeout(()=>showMoveCourtPopup(${a.id}),600);this._lpt=t;}).call(this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">짧게:해제 길게:이동</span></div>`;
+      const meSt=isMe?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
+      const meNm=isMe?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
+      slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">탭하여 해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=over?`<div class="ct-status full" style="background:#C0392B;color:#fff">⚠️ 인원초과(${cnt}/${CMAX}) - 정리 필요</div>`:conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
@@ -2880,8 +2864,9 @@ function renderCourts(){
     h+=`<div class="ct-card"><div class="ct-hdr c${n}" ontouchstart="(function(el){el._lpt=setTimeout(()=>showMoveCourtAllPopup(${n}),600);}).call(this,this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" oncontextmenu="event.preventDefault();showMoveCourtAllPopup(${n})" style="cursor:pointer" title="길게 누르면 전체 이동"><span class="ct-name">${CNAMES[n]}${ctTime}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   h+=`</div>`;
-  // 다음차례 코트
-  h+=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 확정을 클릭하면 빈 코트에 배정됩니다</span></div></div><div class="court-grid" style="padding-top:0">`;
+  // 다음차례 코트 HTML을 미리 만들어두고, 어디에 넣을지는 모드에 따라 결정한다
+  // (일반회원 모드: 기존 위치 유지 / 관리자 모드: 다음게임 추천 뒤로 이동)
+  let nextCourtHtml=`<div style="padding:0 11px 2px"><div class="stitle" style="margin-top:6px">⏭ 다음차례 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 확정을 클릭하면 빈 코트에 배정됩니다</span></div></div><div class="court-grid" style="padding-top:0">`;
   [5,6].forEach(n=>{
     const ncKey=n===5?'nextCourt1':'nextCourt2';
     const players=S.attendees.filter(x=>x[ncKey]);const cnt=players.length,full=cnt>=CMAX;
@@ -2892,18 +2877,21 @@ function renderCourts(){
       const inC=a.court&&!NEXT_COURTS.includes(a.court);
       const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px;margin-left:2px">${CNAMES[a.court]}</span>`:'';
       const isMe2=_me&&a.id===_me.id&&isMemberMode;
-      const isLow2=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));
-      const meSt2=isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':isLow2?'background:#FFF0F0;border:1.5px solid #E74C3C;border-radius:8px;':'';
-      const meNm2=isMe2?'font-size:16px;font-weight:900;color:#B8860B':isLow2?'font-size:13px;font-weight:900;color:#C0392B':'font-size:13px;font-weight:700';
+      const meSt2=isMe2?'background:#FFFBEA;border:1.5px solid #F5C842;border-radius:8px;':'';
+      const meNm2=isMe2?'font-size:16px;font-weight:900;color:#B8860B':'font-size:13px;font-weight:700';
       slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
     const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
     const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmNextCourt(${n})">확정</button>`:'';
-    h+=`<div class="ct-card"><div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
+    nextCourtHtml+=`<div class="ct-card"><div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
-  h+=`</div>`;
+  nextCourtHtml+=`</div>`;
+
+  if(isMemberMode){
+    h+=nextCourtHtml; // 일반회원 모드는 코트그리드 바로 아래 기존 위치 유지
+  }
 
   // 일반회원 모드: 게임편성 대기현황/추천팀은 숨기고 다음차례 퇴소 버튼만 표시
   if(isMemberMode){
@@ -2956,9 +2944,9 @@ function renderCourts(){
       // 미확정 코트 배정 인원 중 첫 번째에 구분선
       const gInCourt=gSorted.filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&!CC[x.court]);
       const divider=a.court&&!NEXT_COURTS.includes(a.court)&&!CC[a.court]&&gInCourt.indexOf(a)===0?`<div style="font-size:13px;color:#888780;padding:4px 0 2px;font-weight:700">─── 코트 배정 중 (미확정) ───</div>`:'';
-      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'1.5px solid #E74C3C':'.5px solid #E0DFDB'};border-radius:9px;margin-bottom:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px">
+      return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px">
         <div style="display:flex;align-items:center;gap:4px">
-          <span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>
+          <span style="font-size:13px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>
           ${waitMinutesLabel(a)}
         </div>
         <div style="display:flex;gap:3px">${cBtns}${ncBtns}</div>
@@ -2976,7 +2964,7 @@ function renderCourts(){
       const nc2full=(S.attendees.filter(x=>x.nextCourt2).length>=CMAX&&!a.nextCourt2)||isLv;
       const courtTag=`<span style="font-size:8px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 4px;border-radius:4px;flex-shrink:0">${CNAMES[a.court]}</span>`;
       const ncBtns=`<button class="cbtn c5${nc1on}${nc1full?' full-disabled':''}" onclick="${nc1full?'':` toggleNextCourt(${a.id},1)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다1</button><button class="cbtn c6${nc2on}${nc2full?' full-disabled':''}" onclick="${nc2full?'':` toggleNextCourt(${a.id},2)`}" style="font-size:9px;font-weight:700;padding:3px 2px;min-width:18px;border-radius:5px${isLv?';opacity:.3':''}">다2</button>`;
-      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:13px;font-weight:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'900':'700'};color:${(lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)))?'#C0392B':'#185FA5'};flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
+      return`<div style="background:#EDF5FF;border:.5px solid #B8D4F0;border-radius:9px;margin-bottom:4px;padding:4px 5px;display:flex;align-items:center;gap:2px;flex-wrap:nowrap"><span style="font-size:13px;font-weight:700;color:#185FA5;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${courtTag}<div style="display:flex;gap:1px;flex:0 0 auto;margin-left:2px">${ncBtns}</div></div>`;
     }
     const mConf=inCourtConfirmed.filter(x=>x.gender==='m');
     const fConf=inCourtConfirmed.filter(x=>x.gender==='f');
@@ -2995,17 +2983,18 @@ function renderCourts(){
         return`<button class="assign-btn" onclick="${onclick}" style="background:${bg}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${isEmpty?'빈코트':`${ex}/${CMAX}`}</span></button>`;
       }).join('');
     }
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div>`;
-    recTeams.forEach(({label,color,badge,team})=>{
+    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div><div style="font-size:11px;color:#888780;margin:-4px 0 8px">무조건 대기시간 순이며 개별인원을 클릭하면 인원변경 가능</div>`;
+    recTeams.forEach(({label,color,badge,team},tIdx)=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
-      const members=team.map(a=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';const isLowM=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id));return`<div class="rec-member" style="${isLowM?'border:1px solid #E74C3C;border-radius:6px;padding:0 3px;':''}">
-<span class="rec-name" style="flex:0;white-space:nowrap;${isLowM?'color:#C0392B;font-weight:900;':''}">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
+      const members=team.map((a,slotIdx)=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member" onclick="showSwapMemberPopup(${tIdx},${slotIdx})" style="cursor:pointer">
+<span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
       h+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
     h+=`</div>`;
   }
+  if(!isMemberMode) h+=nextCourtHtml; // 관리자 모드는 다음게임 추천 뒤로 이동
   return h;
 }
 
@@ -3104,45 +3093,6 @@ function saveStatHistory(){
 /* 통계 페이지 렌더링 */
 let statPeriod='day';
 let statView='attend';
-let lowEffIds=new Set(); // 게임효율 하위 6명 ID 집합
-
-// 게임효율 하위6명 계산 (renderAll 호출 시마다 실행)
-function updateLowEffIds(){
-  try{
-    const stLocal=JSON.parse(localStorage.getItem(STKEY)||'[]');
-    const todaySt=dateStr();
-    const todayAttendIds=new Set([...S.attendees,...S.leftMembers].map(a=>a.id));
-    if(!todayAttendIds.size){ lowEffIds=new Set(); return; }
-
-    // 오늘 참석자 각각의 가장 최근 참석일 데이터 찾기
-    const effMap={};
-    todayAttendIds.forEach(id=>{
-      // 오늘 데이터 먼저 확인
-      const todayA=[...S.attendees,...S.leftMembers].find(a=>a.id===id);
-      if(!todayA) return;
-      // 오늘 데이터에서 stayMin 계산
-      // 항상 과거 최근 참석일 기준 (오늘 데이터 제외)
-      const pastDays=stLocal.filter(d=>d.date<todaySt).sort((a,b)=>b.date.localeCompare(a.date));
-      for(const d of pastDays){
-        const found=[...(d.attendees||[]),...(d.leftMembers||[])].find(a=>a.id===id);
-        if(!found) continue;
-        let psm=0;
-        if(found.time&&found.leftAt){
-          const[ih,im]=(found.time||'0:0').split(':').map(Number);
-          const[oh,om]=(found.leftAt||'0:0').split(':').map(Number);
-          psm=Math.max(0,(oh*60+om)-(ih*60+im));
-        }
-        if(psm>=30){ effMap[id]={per30:Math.round((found.games||0)/psm*30*10)/10,date:d.date}; break; }
-      }
-    });
-
-    const rows=Object.entries(effMap)
-      .map(([id,v])=>({id:Number(id),per30:v.per30}))
-      .sort((a,b)=>a.per30-b.per30)
-      .slice(0,6);
-    lowEffIds=new Set(rows.map(r=>r.id));
-  }catch(e){ lowEffIds=new Set(); }
-}
 let statEffFrom=''; // 게임 효율 분석 시작일
 let deletedStatDates=new Set(); // 삭제된 날짜 블랙리스트 (Firebase 재복원 방지)
 let statEffTo='';   // 게임 효율 분석 종료일
@@ -3571,17 +3521,17 @@ function renderStatPage(){
     const effWrap_open = '<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">';
     const effWrap_close = '</div>';
 
-    // 데이터 수집
+    // 데이터 수집 (일일 게스트 포함 — 예전엔 게스트를 통계에서 제외했으나, 회원과 동일하게 표시하도록 변경)
     let effMembers = [];
     if(selDate === todaySt){
       // 사람(회원 id) 단위로 오늘의 모든 세션(완료+진행중)을 하나로 묶는다.
       // → 최초 출석시각~최종 퇴소시각으로 표시, 게임수는 세션 합산 (재출석해도 새 줄 추가 안 함)
       const byId = {};
-      S.leftMembers.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
+      S.leftMembers.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
         if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
         byId[a.id].sessions.push(a);
       });
-      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)&&!a.name.includes('게스트')&&!a.isGuest).forEach(a=>{
+      S.attendees.filter(a=>!HIDDEN_MEMBER_IDS.includes(a.id)).forEach(a=>{
         if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
         byId[a.id].sessions.push(a);
         byId[a.id].ongoing=true; // 아직 퇴소 안 한(진행중) 세션 포함
@@ -3593,7 +3543,7 @@ function renderStatPage(){
         // 사람(id) 단위로 그 날의 모든 세션을 하나로 묶는다.
         const byId = {};
         [...(dayData.attendees||[]),...(dayData.leftMembers||[])].forEach(a=>{
-          if(HIDDEN_MEMBER_IDS.includes(a.id)||a.name.includes('게스트')||a.isGuest) return;
+          if(HIDDEN_MEMBER_IDS.includes(a.id)) return;
           if(!byId[a.id]) byId[a.id]={id:a.id,name:a.name,gender:a.gender,isGuest:a.isGuest,sessions:[]};
           byId[a.id].sessions.push(a);
           if(!a.leftAt && !a.leftTs) byId[a.id].ongoing=true; // 퇴소기록 없이 저장된 세션(참석중 상태로 마감)
@@ -3655,14 +3605,13 @@ function renderStatPage(){
         const lowCnt=rows.filter(r=>r.valid&&avgPer30>0&&r.per30<lowThr).length;
         const guestCnt=rows.filter(r=>r.isGuest).length;
 
-        let rowsHtml='';
-        rows.forEach((r,i)=>{
+        function renderEffRow(r,i){
           const{a,stayMin,games,per30,valid,isLeft,isGuest,inT,outT}=r;
           const isLow=valid&&avgPer30>0&&per30<lowThr;
           const stayStr=stayMin>=60?Math.floor(stayMin/60)+'시간'+(stayMin%60>0?stayMin%60+'분':''):stayMin+'분';
           const score=valid?per30.toFixed(1):'-';
           const barW=avgPer30>0?Math.min(100,Math.round(per30/avgPer30*60)):0;
-          rowsHtml+='<div style="background:'+(isLow?'#FFF0F0':'#fff')+';border:.5px solid '+(isLow?'#EFBCB0':'#E0DFDB')+';border-radius:9px;padding:7px 10px;margin-bottom:5px">'
+          return '<div style="background:'+(isLow?'#FFF0F0':'#fff')+';border:.5px solid '+(isLow?'#EFBCB0':'#E0DFDB')+';border-radius:9px;padding:7px 10px;margin-bottom:5px">'
             +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             +'<span style="font-size:11px;font-weight:900;color:'+(isLow?'#C0392B':'#888780')+';min-width:18px">'+(i+1)+'</span>'
             +'<span style="font-size:14px;font-weight:800;color:'+(isLow?'#C0392B':'#1A1A1A')+';flex:1">'+a.name+(isLow?' 🔴':'')+(isGuest?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:3px;margin-left:3px;font-weight:700">게스트</span>':'')+'</span>'
@@ -3677,7 +3626,25 @@ function renderStatPage(){
             +(valid?'<div style="background:#F0EDE8;border-radius:4px;height:6px;overflow:hidden"><div style="width:'+barW+'%;background:'+(isLow?'#E74C3C':'#1D9E75')+';height:100%;border-radius:4px"></div></div>'
               :'<div style="font-size:9px;color:#B8B5AF">30분 미만 — 집계 제외</div>')
             +'</div>';
-        });
+        }
+
+        // 현재 참석중인 인원만 남/여로 나누고(좌:남 우:여), 퇴소 인원은 별도로 아래에 표시
+        const attendingRows=rows.filter(r=>!r.isLeft);
+        const leftRows=rows.filter(r=>r.isLeft);
+        const maleRows=attendingRows.filter(r=>r.a.gender==='m');
+        const femaleRows=attendingRows.filter(r=>r.a.gender==='f');
+
+        let rowsHtml='<div style="display:flex;gap:8px;align-items:flex-start">';
+        rowsHtml+='<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:#185FA5;margin-bottom:5px">👨 남자 ('+maleRows.length+')</div>';
+        rowsHtml+= maleRows.length ? maleRows.map((r,i)=>renderEffRow(r,i)).join('') : '<div style="font-size:10px;color:#B8B5AF;padding:6px 0">없음</div>';
+        rowsHtml+='</div>';
+        rowsHtml+='<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:#993556;margin-bottom:5px">👩 여자 ('+femaleRows.length+')</div>';
+        rowsHtml+= femaleRows.length ? femaleRows.map((r,i)=>renderEffRow(r,i)).join('') : '<div style="font-size:10px;color:#B8B5AF;padding:6px 0">없음</div>';
+        rowsHtml+='</div></div>';
+        if(leftRows.length){
+          rowsHtml+='<div style="font-size:11px;font-weight:800;color:#993C1D;margin:12px 0 5px;border-top:1px dashed #E0DFDB;padding-top:10px">🚪 퇴소 인원 ('+leftRows.length+')</div>';
+          rowsHtml+= leftRows.map((r,i)=>renderEffRow(r,i)).join('');
+        }
 
         const summaryHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
           +'<div style="background:#E1F5EE;border-radius:8px;padding:5px 10px;font-size:11px"><span style="color:#888780">참석</span><span style="font-size:15px;font-weight:900;color:#0F6E56;margin-left:4px">'+rows.length+'명</span>'+(guestCnt>0?'<span style="font-size:10px;color:#888780"> (게스트 '+guestCnt+')</span>':'')+'</div>'
@@ -3765,15 +3732,13 @@ function renderBoard(){
 
   function bigSlot(a, conf){
     const isMe=me&&a.id===me.id;
-    const isLow=lowEffIds.has(a.id)||lowEffIds.has(Number(a.id)); // 게임효율 하위 6명
-
-    const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:isLow?`box-shadow:0 0 0 0.4vw #E74C3C;`:'';
+    const ring=isMe?`box-shadow:0 0 0 0.4vw #FFD23F;`:'';
     // conf: true=확정(녹색), false=미확정/빈코트(회색)
-    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색, 하위6명 시 빨간색
-    const nameTc = isLow ? '#C0392B' : conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    // 확정 시 성별에 따라 파란색/분홍색, 미확정 시 검정색
+    const nameTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
     const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
-    const genderTc = isLow ? '#C0392B' : conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
-    return`<div style="background:${isLow?(conf?'rgba(255,235,235,0.95)':'rgba(255,235,235,0.7)'):(conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)')};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
+    const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
+    return`<div style="background:${conf?'rgba(255,255,255,0.92)':'rgba(255,255,255,0.5)'};border-radius:1vw;padding:1.1vw 1.4vw;margin-bottom:0.7vw;display:flex;align-items:center;gap:1vw;${ring}">
       <span style="font-size:2.9vw;font-weight:900;color:${nameTc}">${a.name}</span>
       <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
       ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
@@ -4217,7 +4182,6 @@ function clearStatHistory(){
 
 /* ── 전체 렌더 ── */
 function renderAll(){
-  updateLowEffIds(); // 코트현황 강조 전 하위6명 계산
   renderStats();
   renderNoticeBanner();
   // 항상 필요한 탭(오늘참석자/코트현황)은 모드 무관하게 렌더링
@@ -4395,7 +4359,7 @@ document.addEventListener('visibilitychange', ()=>{
         if(incomingToken && incomingToken===lastSentToken) return;
         normalizeS(raw);
         applyAllGranularStates();
-        checkPendingGameCommits(); // 백그라운드 중 놓친 30초 유예 반영 확인
+        checkPendingGameCommits(); checkPendingAutoConfirms(); // 백그라운드 중 놓친 30초/1분 유예 반영 확인
         renderAll();
         setSyncDot('ok');
       }).catch(()=>{});
@@ -4408,7 +4372,7 @@ document.addEventListener('visibilitychange', ()=>{
 
 // 30초마다 연결 상태 확인 + 끊겼으면 재연결
 setInterval(()=>{
-  checkPendingGameCommits(); // 이 주기적 타이머는 상대적으로 덜 쓰로틀링되므로 여기서도 놓친 반영을 확인
+  checkPendingGameCommits(); checkPendingAutoConfirms(); // 이 주기적 타이머는 상대적으로 덜 쓰로틀링되므로 여기서도 놓친 반영을 확인
   firebase.database().ref('.info/connected').once('value', snap=>{
     if(snap.val()!==true){
       setSyncDot('err');
