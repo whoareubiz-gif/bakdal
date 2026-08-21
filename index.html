@@ -1595,7 +1595,24 @@ function load(){
     }
   }catch(e){}
 }
+// 코트에 사람이 0명인데 확정 관련 상태(CC/CT/GC/CS)가 남아있으면 강제로 초기화한다.
+// (개별 release 함수들은 "로컬에서 확정 상태로 알고 있을 때만" 초기화하는데, 다른 기기의
+// 확정 사실을 아직 못 받은 채로 마지막 인원을 빼면 초기화 자체가 누락될 수 있었다.
+// save() 때마다 항상 이 안전장치를 거치게 해서, 원인이 무엇이든 결과적으로 항상 정합성을 맞춘다.)
+function enforceEmptyCourtsCleared(){
+  let changed=false;
+  [1,2,3,4].forEach(n=>{
+    const cnt=S.attendees.filter(x=>x.court===n).length;
+    if(cnt===0 && (CC[n]||CT[n]||GC[n]||CS[n])){
+      CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;
+      cancelAutoConfirm(n);cancelPendingGame(n);
+      changed=true;
+    }
+  });
+  return changed;
+}
 function save(){
+  enforceEmptyCourtsCleared();
   try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,CC,CT,AT}));}catch(e){}
   renderAll(); // 로컬 즉시 반영 (Firebase 응답 기다리지 않음)
   syncPush();  // Firebase 비동기 전송
