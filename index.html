@@ -431,6 +431,18 @@ let courtStateReady=false, attendStateReady=false, leftStateReady=false, confirm
 let lastPushedCourtSnapshot = {};
 function pushCourtStateDiff(){
   if(!courtStateReady) return;
+  // 최종 방어선: 코트별 정원(CMAX)을 초과한 상태가 로컬에 남아있으면(새로고침 직후 오래된 캐시,
+  // 병합 레이스 등 원인 불문) 배경 동기화가 그 초과 상태를 서버로 그대로 퍼뜨리지 않도록,
+  // 여기서 초과 인원을 로컬에서도 강제로 미배정 처리한다 (대기시간은 보존 - 실수 정정 취급).
+  const byCourtCount={};
+  S.attendees.forEach(a=>{ if(a.court>=1&&a.court<=4){ byCourtCount[a.court]=(byCourtCount[a.court]||0)+1; } });
+  Object.keys(byCourtCount).forEach(nStr=>{
+    const n=Number(nStr);
+    if(byCourtCount[n]<=CMAX) return;
+    const pl=S.attendees.filter(a=>a.court===n);
+    const excess=pl.slice(CMAX); // 앞의 CMAX명만 인정, 나머지는 초과분
+    excess.forEach(a=>{ a.court=null; a.hasCourt=false; });
+  });
   const current = {};
   S.attendees.forEach(a=>{
     current[a.id] = { c: a.court ?? null, n1: a.nextCourt1 ?? null, n2: a.nextCourt2 ?? null };
@@ -469,7 +481,17 @@ function applyCourtState(courtState){
       a.nextCourt2 = cs.n2 ?? null;
       a.hasCourt = !!a.court;
       lastPushedCourtSnapshot[a.id] = { c: cs.c ?? null, n1: cs.n1 ?? null, n2: cs.n2 ?? null };
+    } else if(!lastPushedCourtSnapshot[a.id]) {
+      // 서버 courtState에도 없고, 이 기기가 방금 직접 만든 값(lastPushedCourtSnapshot)도 없다면
+      // = 정말로 어디에도 배정되어 있지 않은 것이다. 크롬을 껐다 켜는 등으로 localStorage에 남아있던
+      // 오래된 court 값을 여기서 지우지 않으면, 그 사이 다른 기기가 실제로 배정한 사람과 합쳐져서
+      // 코트에 4명을 훌쩍 넘는 유령 인원이 쌓이는 문제가 있었다.
+      if(a.court || a.nextCourt1 || a.nextCourt2){
+        a.court=null; a.nextCourt1=null; a.nextCourt2=null; a.hasCourt=false;
+      }
     }
+    // (lastPushedCourtSnapshot[a.id]는 있는데 courtState엔 없는 경우는, 이 기기가 방금 만든 값이
+    //  아직 서버 echo로 안 돌아온 것일 수 있으므로 이번 라운드에서는 건드리지 않고 다음 갱신을 기다린다.)
   });
 }
 
@@ -481,13 +503,14 @@ function applyCourtState(courtState){
 function reserveCourtSlot(n, memberId, onSuccess, onFail){
   const isNext = NEXT_COURTS.includes(n);
   const field = isNext ? (n===5?'n1':'n2') : 'c';
+  const otherNextField = isNext ? (n===5?'n2':'n1') : null; // 다음차례일 때만: 반대쪽 슬롯 중복 방지
   COURT_STATE_REF.transaction(current=>{
     const state = current || {};
     const myEntry = state[memberId] || {};
     if(myEntry[field] === n) return state; // 이미 배정되어 있으면 그대로 성공 처리(멱등)
     const count = Object.keys(state).filter(id=>state[id] && state[id][field]===n).length;
     if(count >= CMAX) return undefined; // 자리 없음 → 트랜잭션 중단
-    state[memberId] = { ...myEntry, [field]: n };
+    state[memberId] = otherNextField ? { ...myEntry, [field]: n, [otherNextField]: null } : { ...myEntry, [field]: n };
     return state;
   }, (error, committed)=>{
     if(error){ onFail && onFail('error'); return; }
@@ -518,6 +541,7 @@ function reserveCourtSlotsForTeam(cn, teamIds, onSuccess, onFail){
 // 다음차례(5,6) 팀 단위 배정도 동일하게 트랜잭션으로 보호
 function reserveNextSlotsForTeam(n, teamIds, onSuccess, onFail){
   const field = n===5?'n1':'n2';
+  const otherField = n===5?'n2':'n1'; // 반대쪽 다음차례 슬롯 (동시 중복 배정 방지용)
   COURT_STATE_REF.transaction(current=>{
     const state = current || {};
     Object.keys(state).forEach(id=>{
@@ -525,7 +549,10 @@ function reserveNextSlotsForTeam(n, teamIds, onSuccess, onFail){
         state[id] = { ...state[id], [field]: null };
       }
     });
-    teamIds.forEach(id=>{ state[id] = { ...(state[id]||{}), [field]: n }; });
+    teamIds.forEach(id=>{
+      // 반대쪽 다음차례 슬롯에도 있었다면 같이 제거 (같은 사람이 다음차례1,2에 동시에 들어가는 것 방지)
+      state[id] = { ...(state[id]||{}), [field]: n, [otherField]: null };
+    });
     const finalCount = Object.keys(state).filter(id=>state[id] && state[id][field]===n).length;
     if(finalCount > CMAX) return undefined;
     return state;
@@ -709,6 +736,10 @@ function applyConfirmState(confirmState){
     if(c){
       CC[n]=!!c.CC; CT[n]=c.CT??null; GC[n]=!!c.GC; CS[n]=c.CS??null; AT[n]=c.AT??null;
       lastPushedConfirmSnapshot[n] = confirmFieldsFor(n);
+    } else if(!lastPushedConfirmSnapshot[n]) {
+      // 서버에 이 코트의 확정정보가 없고, 이 기기가 방금 직접 만든 값도 없다면 = 정말로 미확정 상태.
+      // (크롬을 껐다 켜는 등으로 로컬에 남아있던 오래된 확정 상태가 유령처럼 남는 문제 방지)
+      if(CC[n]||CT[n]||GC[n]||CS[n]){ CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null; }
     }
   });
 }
@@ -1865,6 +1896,20 @@ function blockIfConfirmedElsewhere(ids, excludeCourt){
   openModal(`⚠️ ${detail}\n이미 확정되어 게임이 진행 중입니다.\n다른 코트/다음차례로 재배정할 수 없습니다.\n먼저 해당 코트를 해제한 뒤 다시 시도해주세요.`, null);
   return true;
 }
+// 실제 코트(1~4)로 배정할 때 전용: 확정 여부와 무관하게 "이미 다른 코트(1~4)에 배정만 되어 있어도" 막는다.
+// (다음차례1,2로 보내는 것은 이 체크를 적용하지 않음 — 현재 게임 중인 사람도 다음 순번 예약은 가능해야 함)
+function findAlreadyOnCourt(ids, excludeCourt){
+  return ids
+    .map(id=>S.attendees.find(x=>x.id===id))
+    .filter(a=>a && a.court && a.court!==excludeCourt && a.court>=1 && a.court<=4);
+}
+function blockIfAlreadyOnCourt(ids, excludeCourt){
+  const blocked = findAlreadyOnCourt(ids, excludeCourt);
+  if(!blocked.length) return false;
+  const detail = blocked.map(a=>`${a.name}(${CNAMES[a.court]}${CC[a.court]?' 확정중':' 배정중'})`).join(', ');
+  openModal(`⚠️ ${detail}\n이미 다른 코트에 배정되어 있습니다.\n1~4코트로는 배정할 수 없습니다(다음차례1,2는 가능).\n먼저 해당 코트를 해제한 뒤 다시 시도해주세요.`, null);
+  return true;
+}
 
 
 /* ── 출석/퇴소 ── */
@@ -2029,9 +2074,10 @@ function toggleCourt(id,n){
     openModal(`⚠️ ${CNAMES[n]}은 이미 4명 배정된 상태입니다.\n먼저 해제한 뒤 다시 배정해주세요.`, null);
     return;
   }
-  // 다른 코트에서 이미 확정(게임 진행 중)된 사람은 여기로 재배정 불가
-  if(blockIfConfirmedElsewhere([id], NEXT_COURTS.includes(n)?null:n)) return;
+  // 실제 코트(1~4)로 배정하는 경우: 이미 다른 코트에 배정만 되어 있어도(확정 여부 무관) 막는다.
+  // 다음차례(5,6)로 배정하는 경우: 현재 게임 중이어도 다음 순번 예약은 허용한다(체크 안 함).
   if(!NEXT_COURTS.includes(n)){
+    if(blockIfAlreadyOnCourt([id], n)) return;
     checkGuestGamesBeforeAssign([id], ()=>{
       // 실제 배정은 서버 트랜잭션으로 자리를 확인한 뒤에만 확정한다 (다른 기기와의 동시 배정 레이스 방지)
       reserveCourtSlot(n, id, ()=>{
@@ -2042,10 +2088,7 @@ function toggleCourt(id,n){
         a.court=n;a.hasCourt=true;
         lastPushedCourtSnapshot[id]={ c:n, n1:a.nextCourt1??null, n2:a.nextCourt2??null };
         save();renderAll();
-        // 4명 배정 완료되면 자동확정 타이머 시작
-        if(n>=1&&n<=4&&!CC[n]&&S.attendees.filter(x=>x.court===n).length>=CMAX){
-          scheduleAutoConfirm(n);
-        }
+        // 자동확정(1분 뒤 저절로 확정) 기능은 제거됨 — 관리자가 "확정" 버튼을 직접 눌러야만 확정/게임수 반영됨
       }, (reason)=>{
         toast(`⚠️ ${CNAMES[n]}이 방금 다른 기기에서 꽉 찼습니다. 새로고침 후 다시 시도해주세요`,4000);
         renderAll();
@@ -2139,10 +2182,13 @@ function toggleNextCourt(id,which){
   }
   if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(S.attendees.filter(x=>x[nc]).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
-  if(blockIfConfirmedElsewhere([id], null)) return;
+  // 다음차례로 보내는 것은 현재 게임 중(다른 코트 배정/확정)이어도 허용한다 (다음 순번 예약 목적)
   reserveCourtSlot(n, id, ()=>{
     a[nc]=n;
-    lastPushedCourtSnapshot[id]={ c:a.court??null, n1:which===1?n:(a.nextCourt1??null), n2:which===2?n:(a.nextCourt2??null) };
+    // 다음차례1/2 동시 중복 배정 방지: 반대쪽 슬롯에도 있었다면 제거
+    if(which===1 && a.nextCourt2){ a.nextCourt2=null; }
+    if(which===2 && a.nextCourt1){ a.nextCourt1=null; }
+    lastPushedCourtSnapshot[id]={ c:a.court??null, n1:a.nextCourt1??null, n2:a.nextCourt2??null };
     // 새로 배정 시 확정 상태 초기화
     CC[n]=false;
     save();renderAll();
@@ -2334,9 +2380,12 @@ function scheduleAutoConfirmWithDelay(n, delay, force=false){
 }
 
 function scheduleAutoConfirm(n){
+  // 자동확정 기능 비활성화: 요청에 따라 게임수는 "관리자가 명시적으로 확정 버튼을 눌렀을 때만" 반영되도록 변경.
+  // (예전엔 4명이 채워지면 1분 뒤 자동으로 확정+게임수가 반영됐는데, 이게 "배정만 해도 게임수가 올라간다"는
+  // 혼란을 유발해서 비활성화함. 이제 확정은 오직 "게임 확정" 버튼을 직접 눌러야만 일어난다.)
   if(n<1||n>4) return;
-  AT[n]=Date.now();
-  scheduleAutoConfirmWithDelay(n, 60*1000, true); // 1분, force=true (새 배정이므로 리셋)
+  if(autoConfirmTimers[n]){ clearTimeout(autoConfirmTimers[n]); autoConfirmTimers[n]=null; }
+  AT[n]=null;
 }
 
 // 자동확정 타이머 취소 (코트 해제 시)
@@ -2432,17 +2481,23 @@ function confirmNextCourt(n){
       a[nc]=null;
     });
 
-    // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 ──────────────────
+    // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 (트랜잭션으로 정원 보호) ──────────
     if(n===5){
       // 다음차례1 확정 상태 해제 (새 인원이 대기 상태로 와야 함)
       CC[5]=false;
       const nc2Members=S.attendees.filter(x=>x.nextCourt2);
       if(nc2Members.length){
-        nc2Members.forEach(a=>{
-          a.nextCourt1=5;  // 다음차례1로 이동 (대기 상태)
-          a.nextCourt2=null;  // 다음차례2 해제
+        const nc2Ids=nc2Members.map(a=>a.id);
+        reserveNextSlotsForTeam(5, nc2Ids, ()=>{
+          nc2Members.forEach(a=>{ a.nextCourt1=5; a.nextCourt2=null; });
+          save();renderAll();
+          toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
+        }, (reason)=>{
+          // 코트 배정 자체는 이미 반영됐으니 그대로 저장하고, 이동만 실패했다고 안내
+          save();renderAll();
+          toast(`✅ ${CNAMES[n]} 확정 완료 (다음차례2 자동이동은 실패 — 인원 확인 후 다시 시도해주세요)`,4500);
         });
-        toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
+        return; // 위 콜백에서 save/renderAll을 처리하므로 아래로 내려가지 않음
       } else {
         toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
       }
@@ -2450,20 +2505,7 @@ function confirmNextCourt(n){
       toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
     }
     save();renderAll();
-    // 배정된 코트에 자동확정 타이머 시작 (코트별로 10초 간격으로 순차 확정)
-    let _delay=0;
-    for(let cn=1;cn<=4;cn++){
-      if(!courtActive[cn]) continue;
-      if(CC[cn]) continue;
-      if(S.attendees.filter(x=>x.court===cn).length>=CMAX){
-        if(_delay===0){
-          scheduleAutoConfirm(cn);
-        } else {
-          ((courtN,d)=>setTimeout(()=>scheduleAutoConfirm(courtN),d))(cn,_delay);
-        }
-        _delay+=10000; // 10초 간격
-      }
-    }
+    // 자동확정(1분/10초 뒤 저절로 확정) 기능은 제거됨 — 관리자가 코트마다 "확정" 버튼을 직접 눌러야 함
   }, (reason)=>{
     toast(`⚠️ 코트 상황이 방금 다른 기기에서 바뀌었습니다. 다시 시도해주세요`,4000);
     renderAll();
@@ -2511,8 +2553,8 @@ function assignTeam(cn,teamIds){
   }
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
-  // 다른 코트에서 이미 확정(게임 진행 중)된 사람이 팀에 포함돼 있으면 배정 자체를 막는다
-  if(blockIfConfirmedElsewhere(teamIds, cn)) return;
+  // 이미 다른 코트(1~4)에 배정만 되어 있어도(확정 여부 무관) 팀에 포함돼 있으면 배정 자체를 막는다
+  if(blockIfAlreadyOnCourt(teamIds, cn)) return;
   checkGuestGamesBeforeAssign(teamIds, ()=>{
     // 실제 배정은 서버 트랜잭션으로 최종 인원수를 확인한 뒤에만 확정 (다른 기기와의 동시 배정 레이스 방지)
     reserveCourtSlotsForTeam(cn, teamIds, ()=>{
@@ -2527,8 +2569,7 @@ function assignTeam(cn,teamIds){
         if(a){ a.court=cn;a.hasCourt=true; lastPushedCourtSnapshot[id]={ c:cn, n1:a.nextCourt1??null, n2:a.nextCourt2??null }; }
       });
       clearRecSwapOverrides();save();renderAll();toast(`✅ ${CNAMES[cn]}에 ${teamIds.length}명 배정`);
-      // 4명 다 찼고 미확정이면 자동확정 타이머 시작
-      if(cn>=1&&cn<=4&&!CC[cn]&&S.attendees.filter(x=>x.court===cn).length>=CMAX) scheduleAutoConfirm(cn);
+      // 자동확정 기능은 제거됨 — 관리자가 "확정" 버튼을 직접 눌러야만 확정/게임수 반영됨
     }, (reason)=>{
       toast(`⚠️ ${CNAMES[cn]}이 방금 다른 기기에서 인원이 바뀌었습니다. 새로고침 후 다시 시도해주세요`,4000);
       renderAll();
@@ -2539,8 +2580,7 @@ function assignNextTeam(which,teamIds){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const leavingMembers=teamIds.map(id=>S.attendees.find(x=>x.id===id)).filter(a=>a&&a.leavingScheduled);
   if(leavingMembers.length){openModal(`⚠️ 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 배정할 수 없습니다.`,null);return;}
-  // 다른 코트에서 이미 확정(게임 진행 중)된 사람이 팀에 포함돼 있으면 배정 자체를 막는다
-  if(blockIfConfirmedElsewhere(teamIds, null)) return;
+  // 다음차례로 보내는 것은 현재 게임 중(다른 코트 배정/확정)인 사람이 포함돼 있어도 허용한다 (다음 순번 예약 목적)
   checkGuestGamesBeforeAssign(teamIds, ()=>{
     const nc1cnt=S.attendees.filter(a=>a.nextCourt1).length;
     let targetWhich=which;
@@ -2556,7 +2596,13 @@ function assignNextTeam(which,teamIds){
       CC[n]=false;
       teamIds.forEach(id=>{
         const a=S.attendees.find(x=>x.id===id);
-        if(a){ a[nc]=n; lastPushedCourtSnapshot[id]={ c:a.court??null, n1:targetWhich===1?n:(a.nextCourt1??null), n2:targetWhich===2?n:(a.nextCourt2??null) }; }
+        if(a){
+          a[nc]=n;
+          // 다음차례1/2 동시 중복 배정 방지: 반대쪽 슬롯에도 있었다면 제거
+          if(targetWhich===1 && a.nextCourt2){ a.nextCourt2=null; }
+          if(targetWhich===2 && a.nextCourt1){ a.nextCourt1=null; }
+          lastPushedCourtSnapshot[id]={ c:a.court??null, n1:a.nextCourt1??null, n2:a.nextCourt2??null };
+        }
       });
       clearRecSwapOverrides();save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
     }, (reason)=>{
@@ -2567,15 +2613,31 @@ function assignNextTeam(which,teamIds){
 }
 
 /* ── 대기/추천 ── */
+// 대기 시작 시각(courtFreeTs)이 실제 출석시각(attendTs)보다 이전일 수는 없다(출석 전부터 대기중일 수 없음).
+// 그런 논리적으로 불가능한 상태가 감지되면(예: 동기화 레이스로 오래된 값이 남는 경우),
+// 더 최근 값(attendTs)을 대기 시작 기준으로 삼아 방어적으로 보정한다.
+function getWaitBaseTs(a){
+  const free = a.courtFreeTs || 0;
+  const attend = a.attendTs || 0;
+  const base = Math.max(free, attend);
+  return base || nowTs();
+}
+// 대기 시작 시각(위 보정값)에 대응하는 표시용 시각 문자열 (HH:MM)
+function getWaitBaseTimeStr(a){
+  return timeStr(new Date(getWaitBaseTs(a)*1000));
+}
 function getSortedWaiting(){
-  function getTs(a){if(a.courtFreeTs)return a.courtFreeTs;const t=a.courtFreeAt||a.time||'00:00';const[h,m]=t.split(':').map(Number);return h*3600+m*60;}
+  function getTs(a){
+    if(a.courtFreeTs) return Math.max(a.courtFreeTs, a.attendTs||0);
+    const t=a.courtFreeAt||a.time||'00:00';const[h,m]=t.split(':').map(Number);return h*3600+m*60;
+  }
   S.attendees.forEach(a=>{if(a.hasCourt===undefined)a.hasCourt=!!(a.courtFreeAt&&a.courtFreeAt!==a.time);});
   // 화면 표시(게임편성 대기현황)는 퇴소예정 회원도 포함시켜야 함 (* 표시로 구분)
   // 추천 알고리즘에서만 별도로 제외 처리
   return S.attendees.filter(x=>x.court===null&&!HIDDEN_MEMBER_IDS.includes(x.id)).sort((a,b)=>getTs(a)-getTs(b));
 }
 function waitMinutesRaw(a){
-  const baseTs = a.courtFreeTs || a.attendTs || nowTs();
+  const baseTs = getWaitBaseTs(a);
   return Math.max(0, Math.floor((nowTs()-baseTs)/60));
 }
 // 추천팀 개별 인원 수동 교체 오버라이드: "팀인덱스_슬롯인덱스" → 교체할 회원id
@@ -2682,7 +2744,7 @@ function leavingMark(isLeaving){
    현재까지 몇 분 대기했는지 작은 뱃지로 표시. 미배정 상태일 때만 의미가 있음. */
 function waitMinutesLabel(a){
   if(a.court) return ''; // 이미 코트에 배정된 인원은 대기시간 표시 안 함
-  const baseTs = a.courtFreeTs || a.attendTs || nowTs();
+  const baseTs = getWaitBaseTs(a);
   const mins = Math.max(0, Math.floor((nowTs()-baseTs)/60));
   const isLong = mins >= 30;
   const prefix = isLong ? '<span style="font-size:11px;color:#C0392B;font-weight:800;flex-shrink:0;white-space:nowrap;margin-right:2px">긴 대기중</span>' : '';
@@ -3160,7 +3222,7 @@ function renderCourts(){
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
       const members=team.map((a,slotIdx)=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member" onclick="showSwapMemberPopup(${tIdx},${slotIdx})" style="cursor:pointer">
-<span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
+<span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${getWaitBaseTimeStr(a)}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
       recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
@@ -4358,7 +4420,10 @@ function renderAll(){
   // 렌더링 시점마다 "코트에 사람 0명인데 확정정보가 남은" 유령 상태를 스스로 확인해서 고친다.
   // (사용자가 별도로 뭔가를 조작해야만 save()가 불려서 고쳐지는 게 아니라, 화면을 열기만 해도
   // 자동으로 정리되도록 함. renderAll 안에서 save()를 바로 부르면 재귀호출이 되므로, 다음 tick으로 지연)
-  if(enforceEmptyCourtsCleared()){
+  // ⚠️ initialRenderDone(서버로부터 최초 동기화를 받은 뒤)이 아니면 절대 push하지 않는다.
+  // 새로고침 직후에는 아직 localStorage의 오래된 캐시 상태일 수 있는데, 이 시점에 push해버리면
+  // 그 오래된(다른 기기가 이미 바꿔놓은 진짜 상태와 다른) 캐시가 서버로 올라가 다른 기기까지 오염시킨다.
+  if(initialRenderDone && enforceEmptyCourtsCleared()){
     setTimeout(()=>{ try{ syncPush(); }catch(e){} }, 0);
   }
   renderStats();
