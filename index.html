@@ -2118,10 +2118,17 @@ function toggleNextCourt(id,which){
   }
   if(a.leavingScheduled){openModal(`⚠️ ${a.name}님은 퇴소예정 회원입니다.\n코트 배정이 제한됩니다.`,null);return;}
   if(S.attendees.filter(x=>x[nc]).length>=CMAX){toast(`${CNAMES[n]}은 이미 꽉 찼습니다 ⚠️`);return;}
-  a[nc]=n;
-  // 새로 배정 시 확정 상태 초기화
-  CC[n]=false;
-  save();renderAll();
+  if(blockIfConfirmedElsewhere([id], null)) return;
+  reserveCourtSlot(n, id, ()=>{
+    a[nc]=n;
+    lastPushedCourtSnapshot[id]={ c:a.court??null, n1:which===1?n:(a.nextCourt1??null), n2:which===2?n:(a.nextCourt2??null) };
+    // 새로 배정 시 확정 상태 초기화
+    CC[n]=false;
+    save();renderAll();
+  }, (reason)=>{
+    toast(`⚠️ ${CNAMES[n]}이 방금 다른 기기에서 꽉 찼습니다. 새로고침 후 다시 시도해주세요`,4000);
+    renderAll();
+  });
 }
 /* 코트 이동 팝업 (길게 누르면 호출) */
 /* 코트 전체 인원 이동 팝업 (코트 헤더 길게 누름) */
@@ -2332,6 +2339,41 @@ function clearNextCourt(n){
   shuffle(pl.slice()).forEach((a,i)=>{a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+i;}});
   cancelAutoConfirm(n);CC[n]=false;CT[n]=null;save();renderAll();toast(`${CNAMES[n]} 해제 완료`);
 }
+// 다음차례 확정 시 1~4코트에 나눠서 배정하는 것도 트랜잭션으로 원자적으로 검증한다.
+// (여러 코트에 걸쳐 나눠 배정하는 로직이라 assignTeam과는 별도로 구현)
+function reserveNextCourtDistribution(pl, onSuccess, onFail){
+  COURT_STATE_REF.transaction(current=>{
+    const state = current || {};
+    const courtCounts={1:0,2:0,3:0,4:0};
+    Object.keys(state).forEach(id=>{
+      const c=state[id]&&state[id].c;
+      if(c>=1&&c<=4) courtCounts[c]=(courtCounts[c]||0)+1;
+    });
+    const availCourts=[];
+    for(let cn=1;cn<=4;cn++){
+      if(!courtActive[cn]) continue;
+      const free=CMAX-(courtCounts[cn]||0);
+      if(free>0) availCourts.push({cn,free});
+    }
+    availCourts.sort((a,b)=>b.free-a.free);
+    let pi=0;
+    const ids=pl.map(a=>a.id);
+    for(const{cn,free}of availCourts){
+      let filled=0;
+      while(pi<ids.length&&filled<free){
+        const id=ids[pi];
+        state[id]={...(state[id]||{}),c:cn};
+        pi++;filled++;
+      }
+      if(pi>=ids.length)break;
+    }
+    return state; // 자리가 하나도 없어도 중단하지 않음 - 남는 인원은 그냥 배정 안 되고 대기로 남김(호출부에서 처리)
+  }, (error,committed,snapshot)=>{
+    if(error){ onFail&&onFail('error'); return; }
+    if(!committed){ onFail&&onFail('conflict'); return; }
+    onSuccess&&onSuccess(snapshot?snapshot.val():null);
+  });
+}
 function confirmNextCourt(n){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   const nc=n===5?'nextCourt1':'nextCourt2';
@@ -2342,56 +2384,60 @@ function confirmNextCourt(n){
   if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   if(pl.length>CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명이 배정되어 있습니다.\n4명을 초과해서 확정할 수 없습니다.\n(${pl.length-CMAX}명을 다른 곳으로 옮기거나 해제해주세요)`,null);return;}
-  const availCourts=[];
-  for(let cn=1;cn<=4;cn++){if(!courtActive[cn])continue;const cur=S.attendees.filter(x=>x.court===cn).length;if(cur<CMAX)availCourts.push({cn,cur,free:CMAX-cur});}
-  if(!availCourts.length){toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);return;}
-  const t=timeStr();const baseTs=nowTs();
-  CC[n]=true;
-  availCourts.sort((a,b)=>b.free-a.free);
-  let pi=0;
-  for(const{cn,free}of availCourts){
-    let filled=0;
-    while(pi<pl.length&&filled<free){
-      const a=pl[pi];
-      if(!a.court){a.court=cn;a.hasCourt=true;}else filled--;
-      a[nc]=null;pi++;filled++;
-    }
-    if(pi>=pl.length)break;
-  }
-  while(pi<pl.length){const a=pl[pi];a[nc]=null;if(!a.court){a.courtFreeAt=t;a.courtFreeTs=baseTs+pi;}pi++;}
+  const availCourtsCheck=[1,2,3,4].filter(cn=>courtActive[cn]&&S.attendees.filter(x=>x.court===cn).length<CMAX);
+  if(!availCourtsCheck.length){toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);return;}
 
-  // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 ──────────────────
-  if(n===5){
-    // 다음차례1 확정 상태 해제 (새 인원이 대기 상태로 와야 함)
-    CC[5]=false;
-    const nc2Members=S.attendees.filter(x=>x.nextCourt2);
-    if(nc2Members.length){
-      nc2Members.forEach(a=>{
-        a.nextCourt1=true;  // 다음차례1로 이동 (대기 상태)
-        a.nextCourt2=null;  // 다음차례2 해제
-      });
-      toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
+  reserveNextCourtDistribution(pl, (finalState)=>{
+    if(!finalState){ toast('⚠️ 배정할 자리가 없습니다. 다시 확인해주세요',3500); renderAll(); return; }
+    const t=timeStr();const baseTs=nowTs();
+    CC[n]=true;
+    pl.forEach((a,idx)=>{
+      const entry=finalState[a.id];
+      if(entry && entry.c>=1 && entry.c<=4){
+        a.court=entry.c;a.hasCourt=true;
+        lastPushedCourtSnapshot[a.id]={ c:entry.c, n1:null, n2:null };
+      } else if(!a.court){
+        a.courtFreeAt=t;a.courtFreeTs=baseTs+idx; // 자리를 못 받은 사람은 그 시점부터 다시 대기
+      }
+      a[nc]=null;
+    });
+
+    // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 ──────────────────
+    if(n===5){
+      // 다음차례1 확정 상태 해제 (새 인원이 대기 상태로 와야 함)
+      CC[5]=false;
+      const nc2Members=S.attendees.filter(x=>x.nextCourt2);
+      if(nc2Members.length){
+        nc2Members.forEach(a=>{
+          a.nextCourt1=5;  // 다음차례1로 이동 (대기 상태)
+          a.nextCourt2=null;  // 다음차례2 해제
+        });
+        toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 배정 · 다음차례2(${nc2Members.length}명) → 다음차례1 자동이동`);
+      } else {
+        toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
+      }
     } else {
       toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
     }
-  } else {
-    toast(`✅ ${CNAMES[n]} 확정 — ${pl.length}명 코트 배정`);
-  }
-  save();renderAll();
-  // 배정된 코트에 자동확정 타이머 시작 (코트별로 10초 간격으로 순차 확정)
-  let _delay=0;
-  for(let cn=1;cn<=4;cn++){
-    if(!courtActive[cn]) continue;
-    if(CC[cn]) continue;
-    if(S.attendees.filter(x=>x.court===cn).length>=CMAX){
-      if(_delay===0){
-        scheduleAutoConfirm(cn);
-      } else {
-        ((courtN,d)=>setTimeout(()=>scheduleAutoConfirm(courtN),d))(cn,_delay);
+    save();renderAll();
+    // 배정된 코트에 자동확정 타이머 시작 (코트별로 10초 간격으로 순차 확정)
+    let _delay=0;
+    for(let cn=1;cn<=4;cn++){
+      if(!courtActive[cn]) continue;
+      if(CC[cn]) continue;
+      if(S.attendees.filter(x=>x.court===cn).length>=CMAX){
+        if(_delay===0){
+          scheduleAutoConfirm(cn);
+        } else {
+          ((courtN,d)=>setTimeout(()=>scheduleAutoConfirm(courtN),d))(cn,_delay);
+        }
+        _delay+=10000; // 10초 간격
       }
-      _delay+=10000; // 10초 간격
     }
-  }
+  }, (reason)=>{
+    toast(`⚠️ 코트 상황이 방금 다른 기기에서 바뀌었습니다. 다시 시도해주세요`,4000);
+    renderAll();
+  });
 }
 function reassign(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
