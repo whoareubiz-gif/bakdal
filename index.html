@@ -3014,6 +3014,7 @@ function renderCourts(){
   const inCourtConfirmed=S.attendees
     .filter(x=>x.court&&!NEXT_COURTS.includes(x.court)&&CC[x.court]&&!HIDDEN_MEMBER_IDS.includes(x.id));
   const allSorted=[...waiting,...inCourtUnconfirmed];
+  let waitingHtml='';
   if(allSorted.length){
     function courtAllCard(a){
       const isWaiting=!a.court||NEXT_COURTS.includes(a.court)||(!NEXT_COURTS.includes(a.court)&&a.court&&!CC[a.court]);
@@ -3047,7 +3048,7 @@ function renderCourts(){
       </div>`;
     }
     const mSorted=allSorted.filter(x=>x.gender==='m');const fSorted=allSorted.filter(x=>x.gender==='f');
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 게임편성 대기현황 (${waiting.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
+    waitingHtml+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">👥 게임편성 대기현황 (${waiting.length}명)<span style="font-size:10px;color:#B25000;margin-left:4px">미확정코트(${inCourtUnconfirmed.length})·확정제외(${inCourtConfirmed.length})</span></div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 10px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mSorted.length})</div>${mSorted.map(courtAllCard).join('')}</div><div class="split-col" style="padding:0 0 10px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fSorted.length})</div>${fSorted.map(courtAllCard).join('')}</div></div></div>`;
   }
   // ── 확정 코트 인원 → 다음차례 배정 가능 섹션 ──
   if(inCourtConfirmed.length){
@@ -3062,10 +3063,11 @@ function renderCourts(){
     }
     const mConf=inCourtConfirmed.filter(x=>x.gender==='m');
     const fConf=inCourtConfirmed.filter(x=>x.gender==='f');
-    h+=`<div class="pg-inner" style="padding-top:0;margin-top:-4px"><div class="stitle" style="font-size:12px;color:#185FA5;border-color:#B8D4F0">🎾 게임 중 → 다음차례 추가 가능 (${inCourtConfirmed.length}명)</div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 6px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mConf.length})</div>${mConf.map(confirmedCard).join('')}</div><div class="split-col" style="padding:0 0 6px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fConf.length})</div>${fConf.map(confirmedCard).join('')}</div></div></div>`;
+    waitingHtml+=`<div class="pg-inner" style="padding-top:0;margin-top:-4px"><div class="stitle" style="font-size:12px;color:#185FA5;border-color:#B8D4F0">🎾 게임 중 → 다음차례 추가 가능 (${inCourtConfirmed.length}명)</div><div class="split-wrap"><div class="split-col lcol" style="padding:0 4px 6px 0"><div class="split-hdr m" style="font-size:10px">👨 남 (${mConf.length})</div>${mConf.map(confirmedCard).join('')}</div><div class="split-col" style="padding:0 0 6px 4px"><div class="split-hdr f" style="font-size:10px">👩 여 (${fConf.length})</div>${fConf.map(confirmedCard).join('')}</div></div></div>`;
   }
   // 추천팀
   const recTeams=buildRecommendedTeams();
+  let recTeamsHtml='';
   if(recTeams.length){
     function recCourtBtns(tIds){
       return[1,2,3,4].filter(n=>courtActive[n]).map(n=>{
@@ -3077,18 +3079,19 @@ function renderCourts(){
         return`<button class="assign-btn" onclick="${onclick}" style="background:${bg}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${isEmpty?'빈코트':`${ex}/${CMAX}`}</span></button>`;
       }).join('');
     }
-    h+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div><div style="font-size:11px;color:#888780;margin:-4px 0 8px">무조건 대기시간 순이며 개별인원을 클릭하면 인원변경 가능</div>`;
+    recTeamsHtml+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div><div style="font-size:11px;color:#888780;margin:-4px 0 8px">무조건 대기시간 순이며 개별인원을 클릭하면 인원변경 가능</div>`;
     recTeams.forEach(({label,color,badge,team},tIdx)=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
       const members=team.map((a,slotIdx)=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member" onclick="showSwapMemberPopup(${tIdx},${slotIdx})" style="cursor:pointer">
 <span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${a.courtFreeAt||a.time}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
-      h+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
+      recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
-    h+=`</div>`;
+    recTeamsHtml+=`</div>`;
   }
-  if(!isMemberMode) h+=nextCourtHtml; // 관리자 모드는 다음게임 추천 뒤로 이동
+  // 순서: 다음차례1,2코트 → 다음게임 추천 → 게임편성 대기현황(+확정코트인원)
+  h += nextCourtHtml + recTeamsHtml + waitingHtml;
   return h;
 }
 
