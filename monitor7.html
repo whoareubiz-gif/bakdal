@@ -2431,6 +2431,21 @@ function waitMinutesRaw(a){
 }
 let recSwapOverrides={};
 function clearRecSwapOverrides(){ recSwapOverrides={}; }
+// 오늘 이미 같은 4명 조합으로 코트에 배정(게임 확정)된 적 있는지 확인하기 위한 헬퍼.
+function getTodayCourtComboSet(){
+  const set=new Set();
+  try{
+    const h=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
+    const today=dateStr();
+    h.forEach(entry=>{
+      if(entry.date!==today) return;
+      if(!entry.members || entry.members.length!==CMAX) return;
+      const key=entry.members.map(m=>m.id).sort((a,b)=>a-b).join(',');
+      set.add(key);
+    });
+  }catch(e){}
+  return set;
+}
 function buildRecommendedTeams(){
   const waiting=getSortedWaiting();
   function buildPool(gender){
@@ -2457,6 +2472,16 @@ function buildRecommendedTeams(){
       }
       return a;
     });
+  });
+  // 오늘 이미 같은 4명 조합으로 게임한 적 있으면 표시
+  const todayCombos=getTodayCourtComboSet();
+  teams.forEach(teamObj=>{
+    if(teamObj.team.length===CMAX){
+      const key=teamObj.team.map(a=>a.id).sort((a,b)=>a-b).join(',');
+      teamObj.dup = todayCombos.has(key);
+    } else {
+      teamObj.dup = false;
+    }
   });
   return teams;
 }
@@ -2985,13 +3010,14 @@ function renderCourts(){
       }).join('');
     }
     recTeamsHtml+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div><div style="font-size:11px;color:#888780;margin:-4px 0 8px">무조건 대기시간 순이며 개별인원을 클릭하면 인원변경 가능</div>`;
-    recTeams.forEach(({label,color,badge,team},tIdx)=>{
+    recTeams.forEach(({label,color,badge,team,dup},tIdx)=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
       const members=team.map((a,slotIdx)=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member" onclick="showSwapMemberPopup(${tIdx},${slotIdx})" style="cursor:pointer">
 <span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${getWaitBaseTimeStr(a)}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
-      recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div><div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
+      const dupBadge=dup?`<div style="margin:2px 0 4px;padding:3px 7px;background:#FDECEA;color:#C0392B;border-radius:6px;font-size:11px;font-weight:700;display:inline-block">⚠️ 오늘 이미 이 4명으로 게임했습니다</div>`:'';
+      recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div>${dupBadge}<div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
     recTeamsHtml+=`</div>`;
   }
