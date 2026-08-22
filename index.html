@@ -266,6 +266,7 @@ const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상�
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
 
 let syncPushTimer = null;
+let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -752,6 +753,15 @@ function applyConfirmState(confirmState){
 
 function doSyncPushNow(){
   if(syncPushTimer){ clearTimeout(syncPushTimer); syncPushTimer=null; }
+  // ⚠️ 최초 동기화(initialRenderDone) 전에는 절대 서버로 아무것도 쓰지 않는다.
+  // 크롬을 껐다 켜는 등으로 localStorage에 남아있던 오래된 캐시가, tick()의
+  // checkPendingAutoConfirms/checkPendingGameCommits 같은 자동 타이머 로직을 통해
+  // syncListen()이 서버 최신값을 받아오기도 전에 save()를 트리거하면, 그 오래된 상태가
+  // 그대로 서버에 병합(update)되어 다른 기기가 이미 갱신해둔 진짜 상태와 합쳐지면서
+  // 코트 정원 초과(예: 8/4) 같은 유령 데이터가 생기는 문제가 있었다. 대기 중이던 push는
+  // 버리지 않고, initialRenderDone이 되는 순간 다시 예약해서 그때의 "이미 서버와 병합된
+  // 최신 S" 기준으로 정상적으로 반영되게 한다.
+  if(!initialRenderDone){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -831,7 +841,12 @@ function syncListen(){
     if(boardModeOn) renderBoard();
     if(!firstReceived){
       firstReceived=true;
-      setTimeout(()=>{ initialRenderDone=true; checkAutoLeaveOnVisible(); }, 1000);
+      setTimeout(()=>{
+        initialRenderDone=true; checkAutoLeaveOnVisible();
+        // 최초 동기화 완료 전에 막아뒀던 push가 있었다면, 이제 서버 최신값과 합쳐진
+        // 상태를 기준으로 정상적으로 반영한다.
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      }, 1000);
     }
   }, err=>{ setSyncDot('err'); });
   // 필드별 전용 경로: 바뀔 때마다 즉시(다른 동기화와 무관하게) 로컬에 반영
@@ -1652,6 +1667,12 @@ function load(){
       CC=o.CC||{1:false,2:false,3:false,4:false,5:false,6:false};
       if(o.CT) CT=o.CT;
       if(o.AT) AT=o.AT;
+      // GC(게임수 반영여부)/CS(확정 당시 인원 스냅샷)도 CC/CT와 함께 복원해야 한다.
+      // 예전엔 이 둘만 빠져있어서, 새로고침 직후 "CC=true인데 GC=false·CS=null"인
+      // 불일치 상태가 항상 발생했고, 이 틈에 tick()이 "인원이 바뀌어 확정 취소됨"으로
+      // 잘못 판단하는 원인이 됐다 (서버의 진짜 확정 상태가 도착하기 전까지의 임시 방편).
+      if(o.GC) GC=o.GC;
+      if(o.CS) CS=o.CS;
     }
   }catch(e){}
 }
@@ -1673,7 +1694,7 @@ function enforceEmptyCourtsCleared(){
 }
 function save(){
   enforceEmptyCourtsCleared();
-  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,CC,CT,AT}));}catch(e){}
+  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,CC,CT,AT,GC,CS}));}catch(e){}
   renderAll(); // 로컬 즉시 반영 (Firebase 응답 기다리지 않음)
   syncPush();  // Firebase 비동기 전송
 }
@@ -2366,6 +2387,18 @@ function commitOrCancelCourtGame(n){
 }
 // 코트 1~4 전체를 대상으로 위 체크를 수행 (tick()·동기화 수신 시마다 호출)
 function checkPendingGameCommits(){
+  // 최초 동기화 전(서버 최신값을 아직 못 받아온 상태)에는 오래된 로컬 캐시 기준으로
+  // 게임수를 반영/확정하면 안 되므로 대기한다. initialRenderDone이 되면 tick()이 1초마다
+  // 계속 호출하므로 곧 다시 확인된다.
+  // ⚠️ confirmStateReady도 함께 확인해야 한다: load()는 localStorage에서 CC/CT는 복원하지만
+  // GC(게임수 반영여부)/CS(확정 당시 인원 스냅샷)는 애초에 저장/복원하지 않는다(서버가 진짜 소스).
+  // 그래서 새로고침 직후에는 CC=true·CT=(오래된 시각)인데 GC/CS는 기본값(false/null)인 순간이
+  // 항상 존재하는데, 이때 COURT_CONFIRM_REF의 실제 서버값이 아직 도착하기 전에 tick()이 먼저
+  // "30초 지났는데 GC가 false네? CS도 없네?"로 오판해서 이미 정상 확정된 코트를 잘못
+  // 취소해버리는 문제가 있었다(새로고침할 때마다 "인원이 바뀌어 확정이 취소됐습니다" 토스트가
+  // 반복해서 뜨는 원인). confirmStateReady가 true가 되어 서버의 진짜 GC/CS를 받아온 뒤에만
+  // 이 판정을 하도록 막는다.
+  if(!initialRenderDone || !confirmStateReady) return;
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
 // 확정 즉시 게임수 반영 (예전엔 30초 유예를 뒀었지만, 요청에 따라 확정 즉시 반영으로 변경.
@@ -2405,6 +2438,11 @@ function autoConfirmCourtSilent(n){
 // setTimeout 하나에만 의존하면(모바일 백그라운드에서 타이머가 씹히는 경우), 4명이 꽉 찬 채로
 // 1분이 훌쩍 지나도 확정이 안 되는 문제가 있었다 — 게임수 반영 때와 동일한 원인/해법.
 function checkPendingAutoConfirms(){
+  // 최초 동기화 전에는 오래된 로컬 캐시(AT 등) 기준으로 자동확정을 실행하지 않는다.
+  // (그대로 실행하면 서버의 진짜 최신 코트 인원과 무관하게 오래된 인원 구성으로
+  // 게임수/확정정보를 만들어버려 정원초과 등 유령 데이터의 원인이 됨)
+  // courtStateReady도 함께 확인: 진짜 코트 인원(court)을 아직 못 받아온 상태에서 판단하면 안 됨.
+  if(!initialRenderDone || !courtStateReady) return;
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;

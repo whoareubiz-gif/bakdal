@@ -256,6 +256,7 @@ const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상�
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
 
 let syncPushTimer = null;
+let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -591,7 +592,7 @@ function reserveNextSlotsForTeam(n, teamIds, onSuccess, onFail){
     onSuccess && onSuccess();
   });
 }
-function reserveNextCourtDistribution(pl, onSuccess, onFail){
+function reserveNextCourtDistribution(pl, sourceField, onSuccess, onFail){
   COURT_STATE_REF.transaction(current=>{
     const state = current || {};
     const courtCounts={1:0,2:0,3:0,4:0};
@@ -612,7 +613,10 @@ function reserveNextCourtDistribution(pl, onSuccess, onFail){
       let filled=0;
       while(pi<ids.length&&filled<free){
         const id=ids[pi];
-        state[id]={...(state[id]||{}),c:cn};
+        // 코트 배정과 동시에, 승격 전 있던 다음차례 슬롯(n1/n2)도 같은 트랜잭션에서 반드시 함께 비운다.
+        // (따로따로 쓰면, 코트 배정만 서버에 반영되고 다음차례 필드는 안 지워진 채로 남아
+        //  다른 기기에서 "다음차례에 그대로 남아있다"는 유령 상태로 보이는 문제가 있었다.)
+        state[id]={...(state[id]||{}),c:cn,[sourceField]:null};
         pi++;filled++;
       }
       if(pi>=ids.length)break;
@@ -878,6 +882,8 @@ function applyConfirmState(confirmState){
 
 function doSyncPushNow(){
   if(syncPushTimer){ clearTimeout(syncPushTimer); syncPushTimer=null; }
+  // ⚠️ 최초 동기화(initialRenderDone) 전에는 절대 서버로 아무것도 쓰지 않는다. (index.html과 동일한 이유)
+  if(!initialRenderDone){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -929,7 +935,10 @@ function syncListen(){
 
     if(!firstReceived){
       firstReceived = true;
-      setTimeout(()=>{ initialRenderDone=true; }, 1000);
+      setTimeout(()=>{
+        initialRenderDone=true;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      }, 1000);
     }
   }, err=>{
     setSyncDot('err');
@@ -1502,6 +1511,11 @@ function commitOrCancelCourtGame(n){
   recordCourtGame(n);save();renderAll();
 }
 function checkPendingGameCommits(){
+  // confirmStateReady도 함께 확인: load()는 CC/CT는 복원하지만 GC/CS는 복원하지 않아서
+  // (서버가 진짜 소스) 새로고침 직후 "CC=true인데 GC=false·CS=null"인 불일치 순간이 항상
+  // 존재한다. 이 틈에 tick()이 먼저 판단하면 정상 확정된 코트를 "인원이 바뀌어 취소됨"으로
+  // 잘못 취소해버린다. 서버의 진짜 GC/CS를 받아온 뒤(confirmStateReady)에만 판정한다.
+  if(!initialRenderDone || !confirmStateReady) return;
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
 function scheduleGameCommit(n){
@@ -1528,6 +1542,7 @@ function autoConfirmCourtSilent(n){
 }
 // 1분이 지났는데도 자동확정이 안 됐는지 확인해서 뒤늦게라도 처리한다 (백그라운드 타이머 씹힘 대비)
 function checkPendingAutoConfirms(){
+  if(!initialRenderDone || !courtStateReady) return; // 최초 동기화 전 오래된 로컬 캐시로 자동확정 방지
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;
@@ -1720,12 +1735,17 @@ function load(){
       }
       S =o.state;
       CC=o.CC||{1:false,2:false,3:false,4:false,5:false,6:false};
+      // GC(게임수 반영여부)/CS(확정 당시 인원 스냅샷)도 함께 복원해야 한다. 이 둘이 빠져있으면
+      // 새로고침 직후 "CC=true인데 GC=false·CS=null"인 불일치 상태가 생겨, 서버의 진짜 확정
+      // 상태가 도착하기 전에 tick()이 "인원이 바뀌어 확정 취소됨"으로 잘못 판단할 수 있다.
+      if(o.GC) GC=o.GC;
+      if(o.CS) CS=o.CS;
     }
   }catch(e){}
 }
 function save(){
   enforceEmptyCourtsCleared();
-  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,CC,CT,AT}));}catch(e){}
+  try{localStorage.setItem(SK,JSON.stringify({date:dateStr(),state:S,CC,CT,AT,GC,CS}));}catch(e){}
   renderAll(); // 로컬 즉시 반영 (Firebase 응답 기다리지 않음)
   syncPush();  // Firebase 비동기 전송
 }
@@ -2246,19 +2266,19 @@ function confirmNextCourt(n){
   const availCourtsCheck=[1,2,3,4].filter(cn=>courtActive[cn]&&S.attendees.filter(x=>x.court===cn).length<CMAX);
   if(!availCourtsCheck.length){toast('⚠️ 1~4코트가 모두 꽉 찼습니다. 코트를 해제한 후 확정해주세요.',3500);return;}
 
-  reserveNextCourtDistribution(pl, (finalState)=>{
+  reserveNextCourtDistribution(pl, n===5?'n1':'n2', (finalState)=>{
     if(!finalState){ toast('⚠️ 배정할 자리가 없습니다. 다시 확인해주세요',3500); renderAll(); return; }
     const t=timeStr();const baseTs=nowTs();
     CC[n]=true;
     pl.forEach((a,idx)=>{
       const entry=finalState[a.id];
+      a[nc]=null; // 다음차례 슬롯은 무조건 비움 (트랜잭션에서 서버에도 이미 같이 비워짐)
       if(entry && entry.c>=1 && entry.c<=4){
         a.court=entry.c;a.hasCourt=true;
-        lastPushedCourtSnapshot[a.id]={ c:entry.c, n1:null, n2:null };
       } else if(!a.court){
         a.courtFreeAt=t;a.courtFreeTs=baseTs+idx; // 자리를 못 받은 사람은 그 시점부터 다시 대기
       }
-      a[nc]=null;
+      lastPushedCourtSnapshot[a.id]={ c:a.court??null, n1:a.nextCourt1??null, n2:a.nextCourt2??null };
     });
 
     // ── 다음차례1 확정 시 다음차례2 → 다음차례1 자동 이동 (트랜잭션으로 정원 보호) ──────────
@@ -2377,7 +2397,14 @@ function assignNextTeam(which,teamIds){
       CC[n]=false;
       teamIds.forEach(id=>{
         const a=S.attendees.find(x=>x.id===id);
-        if(a){ a[nc]=n; lastPushedCourtSnapshot[id]={ c:a.court??null, n1:targetWhich===1?n:(a.nextCourt1??null), n2:targetWhich===2?n:(a.nextCourt2??null) }; }
+        if(a){
+          a[nc]=n;
+          // 다음차례1/2 동시 중복 배정 방지: 반대쪽 슬롯에도 있었다면 로컬 모델에서도 제거
+          // (서버 트랜잭션에서는 이미 지워지므로, 여기서 안 지우면 echo 받기 전까지 화면에 잠깐 중복 표시됨)
+          if(targetWhich===1 && a.nextCourt2){ a.nextCourt2=null; }
+          if(targetWhich===2 && a.nextCourt1){ a.nextCourt1=null; }
+          lastPushedCourtSnapshot[id]={ c:a.court??null, n1:a.nextCourt1??null, n2:a.nextCourt2??null };
+        }
       });
       clearRecSwapOverrides();save();renderAll();toast(`✅ ${CNAMES[n]}에 ${teamIds.length}명 배정`);
     }, (reason)=>{
