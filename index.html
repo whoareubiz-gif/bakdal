@@ -1794,10 +1794,23 @@ function deleteTodayDB(){
       const ch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
       localStorage.setItem('tennis_court_hist',JSON.stringify(ch.filter(x=>x.date!==today)));
     }catch(e){}
-    // Firebase 당일 데이터 삭제
+    // 코트/확정/게임수 등 상태도 함께 초기화 (라이브 경로 삭제와 정합성 유지)
+    CT={1:null,2:null,3:null,4:null,5:null,6:null};
+    GC={1:false,2:false,3:false,4:false};CS={1:null,2:null,3:null,4:null};
+    clearRecSwapOverrides();
+    lastPushedCourtSnapshot={};lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedConfirmSnapshot={};
+    // Firebase 라이브 경로 전부 삭제 (실제 출석/코트/확정/게임수는 tennis_* 루트 경로에 저장됨. 날짜별 경로가 아니라서 기존 코드는 아무것도 못 지우고 있었음)
+    try{COURT_STATE_REF.set(null);}catch(e){}
+    try{ATTEND_STATE_REF.set(null);}catch(e){}
+    try{LEFT_STATE_REF.set(null);}catch(e){}
+    try{COURT_CONFIRM_REF.set(null);}catch(e){}
+    try{GAMES_STATE_REF.set(null);}catch(e){}
+    try{REF.set(null);}catch(e){}
+    clearAllDailyGuests();
+    // Firebase 당일 통계/이력 삭제
     try{
-      firebase.database().ref('tennis/'+today).remove();
       firebase.database().ref('tennis_stats/'+today).remove();
+      firebase.database().ref('tennis_hist/'+today).remove();
     }catch(e){}
     save();curTab=0;leftOnly=false;todayGender=null;renderAll();
     toast('🗑 당일 데이터 완전 삭제 완료',3000);
