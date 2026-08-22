@@ -920,7 +920,27 @@ function syncListen(){
   let firstReceived = false;
   REF.on('value', snap=>{
     const raw = snap.val();
-    if(!raw){ setSyncDot('err'); return; }
+    if(!raw){
+      // 서버에 오늘 데이터가 정말로 없는 상태(당일 데이터 완전삭제 등). index.html/monitor.html과
+      // 동일한 이유로, raw가 null이어도 서버의 진짜 최신값이므로 로컬도 함께 비운다.
+      setSyncDot('ok');
+      if(S.attendees.length || S.leftMembers.length){
+        S={attendees:[],leftMembers:[],seqCounter:0};
+        lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedCourtSnapshot={};lastPushedConfirmSnapshot={};
+        applyAllGranularStates();
+        checkAttendanceAnnouncements();
+        checkGlobalCourtAnnouncements();
+        renderBoard();
+      }
+      if(!firstReceived){
+        firstReceived = true;
+        setTimeout(()=>{
+          initialRenderDone=true;
+          if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        }, 1000);
+      }
+      return;
+    }
     setSyncDot('ok');
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;

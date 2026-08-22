@@ -830,7 +830,31 @@ function syncListen(){
   let firstReceived=false;
   REF.on('value', snap=>{
     const raw = snap.val();
-    if(!raw){ setSyncDot('err'); return; }
+    if(!raw){
+      // 서버에 오늘 데이터가 정말로 없는 상태(아직 아무도 출석 안 함 · 당일 데이터 완전삭제 등).
+      // 예전엔 이걸 무조건 "동기화 에러"로 취급하고 그냥 return 해버려서, 로컬(이 기기)에
+      // 남아있던 출석자 목록이 전혀 지워지지 않는 문제가 있었다. 그 상태로 이 기기에서 뭔가가
+      // (주기적 타이머 등으로) save()를 한 번이라도 트리거하면, 그래뉼러 경로들의 스냅샷은
+      // 이미 비워져 있어서 pushAttendStateDiff() 등이 로컬의 오래된 출석자 전원을 "새로 보고하는
+      // 것"으로 착각해 그대로 서버에 되살려버렸다 (다른 기기에서 삭제해도 무효화되는 원인).
+      // → raw가 null이어도 서버가 정상 응답한 진짜 최신값이므로, 로컬도 반드시 함께 비운다.
+      setSyncDot('ok');
+      if(S.attendees.length || S.leftMembers.length){
+        S={attendees:[],leftMembers:[],seqCounter:0};
+        lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedCourtSnapshot={};lastPushedConfirmSnapshot={};
+        applyAllGranularStates(); // 그래뉼러 경로들의 현재 최신값(대부분 null)도 함께 재적용
+        renderAll();
+        if(boardModeOn) renderBoard();
+      }
+      if(!firstReceived){
+        firstReceived=true;
+        setTimeout(()=>{
+          initialRenderDone=true; checkAutoLeaveOnVisible();
+          if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        }, 1000);
+      }
+      return;
+    }
     setSyncDot('ok');
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;

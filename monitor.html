@@ -921,7 +921,29 @@ function syncListen(){
   let firstReceived = false;
   REF.on('value', snap=>{
     const raw = snap.val();
-    if(!raw){ setSyncDot('err'); return; }
+    if(!raw){
+      // 서버에 오늘 데이터가 정말로 없는 상태(당일 데이터 완전삭제 등). 예전엔 그냥 "동기화
+      // 에러"로 취급하고 return 해버려서 로컬 출석자 목록이 지워지지 않았고, 이후 이 기기에서
+      // 뭔가 save()가 트리거되면 오래된 출석자 전원이 서버에 되살아나는 문제가 있었다(index.html
+      // 과 동일 원인). raw가 null이어도 서버의 진짜 최신값이므로 로컬도 함께 비운다.
+      setSyncDot('ok');
+      if(S.attendees.length || S.leftMembers.length){
+        S={attendees:[],leftMembers:[],seqCounter:0};
+        lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedCourtSnapshot={};lastPushedConfirmSnapshot={};
+        applyAllGranularStates();
+        checkAttendanceAnnouncements();
+        checkGlobalCourtAnnouncements();
+        renderBoard();
+      }
+      if(!firstReceived){
+        firstReceived = true;
+        setTimeout(()=>{
+          initialRenderDone=true;
+          if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        }, 1000);
+      }
+      return;
+    }
     setSyncDot('ok');
     const incomingToken = raw.seq ?? '';
     if(incomingToken && incomingToken === lastSentToken) return;
