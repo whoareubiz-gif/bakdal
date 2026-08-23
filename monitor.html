@@ -258,6 +258,7 @@ const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는
 
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
+let resyncInProgress = false; // 백그라운드 복귀 시 재동기화 중
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -883,8 +884,9 @@ function applyConfirmState(confirmState){
 
 function doSyncPushNow(){
   if(syncPushTimer){ clearTimeout(syncPushTimer); syncPushTimer=null; }
-  // ⚠️ 최초 동기화(initialRenderDone) 전에는 절대 서버로 아무것도 쓰지 않는다. (index.html과 동일한 이유)
-  if(!initialRenderDone){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
+  // ⚠️ 최초 동기화(initialRenderDone) 전 + 백그라운드 복귀 재동기화 중(resyncInProgress)에는
+  // 절대 서버로 아무것도 쓰지 않는다. (index.html과 동일한 이유)
+  if(!initialRenderDone || resyncInProgress){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -916,6 +918,22 @@ function applyAllGranularStates(){
   applyLeftState(latestLeftState);
   applyConfirmState(latestConfirmState);
   applyGamesState(latestGamesState);
+}
+// 백그라운드 복귀 시, 캐시된 latestXState가 아니라 서버의 진짜 최신 그래뉼러 값을 다시 받아와 적용한다.
+function fullFreshResync(callback){
+  Promise.all([
+    COURT_STATE_REF.once('value').then(s=>{ latestCourtState = s.val(); }),
+    ATTEND_STATE_REF.once('value').then(s=>{ latestAttendState = s.val(); }),
+    LEFT_STATE_REF.once('value').then(s=>{ latestLeftState = s.val(); }),
+    COURT_CONFIRM_REF.once('value').then(s=>{ latestConfirmState = s.val(); }),
+    GAMES_STATE_REF.once('value').then(s=>{ latestGamesState = s.val(); }),
+  ]).then(()=>{
+    applyAllGranularStates();
+    if(callback) callback();
+  }).catch(()=>{
+    applyAllGranularStates();
+    if(callback) callback();
+  });
 }
 function syncListen(){
   let firstReceived = false;
@@ -1002,16 +1020,32 @@ function syncListen(){
    Firebase on()은 자동 재연결되지만, 백그라운드 중 놓친 데이터를 보충 */
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){
+    resyncInProgress = true; // 재동기화 끝날 때까지 tick()의 자동판정/서버push를 모두 보류
     REF.once('value', snap=>{
       const raw=snap.val();
-      if(!raw) return;
+      if(!raw){
+        // 서버에 오늘 데이터가 정말로 없는 상태(당일 삭제 등)
+        if(S.attendees.length || S.leftMembers.length){
+          S={attendees:[],leftMembers:[],seqCounter:0};
+          lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedCourtSnapshot={};lastPushedConfirmSnapshot={};
+          applyAllGranularStates();
+          renderAll();
+          if(boardModeOn) renderBoard();
+        }
+        resyncInProgress=false;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        return;
+      }
       const incomingToken=raw.seq??'';
-      if(incomingToken && incomingToken===lastSentToken) return;
+      if(incomingToken && incomingToken===lastSentToken){ resyncInProgress=false; if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); } return; }
       normalizeS(raw);
-      applyAllGranularStates();
-      checkPendingGameCommits(); checkPendingAutoConfirms(); // 화면 꺼져있는 동안 타이머가 씹혔을 수 있으니 복귀 즉시 확인
-      renderAll();
-      if(boardModeOn) renderBoard();
+      fullFreshResync(()=>{
+        checkPendingGameCommits(); checkPendingAutoConfirms(); // 화면 꺼져있는 동안 타이머가 씹혔을 수 있으니 복귀 즉시 확인
+        renderAll();
+        if(boardModeOn) renderBoard();
+        resyncInProgress = false;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      });
     });
   }
 });
@@ -1538,7 +1572,7 @@ function checkPendingGameCommits(){
   // (서버가 진짜 소스) 새로고침 직후 "CC=true인데 GC=false·CS=null"인 불일치 순간이 항상
   // 존재한다. 이 틈에 tick()이 먼저 판단하면 정상 확정된 코트를 "인원이 바뀌어 취소됨"으로
   // 잘못 취소해버린다. 서버의 진짜 GC/CS를 받아온 뒤(confirmStateReady)에만 판정한다.
-  if(!initialRenderDone || !confirmStateReady) return;
+  if(!initialRenderDone || !confirmStateReady || resyncInProgress) return;
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
 function autoConfirmCourtSilent(n){
@@ -1552,7 +1586,7 @@ function autoConfirmCourtSilent(n){
 }
 // 1분이 지났는데도 자동확정이 안 됐는지 확인해서 뒤늦게라도 처리한다 (백그라운드 타이머 씹힘 대비)
 function checkPendingAutoConfirms(){
-  if(!initialRenderDone || !courtStateReady) return; // 최초 동기화 전 오래된 로컬 캐시로 자동확정 방지
+  if(!initialRenderDone || !courtStateReady || resyncInProgress) return; // 최초 동기화 전 오래된 로컬 캐시로 자동확정 방지
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;

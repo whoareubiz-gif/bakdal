@@ -267,6 +267,7 @@ const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는
 
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
+let resyncInProgress = false; // 백그라운드 복귀 시 재동기화 중(오래된 전체 스냅샷 반영~진짜 최신값 보정 완료 사이)
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -761,7 +762,11 @@ function doSyncPushNow(){
   // 코트 정원 초과(예: 8/4) 같은 유령 데이터가 생기는 문제가 있었다. 대기 중이던 push는
   // 버리지 않고, initialRenderDone이 되는 순간 다시 예약해서 그때의 "이미 서버와 병합된
   // 최신 S" 기준으로 정상적으로 반영되게 한다.
-  if(!initialRenderDone){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
+  // resyncInProgress도 동일한 이유로 함께 확인한다: 백그라운드 복귀 시 오래된 전체
+  // 스냅샷(normalizeS)을 반영한 직후~진짜 최신 코트 정보로 보정 완료되기 전 사이의 틈에
+  // tick()이 끼어들어 오래된 인원 구성을 서버에 병합해버리는 문제(예: 1코트 5/4, 3코트 8/4로
+  // 표시됐다가 새로고침하면 정상으로 돌아오는 증상)를 막는다.
+  if(!initialRenderDone || resyncInProgress){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -917,16 +922,33 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){
     // 화면 복귀 시 자동퇴소 시간 놓쳤는지 체크
     checkAutoLeaveOnVisible();
+    resyncInProgress = true; // 아래 재동기화가 끝날 때까지 tick()의 자동판정/서버push를 모두 보류
     REF.once('value', snap=>{
       const raw=snap.val();
-      if(!raw) return;
+      if(!raw){
+        // 서버에 오늘 데이터가 정말로 없는 상태(당일 삭제 등). 메인 REF.on 리스너와 동일한 이유로
+        // 로컬도 함께 비운다.
+        if(S.attendees.length || S.leftMembers.length){
+          S={attendees:[],leftMembers:[],seqCounter:0};
+          lastPushedAttendSnapshot={};lastPushedLeftSnapshot={};lastPushedCourtSnapshot={};lastPushedConfirmSnapshot={};
+          applyAllGranularStates();
+          renderAll();
+          if(boardModeOn) renderBoard();
+        }
+        resyncInProgress=false;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        return;
+      }
       const incomingToken=raw.seq??'';
-      if(incomingToken && incomingToken===lastSentToken) return;
+      if(incomingToken && incomingToken===lastSentToken){ resyncInProgress=false; if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); } return; }
       normalizeS(raw);
       fullFreshResync(()=>{
         checkPendingGameCommits(); checkPendingAutoConfirms(); // 화면 꺼져있는 동안 타이머가 씹혔을 수 있으니 복귀 즉시 확인
         renderAll();
         if(boardModeOn) renderBoard();
+        resyncInProgress = false;
+        // 재동기화 중 막아뒀던 push가 있다면, 이제 진짜 최신 상태 기준으로 정상 반영한다.
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
       });
     });
   }
@@ -2422,7 +2444,7 @@ function checkPendingGameCommits(){
   // 취소해버리는 문제가 있었다(새로고침할 때마다 "인원이 바뀌어 확정이 취소됐습니다" 토스트가
   // 반복해서 뜨는 원인). confirmStateReady가 true가 되어 서버의 진짜 GC/CS를 받아온 뒤에만
   // 이 판정을 하도록 막는다.
-  if(!initialRenderDone || !confirmStateReady) return;
+  if(!initialRenderDone || !confirmStateReady || resyncInProgress) return;
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
 // 확정 즉시 게임수 반영 (예전엔 30초 유예를 뒀었지만, 요청에 따라 확정 즉시 반영으로 변경.
@@ -2466,7 +2488,7 @@ function checkPendingAutoConfirms(){
   // (그대로 실행하면 서버의 진짜 최신 코트 인원과 무관하게 오래된 인원 구성으로
   // 게임수/확정정보를 만들어버려 정원초과 등 유령 데이터의 원인이 됨)
   // courtStateReady도 함께 확인: 진짜 코트 인원(court)을 아직 못 받아온 상태에서 판단하면 안 됨.
-  if(!initialRenderDone || !courtStateReady) return;
+  if(!initialRenderDone || !courtStateReady || resyncInProgress) return;
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;
