@@ -785,7 +785,8 @@ let lastPushedLeftSnapshot = {};
 function leftKeyFor(x){ return x.id+'_'+(x.attendTs||0); }
 function leftFieldsFor(x){
   return { id:x.id, name:x.name??null, gender:x.gender??null, games:x.games??0, time:x.time??null,
-    attendTs:x.attendTs??null, leftAt:x.leftAt??null, leftTs:x.leftTs??null, isGuest:!!x.isGuest };
+    attendTs:x.attendTs??null, leftAt:x.leftAt??null, leftTs:x.leftTs??null, isGuest:!!x.isGuest,
+    seq:x.seq??null };
 }
 function pushLeftStateDiff(){
   if(!leftStateReady) return;
@@ -1933,8 +1934,8 @@ function tick(){
   if(n.getHours()===23&&n.getMinutes()===59){if(!autoFired){autoFired=true;autoReset(n);}}else autoFired=false;
   checkAutoLeave();
   checkPendingGameCommits(); checkPendingAutoConfirms(); // 확정/자동확정 유예가 지난 코트가 있으면 지금 반영 (타이머가 씹혀도 여기서 매초 따라잡음)
-  // 매 분 0초: 전체 보드 갱신
-  if(n.getSeconds()===0){ renderBoard(); return; }
+  // 매 분 0초: 전체 보드 갱신 (백그라운드 복귀 재동기화 중엔 중간상태 표시 방지)
+  if(n.getSeconds()===0 && !resyncInProgress){ renderBoard(); return; }
   // 매 초: 경과시간 배지만 업데이트 (DOM 직접 수정, 부담 없음)
   if(boardModeOn) updateElapsedBadges();
 }
@@ -2754,7 +2755,7 @@ function renderToday(){
       const timeLabel=a.sessions.length>1
         ? a.sessions.map((s,i)=>`${i+1}차 출석 ${s.time}→퇴소 ${s.leftAt}`).join(' · ')
         : `출석 ${a.time} · 퇴소 ${a.leftAt}`;
-      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}${isGuestAttendee(a)?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
+      h+=`<div class="acard"><div class="seq-b" style="background:#FAECE7;color:#993C1D">${a.seq??''}</div><div class="ainfo"><div style="display:flex;align-items:center;gap:3px"><span class="aname">${a.name}${isGuestAttendee(a)?'<span style="font-size:9px;background:#F5C842;color:#7A5F00;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700">게스트</span>':''}</span>${gt(a.gender,true)}</div><div class="atime-row">🕐 ${timeLabel}</div></div><span class="gcnt-only">${a.games}게임</span><button onclick="restoreAttendee(${a.id})" style="background:#E1F5EE;color:#0F6E56;border:.5px solid #9FE1CB;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;">복구</button></div>`;
     });
     h+=`</div>`;return h;
   }
