@@ -1022,6 +1022,15 @@ function syncListen(){
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){
     resyncInProgress = true; // 재동기화 끝날 때까지 tick()의 자동판정/서버push를 모두 보류
+    // ⚠️ 안전장치: REF.once()가 응답을 못 받으면(성공/실패 콜백 모두 안 불리는 경우) resyncInProgress가
+    // 영원히 true로 남아 자동확정/서버전송이 멈추는 문제가 있었다. 타임아웃으로 강제 해제한다.
+    const resyncWatchdog = setTimeout(()=>{
+      if(resyncInProgress){
+        resyncInProgress = false;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      }
+    }, 8000);
+    const finishResync = ()=>{ clearTimeout(resyncWatchdog); resyncInProgress=false; if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); } };
     REF.once('value', snap=>{
       const raw=snap.val();
       if(!raw){
@@ -1033,21 +1042,19 @@ document.addEventListener('visibilitychange', ()=>{
           renderAll();
           if(boardModeOn) renderBoard();
         }
-        resyncInProgress=false;
-        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        finishResync();
         return;
       }
       const incomingToken=raw.seq??'';
-      if(incomingToken && incomingToken===lastSentToken){ resyncInProgress=false; if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); } return; }
+      if(incomingToken && incomingToken===lastSentToken){ finishResync(); return; }
       normalizeS(raw);
       fullFreshResync(()=>{
         checkPendingGameCommits(); checkPendingAutoConfirms(); // 화면 꺼져있는 동안 타이머가 씹혔을 수 있으니 복귀 즉시 확인
         renderAll();
         if(boardModeOn) renderBoard();
-        resyncInProgress = false;
-        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+        finishResync();
       });
-    });
+    }, ()=>{ finishResync(); });
   }
 });
 
