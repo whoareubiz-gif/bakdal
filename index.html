@@ -4788,28 +4788,15 @@ firebase.database().ref('.info/connected').on('value', snap=>{
   }
 });
 
-// 탭/앱이 다시 활성화될 때 즉시 재연결 + 최신 데이터 요청
+// 탭/앱이 다시 활성화될 때 재연결 트리거만 담당한다.
+// (예전엔 여기서도 REF.once + normalizeS + fullFreshResync를 별도로 또 실행했는데, 그러면
+//  위쪽의 보호된 visibilitychange 핸들러(resyncInProgress + 워치독으로 안전하게 처리)와 완전히
+//  똑같은 재동기화가 "보호장치 없이" 중복 실행되는 셈이라, 그 틈에 오래된 스냅샷을 tick()의
+//  자동확정 판정이 잘못 집어먹는 문제가 있었다. 재동기화 자체는 위쪽 핸들러 하나로 충분하므로
+//  여기서는 재연결만 트리거하고 중복 재동기화는 하지 않는다.)
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){
-    try{
-      firebase.database().goOnline();
-      // 강제로 최신 데이터 1회 읽기
-      REF.once('value', snap=>{
-        const raw=snap.val();
-        if(!raw) return;
-        const incomingToken=raw.seq??'';
-        if(incomingToken && incomingToken===lastSentToken) return;
-        normalizeS(raw);
-        fullFreshResync(()=>{
-          checkPendingGameCommits(); checkPendingAutoConfirms(); // 백그라운드 중 놓친 30초/1분 유예 반영 확인
-          renderAll();
-          setSyncDot('ok');
-        });
-      }).catch(()=>{});
-    }catch(e){}
-  } else {
-    // 백그라운드로 가면 goOffline으로 배터리/리소스 절약
-    // (Firebase SDK가 자동으로 재연결하므로 goOffline은 사용 안 함)
+    try{ firebase.database().goOnline(); }catch(e){}
   }
 });
 
