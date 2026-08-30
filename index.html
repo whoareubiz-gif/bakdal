@@ -264,6 +264,7 @@ const ATTEND_STATE_REF = db.ref('tennis_attend_state'); // 출석자 정보(게�
 const LEFT_STATE_REF = db.ref('tennis_left_state');     // 퇴소자(세션) 기록만 별도 경로 (세션 단위로 분리)
 const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상태(CC/CT/GC/CS/AT)만 별도 경로 (코트 단위로 분리)
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
+const RESERVATION_IMAGE_REF = db.ref('tennis_reservation_image'); // 이번달 코트 예약표 이미지 (날짜별 초기화 대상 아님, 매일 안 지워짐)
 
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
@@ -794,6 +795,7 @@ let latestAttendState=null;  // tennis_attend_state 최신 값
 let latestLeftState=null;    // tennis_left_state 최신 값
 let latestConfirmState=null; // tennis_court_confirm 최신 값
 let latestGamesState=null;   // tennis_games_state 최신 값 (게임수의 진짜 소스)
+let reservationImageInfo=null; // {dataUrl, month, uploadedAt} - 이번달 코트 예약표 이미지
 function applyAllGranularStates(){
   applyCourtState(latestCourtState);
   applyAttendState(latestAttendState);
@@ -914,6 +916,12 @@ function syncListen(){
     applyGamesState(latestGamesState);
     renderAll();
     if(boardModeOn) renderBoard();
+  });
+  // 이번달 코트 예약표 이미지 - 날짜와 무관한 별도 경로라 여기서 한 번만 구독한다.
+  RESERVATION_IMAGE_REF.on('value', snap=>{
+    reservationImageInfo = snap.val();
+    // 관리탭이 열려있는 상태에서 다른 기기가 올리거나 지운 경우 즉시 반영
+    if(document.getElementById('pg4')) renderAll();
   });
 }
 
@@ -3232,16 +3240,19 @@ function renderCourts(){
   const isMemberMode = appMode!=='admin';
   const _me = getCurrentMember();
   let h = '';
+  const reservationBtn = `<button onclick="showReservationImageModal()" style="padding:2px 7px;background:#FFF3E0;color:#B25000;border:1px solid #FFD8A8;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;vertical-align:middle">🗓 예약표</button>`;
   if(isSpectatorMode){
     h += '<div style="background:#FFF8E1;border-radius:8px;padding:6px 12px;margin-bottom:8px;font-size:11px;font-weight:700;color:#B25000;text-align:center">👁 관전 모드 — 출석·퇴소·편성 불가</div>';
   } else if(isMemberMode){
+    // 관리모드가 아니면 "오늘 사용할 코트" 설정줄이 없으므로, 여기서 작은 버튼으로 노출한다.
+    h += `<div style="padding:9px 11px 0;display:flex;justify-content:flex-end">${reservationBtn}</div>`;
     h += renderMyStatusBannerHTML();
   }
 
   // 코트 사용 설정 토글 바 (관리모드만)
   if(!isMemberMode){
     h+=`<div style="padding:9px 11px 0">
-      <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 버튼을 클릭하면 코트 사용 유무를 설정할 수 있습니다</span></div>
+      <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 버튼을 클릭하면 코트 사용 유무를 설정할 수 있습니다</span> ${reservationBtn}</div>
       <div style="display:flex;gap:5px;margin-bottom:4px">`;
     [1,2,3,4].forEach(n=>{
       const isOn=courtActive[n];
@@ -4369,16 +4380,23 @@ function renderAdminPage(){
     return`<button onclick="adminExportPeriod='${p}';adminExportFrom='';adminExportTo='';document.getElementById('pg4').innerHTML=renderAdminPage();" style="padding:5px 10px;border-radius:7px;border:1.5px solid ${on?'#1D9E75':'#D8D5CF'};background:${on?'#1D9E75':'#fff'};color:${on?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${lbl}</button>`;
   }).join('');
 
-  // ── 특정 회원 코트기록 삭제 ─────────────────────────────────────────────
-  const memberDeleteBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
-    <div class="stitle" style="margin-bottom:8px;color:#C0392B">🗑 특정 회원 코트기록 삭제</div>
-    <div style="font-size:11px;color:#888780;margin-bottom:8px">같이한 인원 통계에서 특정 회원의 게임기록만 삭제합니다</div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <select id="del-member-select" style="flex:1;padding:8px;border:1px solid #D8D5CF;border-radius:8px;font-size:13px;font-family:inherit;min-width:120px">
-        <option value="">회원 선택</option>
-        ${MEMBERS.filter(m=>!HIDDEN_MEMBER_IDS.includes(m.id)&&!m.name.includes('게스트')).sort((a,b)=>a.name.localeCompare(b.name)).map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}
-      </select>
-      <button onclick="deleteMemberCourtHistory()" style="padding:8px 14px;background:#C0392B;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">삭제</button>
+  // ── 이번달 코트 예약표 이미지 업로드 ─────────────────────────────────────
+  const curMonthLabel = (()=>{ const d=new Date(); return `${d.getFullYear()}년 ${d.getMonth()+1}월`; })();
+  const hasResImg = !!(reservationImageInfo && reservationImageInfo.dataUrl);
+  const reservationImageBox=`<div style="background:#fff;border:.5px solid #E0DFDB;border-radius:10px;padding:10px;margin-bottom:10px">
+    <div class="stitle" style="margin-bottom:8px">🗓 이번달 코트 예약표 업로드</div>
+    <div style="font-size:11px;color:#888780;margin-bottom:8px">이미지를 등록하면 회원들도 "코트 현황" 화면 상단의 "예약표" 버튼으로 확대해서 볼 수 있습니다.</div>
+    ${hasResImg?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px;background:#F5F4F0;border-radius:8px">
+        <img src="${reservationImageInfo.dataUrl}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:.5px solid #D8D5CF;flex-shrink:0;cursor:pointer" onclick="showReservationImageModal()">
+        <div style="flex:1;font-size:12px;color:#555">
+          <div style="font-weight:700">${reservationImageInfo.month||curMonthLabel} 예약표 등록됨</div>
+          <div style="font-size:10px;color:#999">탭하면 크게 볼 수 있습니다</div>
+        </div>
+        <button onclick="deleteReservationImage()" style="padding:6px 10px;background:#FDECEA;color:#C0392B;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">삭제</button>
+      </div>`:''}
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="file" id="reservation-image-input" accept="image/*" style="flex:1;font-size:12px">
+      <button onclick="uploadReservationImage()" style="padding:8px 14px;background:#1D9E75;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">${hasResImg?'교체':'업로드'}</button>
     </div>
   </div>`;
 
@@ -4401,45 +4419,79 @@ function renderAdminPage(){
     ${searchBox}
     ${renderDailyGuestBox()}
     ${deleteDateBox}
-    ${memberDeleteBox}
+    ${reservationImageBox}
     ${exportBox}
   </div>`+specAdminWrap_close;
 }
 
-function deleteMemberCourtHistory(){
-  const sel=document.getElementById('del-member-select');
-  const memberId=Number(sel.value);
-  if(!memberId){toast('회원을 선택해주세요');return;}
-  const member=MEMBERS.find(m=>m.id===memberId);
-  if(!member){toast('회원 정보를 찾을 수 없습니다');return;}
-  openModal(`⚠️ ${member.name} 회원의 코트 게임기록을 모두 삭제하시겠습니까?\n(같이한 인원 통계에서 제거됩니다)`,()=>{
-    const histRef=firebase.database().ref('tennis_court_hist');
-    histRef.once('value').then(snap=>{
-      const data=snap.val();
-      if(!data){toast('코트 기록이 없습니다');return;}
-      const updates={};
-      // Firebase: tennis_court_hist/{date_court_ts} = {date,time,court,members:[]}
-      Object.entries(data).forEach(([key,game])=>{
-        if(!game||!game.members) return;
-        const hasMember=game.members.some(m=>Number(m.id)===memberId);
-        if(hasMember) updates['tennis_court_hist/'+key]=null;
-      });
-      if(!Object.keys(updates).length){
-        toast(`${member.name} 회원의 코트 기록이 없습니다`);
-        return;
+// 이미지를 캔버스로 리사이즈/압축한 뒤 base64로 반환 (Firebase Realtime DB 용량 절약)
+function resizeImageForUpload(file, maxSize, callback){
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let w=img.width, h=img.height;
+      if(w>maxSize || h>maxSize){
+        if(w>=h){ h=Math.round(h*maxSize/w); w=maxSize; } else { w=Math.round(w*maxSize/h); h=maxSize; }
       }
-      firebase.database().ref().update(updates).then(()=>{
-        // localStorage도 동기화
-        try{
-          const lch=JSON.parse(localStorage.getItem('tennis_court_hist')||'[]');
-          const filtered=lch.filter(e=>!e.members||!e.members.some(m=>Number(m.id)===memberId));
-          localStorage.setItem('tennis_court_hist',JSON.stringify(filtered));
-        }catch(e){}
-        toast(`✅ ${member.name} 회원의 코트 기록 ${Object.keys(updates).length}건 삭제 완료`);
-        sel.value='';
-      }).catch(e=>toast('삭제 실패: '+e.message));
-    });
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      callback(canvas.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = ()=>callback(null);
+    img.src = e.target.result;
+  };
+  reader.onerror = ()=>callback(null);
+  reader.readAsDataURL(file);
+}
+function uploadReservationImage(){
+  const input = document.getElementById('reservation-image-input');
+  const file = input && input.files && input.files[0];
+  if(!file){ toast('이미지 파일을 선택해주세요'); return; }
+  if(!file.type.startsWith('image/')){ toast('이미지 파일만 업로드할 수 있습니다'); return; }
+  toast('업로드 중...', 2000);
+  resizeImageForUpload(file, 1400, dataUrl=>{
+    if(!dataUrl){ toast('이미지 처리에 실패했습니다'); return; }
+    const d=new Date();
+    const month = `${d.getFullYear()}년 ${d.getMonth()+1}월`;
+    RESERVATION_IMAGE_REF.set({dataUrl, month, uploadedAt:Date.now()}).then(()=>{
+      toast('✅ 예약표 업로드 완료');
+      if(input) input.value='';
+      document.getElementById('pg4') && (document.getElementById('pg4').innerHTML=renderAdminPage());
+    }).catch(e=>toast('업로드 실패: '+e.message));
   });
+}
+function deleteReservationImage(){
+  openModal('⚠️ 등록된 예약표를 삭제하시겠습니까?', ()=>{
+    RESERVATION_IMAGE_REF.set(null).then(()=>{
+      toast('삭제 완료');
+      document.getElementById('pg4') && (document.getElementById('pg4').innerHTML=renderAdminPage());
+    }).catch(e=>toast('삭제 실패: '+e.message));
+  });
+}
+// 예약표 확대 팝업 (회원/관리 공통, 닫기 가능)
+function showReservationImageModal(){
+  if(!reservationImageInfo || !reservationImageInfo.dataUrl){
+    toast('아직 등록된 예약표가 없습니다');
+    return;
+  }
+  const old = document.getElementById('reservation-image-overlay');
+  if(old) old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='reservation-image-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML=`
+    <div style="width:100%;max-width:640px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="color:#fff;font-size:14px;font-weight:700">🗓 ${reservationImageInfo.month||''} 코트 예약표</div>
+      <button id="reservation-image-close-btn" style="padding:8px 14px;background:#fff;color:#1A1A1A;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✕ 닫기</button>
+    </div>
+    <div style="width:100%;max-width:640px;max-height:80vh;overflow:auto;background:#fff;border-radius:10px;padding:6px">
+      <img src="${reservationImageInfo.dataUrl}" style="width:100%;height:auto;display:block;border-radius:6px">
+    </div>`;
+  overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  document.getElementById('reservation-image-close-btn').onclick=()=>overlay.remove();
 }
 
 function exportExcel(fromDate, toDate){

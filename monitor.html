@@ -210,6 +210,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕','Segoe UI
   <div data-board-hdr style="display:flex;align-items:center;justify-content:space-between;padding:0.4vw 1.5vw;background:#1D9E75;position:sticky;top:0;z-index:10;flex-wrap:wrap;gap:4px">
     <div style="color:#fff;font-size:1.7vw;font-weight:900;letter-spacing:-0.02em;white-space:nowrap">🎾 박달브라운 테니스 클럽 — 코트 현황</div>
     <div style="display:flex;align-items:center;gap:1.2vw">
+      <button onclick="showReservationImageModal()" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.4vw 1vw;font-size:1.2vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">🗓 예약표</button>
       <div id="board-clock" style="color:#fff;font-size:1.8vw;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap"></div>
       <div id="board-sync-dot" style="width:14px;height:14px;border-radius:50%;background:#aaa;flex-shrink:0" title="Firebase 연결상태"></div>
       <button id="theme-btn" onclick="cycleTheme()" style="background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:8px;padding:0.4vw 1vw;font-size:1.2vw;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">🎨 야외밝음</button>
@@ -255,6 +256,7 @@ const ATTEND_STATE_REF = db.ref('tennis_attend_state'); // 출석자 정보(게�
 const LEFT_STATE_REF = db.ref('tennis_left_state');     // 퇴소자(세션) 기록만 별도 경로 (세션 단위로 분리)
 const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상태(CC/CT/GC/CS/AT)만 별도 경로 (코트 단위로 분리)
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
+const RESERVATION_IMAGE_REF = db.ref('tennis_reservation_image'); // 이번달 코트 예약표 이미지 (index.html에서 업로드, 여기선 읽기 전용)
 
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
@@ -913,6 +915,7 @@ let latestAttendState=null;  // tennis_attend_state 최신 값
 let latestLeftState=null;    // tennis_left_state 최신 값
 let latestConfirmState=null; // tennis_court_confirm 최신 값
 let latestGamesState=null;   // tennis_games_state 최신 값 (게임수의 진짜 소스)
+let reservationImageInfo=null; // {dataUrl, month, uploadedAt} - 이번달 코트 예약표 이미지
 function applyAllGranularStates(){
   applyCourtState(latestCourtState);
   applyAttendState(latestAttendState);
@@ -1015,6 +1018,7 @@ function syncListen(){
     applyGamesState(latestGamesState);
     renderBoard();
   });
+  RESERVATION_IMAGE_REF.on('value', snap=>{ reservationImageInfo = snap.val(); });
 }
 
 /* 화면 복귀 시(백그라운드→포그라운드) 최신 데이터 한 번 직접 가져옴
@@ -3565,6 +3569,29 @@ function toggleBoardMode(on){
   if(on) renderBoard();
 }
 
+// 예약표 확대 팝업 (모니터 화면, 닫기 가능) - index.html에서 올린 이미지를 읽기만 함
+function showReservationImageModal(){
+  if(!reservationImageInfo || !reservationImageInfo.dataUrl){
+    toast('아직 등록된 예약표가 없습니다');
+    return;
+  }
+  const old = document.getElementById('reservation-image-overlay');
+  if(old) old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='reservation-image-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2vw;';
+  overlay.innerHTML=`
+    <div style="width:100%;max-width:70vw;display:flex;justify-content:space-between;align-items:center;margin-bottom:1vw">
+      <div style="color:#fff;font-size:1.6vw;font-weight:700">🗓 ${reservationImageInfo.month||''} 코트 예약표</div>
+      <button id="reservation-image-close-btn" style="padding:0.8vw 1.6vw;background:#fff;color:#1A1A1A;border:none;border-radius:8px;font-size:1.3vw;font-weight:700;cursor:pointer;font-family:inherit">✕ 닫기</button>
+    </div>
+    <div style="width:100%;max-width:70vw;max-height:80vh;overflow:auto;background:#fff;border-radius:10px;padding:0.6vw">
+      <img src="${reservationImageInfo.dataUrl}" style="width:100%;height:auto;display:block;border-radius:6px">
+    </div>`;
+  overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  document.getElementById('reservation-image-close-btn').onclick=()=>overlay.remove();
+}
 function closeMonitorBoard(){
   // 전체화면 해제 시도
   if(document.fullscreenElement){
