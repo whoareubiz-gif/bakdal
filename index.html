@@ -3252,7 +3252,7 @@ function renderCourts(){
   // 코트 사용 설정 토글 바 (관리모드만)
   if(!isMemberMode){
     h+=`<div style="padding:9px 11px 0">
-      <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 버튼을 클릭하면 코트 사용 유무를 설정할 수 있습니다</span> ${reservationBtn}</div>
+      <div class="stitle" style="margin-bottom:6px">⚙️ 오늘 사용할 코트 <span style="font-size:9px;color:#888780;font-weight:400">· 버튼 클릭시 코트 사용 유무 설정 가능</span> ${reservationBtn}</div>
       <div style="display:flex;gap:5px;margin-bottom:4px">`;
     [1,2,3,4].forEach(n=>{
       const isOn=courtActive[n];
