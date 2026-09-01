@@ -67,6 +67,7 @@
   @media (max-width:860px){
     .grade-columns{flex-direction:column;}
     .grade-column{width:100%;}
+    main.wide{padding-left:14px;padding-right:14px;}
   }
 
   /* ---- Generic pieces ---- */
@@ -75,8 +76,8 @@
   .section-head h2{font-size:22px;font-weight:700;margin:0;color:var(--court);}
   .section-head .meta{font-size:12.5px;color:var(--ink-soft);}
   .grade-head{text-align:center;margin-bottom:14px;}
-  .grade-head h2{font-size:33px;font-weight:700;margin:0;color:var(--court);display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:8px;}
-  .grade-head .grade-pill{min-width:30px;height:30px;font-size:17px;border-radius:9px;align-self:center;}
+  .grade-head h2{font-size:clamp(20px,4.6vw,33px);font-weight:700;margin:0;color:var(--court);display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:8px;}
+  .grade-head .grade-pill{min-width:30px;height:30px;font-size:clamp(12px,2.4vw,17px);border-radius:9px;align-self:center;}
   .grade-head .meta{font-size:13px;color:var(--ink-soft);font-weight:500;}
   .grade-pill{
     display:inline-flex;align-items:center;justify-content:center;
@@ -120,7 +121,7 @@
   .team.win .team-names{font-weight:700;}
   .team.win .score{color:var(--ball);}
   .court-card.queued .team.win .score,.court-card.done .team.win .score{color:var(--court);}
-  .team-names{font-size:36px;font-weight:700;line-height:1.25;}
+  .team-names{font-size:clamp(19px,5vw,36px);font-weight:700;line-height:1.25;}
   .score{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:700;min-width:30px;text-align:right;}
   .net{height:1px;background:rgba(255,255,255,.35);margin:2px 0;position:relative;}
   .court-card.queued .net,.court-card.done .net{background:rgba(0,0,0,.12);}
@@ -136,7 +137,7 @@
   .score-btns{display:flex;flex-wrap:wrap;gap:6px;}
   .score-btn{
     min-width:34px;height:38px;padding:0 7px;border-radius:7px;border:1.5px solid rgba(255,255,255,.4);
-    background:rgba(255,255,255,.06);color:#fff;font-size:26px;font-weight:700;font-family:'Barlow Condensed',sans-serif;
+    background:rgba(255,255,255,.06);color:#fff;font-size:clamp(15px,3.6vw,26px);font-weight:700;font-family:'Barlow Condensed',sans-serif;
   }
   .score-btn.active{background:var(--ball);color:var(--court);border-color:var(--ball);}
   .btn-confirm{
@@ -144,7 +145,7 @@
     border:none;border-radius:8px;padding:9px 0;font-size:14px;font-weight:700;
   }
   .round-label{
-    font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22.5px;color:var(--ink-soft);
+    font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:clamp(15px,3.2vw,22.5px);color:var(--ink-soft);
     margin:14px 0 6px 0;padding-top:10px;border-top:1px solid var(--border);
     display:flex;align-items:center;justify-content:space-between;
   }
@@ -169,12 +170,12 @@
   }
   .grade-tabs button.active{background:var(--court);border-color:var(--court);color:#fff;}
   table.standings{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--radius);overflow:hidden;}
-  table.standings th,table.standings td{padding:16px 12px;font-size:28px;text-align:center;border-bottom:1px solid var(--border);}
-  table.standings th{font-size:22px;color:var(--ink-soft);font-weight:600;background:#F0EFE6;}
+  table.standings th,table.standings td{padding:16px 12px;font-size:clamp(15px,4vw,28px);text-align:center;border-bottom:1px solid var(--border);}
+  table.standings th{font-size:clamp(12px,3vw,22px);color:var(--ink-soft);font-weight:600;background:#F0EFE6;}
   table.standings td:nth-child(2){text-align:left;font-weight:600;}
   table.standings tr:nth-child(1) td:first-child,
   table.standings tr:nth-child(2) td:first-child,
-  table.standings tr:nth-child(3) td:first-child{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:800;color:var(--court);}
+  table.standings tr:nth-child(3) td:first-child{font-family:'Barlow Condensed',sans-serif;font-size:clamp(22px,5.5vw,40px);font-weight:800;color:var(--court);}
   table.standings tbody tr:last-child td{border-bottom:none;}
 
   /* ---- Admin ---- */
