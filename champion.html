@@ -230,9 +230,9 @@
       <div class="tourney-title" id="tourneyTitle">불러오는 중…</div>
     </div>
     <nav class="tabs" id="tabs">
-      <button data-tab="draw" class="active">경기</button>
-      <button data-tab="done">완료</button>
-      <button data-tab="result">결과</button>
+      <button data-tab="draw" class="active">경기편성</button>
+      <button data-tab="done">종료된 경기</button>
+      <button data-tab="result">경기결과</button>
       <button data-tab="admin">관리</button>
     </nav>
   </header>
@@ -766,13 +766,13 @@ function renderGradeColumns(mode){
 
 function renderDraw(){
   const s = state.settings;
-  let html = `<div class="section-head"><h2>경기</h2><span class="meta">${methodLabel(s.method)} 방식 · ${s.winGames}게임 선취${s.deuce?' · 듀스':''}</span></div>`;
+  let html = `<div class="section-head"><h2>경기편성</h2><span class="meta">${methodLabel(s.method)} 방식 · ${s.winGames}게임 선취${s.deuce?' · 듀스':''}</span></div>`;
   html += renderGradeColumns('live');
   return html;
 }
 
 function renderDone(){
-  let html = `<div class="section-head"><h2>완료</h2></div>`;
+  let html = `<div class="section-head"><h2>종료된 경기</h2></div>`;
   if(!state.matches.some(m=>m.status==='done')){
     html += `<div class="empty-hint">아직 완료된 경기가 없습니다.</div>`;
     return html;
@@ -784,7 +784,7 @@ function renderDone(){
 function renderResult(){
   const s = state.settings;
   const activeGrade = state.mobileGrade || s.grades[0];
-  let html = `<div class="section-head"><h2>결과</h2>
+  let html = `<div class="section-head"><h2>경기결과</h2>
     <span class="meta"><button class="btn ghost" data-action="print-result">인쇄 / PDF</button> <button class="btn ghost" data-action="export-csv">CSV 내보내기</button></span></div>`;
   html += mobileGradeTabsHTML(s.grades);
 
