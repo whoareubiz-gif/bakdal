@@ -64,10 +64,19 @@
   .grade-columns{display:flex;gap:18px;align-items:flex-start;}
   .grade-column{flex:1 1 0;min-width:0;}
   .grade-column .court-card{margin-bottom:10px;}
+  .mobile-grade-tabs{display:none;}
   @media (max-width:860px){
     .grade-columns{flex-direction:column;}
     .grade-column{width:100%;}
     main.wide{padding-left:14px;padding-right:14px;}
+    .mobile-grade-tabs{display:flex;gap:8px;margin-bottom:14px;}
+    .mobile-grade-tabs button{
+      flex:1;padding:10px 0;border-radius:10px;border:1.5px solid var(--border);
+      background:#fff;font-weight:700;font-size:15px;color:var(--ink-soft);
+    }
+    .mobile-grade-tabs button.active{background:var(--court);border-color:var(--court);color:#fff;}
+    .grade-column{display:none;}
+    .grade-column.mobile-active{display:block;}
   }
 
   /* ---- Generic pieces ---- */
@@ -274,6 +283,7 @@ const state = {
   resultGradeTab: null,
   pickedForTeam: {}, // {grade: playerId}
   pendingMatchIds: new Set(),
+  mobileGrade: null, // 스마트폰 화면에서 선택된 조 (A/B/C 탭)
 };
 let unsubs = [];
 
@@ -691,10 +701,19 @@ function matchCardHTML(m, editable){
 }
 
 // mode: 'live' (경기 탭 - 대기/진행중, 완료 제외) 또는 'done' (완료 탭 - 완료만)
+function mobileGradeTabsHTML(grades){
+  const active = state.mobileGrade || grades[0];
+  return `<div class="mobile-grade-tabs">${grades.map(g=>`
+    <button class="${active===g?'active':''}" data-action="set-mobile-grade" data-grade="${g}">${g}조</button>
+  `).join('')}</div>`;
+}
+
 function renderGradeColumns(mode){
   const s = state.settings;
   const editable = !state.readOnly;
-  let html = `<div class="grade-columns">`;
+  const activeGrade = state.mobileGrade || s.grades[0];
+  let html = mobileGradeTabsHTML(s.grades);
+  html += `<div class="grade-columns">`;
 
   s.grades.forEach(grade=>{
     const gPlayers = playersOfGrade(grade);
@@ -703,7 +722,7 @@ function renderGradeColumns(mode){
       .sort((a,b)=>(a.round-b.round)||((a.seq||0)-(b.seq||0)));
     const targetGames = (s.gamesPerGrade && s.gamesPerGrade[grade]) || 4;
 
-    html += `<div class="grade-column"><div class="grade-head">
+    html += `<div class="grade-column ${grade===activeGrade?'mobile-active':''}"><div class="grade-head">
       <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조
       <span class="meta">${gPlayers.length}명${mode==='live' && gm.length>0 && editable ? ` · <button class="btn ghost" style="padding:3px 10px;font-size:12px" data-action="reset-draw" data-grade="${grade}">편성 삭제</button>`:''}</span></h2>
     </div>`;
@@ -764,13 +783,15 @@ function renderDone(){
 
 function renderResult(){
   const s = state.settings;
+  const activeGrade = state.mobileGrade || s.grades[0];
   let html = `<div class="section-head"><h2>결과</h2>
     <span class="meta"><button class="btn ghost" data-action="print-result">인쇄 / PDF</button> <button class="btn ghost" data-action="export-csv">CSV 내보내기</button></span></div>`;
+  html += mobileGradeTabsHTML(s.grades);
 
   html += `<div id="result-print-area"><div class="grade-columns result-columns">`;
   s.grades.forEach(grade=>{
     const rows = computeStandings(grade);
-    html += `<div class="grade-column"><div class="section-head">
+    html += `<div class="grade-column ${grade===activeGrade?'mobile-active':''}"><div class="section-head">
       <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조</h2>
     </div>`;
     if(rows.length===0){
@@ -984,6 +1005,7 @@ document.getElementById('app').addEventListener('click', async e=>{
       return;
     }
     if(a==='result-tab'){ state.resultGradeTab = el.dataset.grade; render(); return; }
+    if(a==='set-mobile-grade'){ state.mobileGrade = el.dataset.grade; render(); return; }
     if(a==='print-result'){ window.print(); return; }
     if(a==='export-csv'){ exportCSV(); return; }
 
