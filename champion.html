@@ -60,12 +60,24 @@
   }
 
   main{max-width:920px;margin:0 auto;padding:16px 14px 60px 14px;}
+  main.wide{max-width:1900px;padding-left:28px;padding-right:28px;}
+  .grade-columns{display:flex;gap:18px;align-items:flex-start;}
+  .grade-column{flex:1 1 0;min-width:0;}
+  .grade-column .court-card{margin-bottom:10px;}
+  @media (max-width:860px){
+    .grade-columns{flex-direction:column;}
+    .grade-column{width:100%;}
+  }
 
   /* ---- Generic pieces ---- */
   .section{margin-bottom:26px;}
   .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
   .section-head h2{font-size:22px;font-weight:700;margin:0;color:var(--court);}
   .section-head .meta{font-size:12.5px;color:var(--ink-soft);}
+  .grade-head{text-align:center;margin-bottom:14px;}
+  .grade-head h2{font-size:33px;font-weight:700;margin:0;color:var(--court);display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:8px;}
+  .grade-head .grade-pill{min-width:30px;height:30px;font-size:17px;border-radius:9px;align-self:center;}
+  .grade-head .meta{font-size:13px;color:var(--ink-soft);font-weight:500;}
   .grade-pill{
     display:inline-flex;align-items:center;justify-content:center;
     min-width:22px;height:22px;padding:0 7px;border-radius:6px;
@@ -108,7 +120,7 @@
   .team.win .team-names{font-weight:700;}
   .team.win .score{color:var(--ball);}
   .court-card.queued .team.win .score,.court-card.done .team.win .score{color:var(--court);}
-  .team-names{font-size:15px;line-height:1.3;}
+  .team-names{font-size:36px;font-weight:700;line-height:1.25;}
   .score{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:700;min-width:30px;text-align:right;}
   .net{height:1px;background:rgba(255,255,255,.35);margin:2px 0;position:relative;}
   .court-card.queued .net,.court-card.done .net{background:rgba(0,0,0,.12);}
@@ -120,10 +132,24 @@
   }
   .stepper button:active{background:rgba(255,255,255,.25);}
   .score-val{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700;min-width:22px;text-align:center;}
+  .team-row{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:8px 0;}
+  .score-btns{display:flex;flex-wrap:wrap;gap:6px;}
+  .score-btn{
+    min-width:34px;height:38px;padding:0 7px;border-radius:7px;border:1.5px solid rgba(255,255,255,.4);
+    background:rgba(255,255,255,.06);color:#fff;font-size:26px;font-weight:700;font-family:'Barlow Condensed',sans-serif;
+  }
+  .score-btn.active{background:var(--ball);color:var(--court);border-color:var(--ball);}
   .btn-confirm{
     width:100%;margin-top:10px;background:var(--ball);color:var(--court);
     border:none;border-radius:8px;padding:9px 0;font-size:14px;font-weight:700;
   }
+  .round-label{
+    font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22.5px;color:var(--ink-soft);
+    margin:14px 0 6px 0;padding-top:10px;border-top:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .round-label:first-of-type{margin-top:0;padding-top:0;border-top:none;}
+  .round-toggle{padding:3px 10px;font-size:12px;border-radius:14px;}
   .queue-row{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     border-left:3px solid var(--border);padding:8px 10px;font-size:13.5px;color:var(--ink-soft);
@@ -143,12 +169,12 @@
   }
   .grade-tabs button.active{background:var(--court);border-color:var(--court);color:#fff;}
   table.standings{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--radius);overflow:hidden;}
-  table.standings th,table.standings td{padding:10px 8px;font-size:14px;text-align:center;border-bottom:1px solid var(--border);}
-  table.standings th{font-size:12px;color:var(--ink-soft);font-weight:600;background:#F0EFE6;}
+  table.standings th,table.standings td{padding:16px 12px;font-size:28px;text-align:center;border-bottom:1px solid var(--border);}
+  table.standings th{font-size:22px;color:var(--ink-soft);font-weight:600;background:#F0EFE6;}
   table.standings td:nth-child(2){text-align:left;font-weight:600;}
   table.standings tr:nth-child(1) td:first-child,
   table.standings tr:nth-child(2) td:first-child,
-  table.standings tr:nth-child(3) td:first-child{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;color:var(--court);}
+  table.standings tr:nth-child(3) td:first-child{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:800;color:var(--court);}
   table.standings tbody tr:last-child td{border-bottom:none;}
 
   /* ---- Admin ---- */
@@ -194,8 +220,8 @@
       <div class="tourney-title" id="tourneyTitle">불러오는 중…</div>
     </div>
     <nav class="tabs" id="tabs">
-      <button data-tab="draw" class="active">편성</button>
-      <button data-tab="score">점수입력</button>
+      <button data-tab="draw" class="active">경기</button>
+      <button data-tab="done">완료</button>
       <button data-tab="result">결과</button>
       <button data-tab="admin">관리</button>
     </nav>
@@ -209,7 +235,6 @@
    FIREBASE 설정 — 반드시 본인 Firebase 프로젝트 값으로 교체하세요.
    Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱(웹 앱 추가) 에서 복사합니다.
    ========================================================================= */
-
 const firebaseConfig = {
   apiKey: "AIzaSyD_anBSKfX8UsExUOQoDilhMJtDe8eoVks",
   authDomain: "bakdal-d30e6.firebaseapp.com",
@@ -247,6 +272,7 @@ const state = {
   tournamentList: [],
   resultGradeTab: null,
   pickedForTeam: {}, // {grade: playerId}
+  pendingMatchIds: new Set(),
 };
 let unsubs = [];
 
@@ -256,6 +282,12 @@ function toast(msg){
   el.classList.add('show');
   clearTimeout(toast._t);
   toast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+function showFatalError(msg){
+  console.error('[champion.html]', msg);
+  const app = document.getElementById('app');
+  app.innerHTML = `<div class="empty-hint" style="border-color:#B23A2E;color:#B23A2E;text-align:left;white-space:pre-wrap">연결 중 문제가 발생했습니다.\n\n${msg}\n\n※ 이 메시지를 그대로 복사해서 알려주시면 원인을 확인할 수 있습니다.</div>`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -270,29 +302,45 @@ function defaultSettings(title){
     gradeCount: 2,
     grades: ['A','B'],
     courts: [1,2,3,4],
-    courtAssignment: { A:[1,2], B:[3,4] },
     winGames: 6,
     deuce: true,
+    gamesPerGrade: { A:4, B:4, C:4 },
     leagueGroupSize: 4,
     createdAt: serverTimestamp()
   };
 }
 
 async function boot(){
-  const metaRef = doc(db,'meta','current');
-  const metaSnap = await getDoc(metaRef);
-  let tid;
-  if(metaSnap.exists() && metaSnap.data().tournamentId){
-    tid = metaSnap.data().tournamentId;
-  } else {
-    const newRef = doc(collection(db,'tournaments'));
-    await setDoc(newRef, defaultSettings());
-    await setDoc(metaRef, { tournamentId:newRef.id });
-    tid = newRef.id;
+  try{
+    const watchdog = setTimeout(()=>{
+      if(!state.settings){
+        showFatalError(
+          '10초가 지나도 응답이 없습니다. 아래를 확인해주세요.\n'+
+          '1) Firebase 콘솔 > Firestore Database 메뉴에 실제로 데이터베이스가 생성되어 있는지\n'+
+          '2) Firestore "규칙" 탭에 규칙을 넣고 우측 상단 "게시" 버튼까지 눌렀는지\n'+
+          '3) 파일 상단 firebaseConfig의 projectId가 콘솔 프로젝트와 일치하는지\n'+
+          `현재 접속 대상 projectId: ${firebaseConfig.projectId}`
+        );
+      }
+    }, 10000);
+    const metaRef = doc(db,'meta','current');
+    const metaSnap = await getDoc(metaRef);
+    let tid;
+    if(metaSnap.exists() && metaSnap.data().tournamentId){
+      tid = metaSnap.data().tournamentId;
+    } else {
+      const newRef = doc(collection(db,'tournaments'));
+      await setDoc(newRef, defaultSettings());
+      await setDoc(metaRef, { tournamentId:newRef.id });
+      tid = newRef.id;
+    }
+    clearTimeout(watchdog);
+    state.activeTid = tid;
+    await loadTournamentList();
+    loadTournament(tid, false);
+  }catch(err){
+    showFatalError('초기 데이터를 불러오지 못했습니다.\n\n'+ (err && err.message ? err.message : String(err)));
   }
-  state.activeTid = tid;
-  await loadTournamentList();
-  loadTournament(tid, false);
 }
 
 async function loadTournamentList(){
@@ -318,23 +366,23 @@ function loadTournament(tid, readOnly){
     if(state.settings && !state.resultGradeTab) state.resultGradeTab = state.settings.grades[0];
     document.getElementById('tourneyTitle').textContent = state.settings ? state.settings.title : '';
     render();
-  }));
+  }, err=>showFatalError('대회 정보 수신 오류: '+err.message)));
   unsubs.push(onSnapshot(collection(db,'tournaments',tid,'players'), snap=>{
     state.players = snap.docs.map(d=>({id:d.id,...d.data()}));
     render();
-  }));
+  }, err=>showFatalError('참가자 정보 수신 오류: '+err.message)));
   unsubs.push(onSnapshot(collection(db,'tournaments',tid,'teams'), snap=>{
     state.teams = snap.docs.map(d=>({id:d.id,...d.data()}));
     render();
-  }));
+  }, err=>showFatalError('팀 정보 수신 오류: '+err.message)));
   unsubs.push(onSnapshot(collection(db,'tournaments',tid,'groups'), snap=>{
     state.groups = snap.docs.map(d=>({id:d.id,...d.data()}));
     render();
-  }));
+  }, err=>showFatalError('그룹 정보 수신 오류: '+err.message)));
   unsubs.push(onSnapshot(collection(db,'tournaments',tid,'matches'), snap=>{
     state.matches = snap.docs.map(d=>({id:d.id,...d.data()}));
     render();
-  }));
+  }, err=>showFatalError('경기 정보 수신 오류: '+err.message)));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -360,9 +408,9 @@ async function patchSettings(patch){
 /* MATCH GENERATION ALGORITHMS                                             */
 /* ---------------------------------------------------------------------- */
 
-// 그룹(4인 이상) 안에서 파트너/상대 중복을 최소화하는 한 라운드를 생성
-// history: 지금까지(또는 이번 조 내에서) 생성된 매치 배열 {team1:{playerIds},team2:{playerIds}}
-function generateRoundMatches(playerObjs, historyMatches){
+// 파트너/상대 중복과 플레이 횟수 편차를 최소화하며 "다음 한 경기"만 뽑습니다.
+// 라운드 = 경기 1개. history: 지금까지 생성된 매치 배열 {team1:{playerIds},team2:{playerIds}}
+function pickNextMatch(playerObjs, historyMatches){
   const ids = playerObjs.map(p=>p.id);
   const partnerSet = new Set();
   const opponentSet = new Set();
@@ -374,38 +422,24 @@ function generateRoundMatches(playerObjs, historyMatches){
     [a,b,c,d].forEach(p=>{ if(playCount[p]!==undefined) playCount[p]++; });
   });
 
-  const remainder = ids.length % 4;
-  const sortedByPlay = [...ids].sort((a,b)=>playCount[b]-playCount[a]); // 많이 뛴 사람이 앞
-  const byes = sortedByPlay.slice(0, remainder);
-  const pool = sortedByPlay.slice(remainder);
-
-  let best = null, bestScore = Infinity;
-  const attempts = pool.length <= 4 ? 12 : 250;
-  for(let a=0; a<attempts && bestScore>0; a++){
-    const shuffled = shuffle(pool);
-    let violation = 0;
-    const groups = [];
-    for(let i=0;i<shuffled.length;i+=4){
-      const four = shuffled.slice(i,i+4);
-      const combos = [
-        [[four[0],four[1]],[four[2],four[3]]],
-        [[four[0],four[2]],[four[1],four[3]]],
-        [[four[0],four[3]],[four[1],four[2]]],
-      ];
-      let comboBest=null, comboScore=Infinity;
-      combos.forEach(c=>{
-        let v=0; const [t1,t2]=c;
-        if(partnerSet.has(pairKey(...t1))) v+=10;
-        if(partnerSet.has(pairKey(...t2))) v+=10;
-        t1.forEach(p1=>t2.forEach(p2=>{ if(opponentSet.has(pairKey(p1,p2))) v+=1; }));
-        if(v<comboScore){comboScore=v;comboBest=c;}
-      });
-      violation += comboScore;
-      groups.push(comboBest);
-    }
-    if(violation < bestScore){ bestScore=violation; best=groups; }
-  }
-  return { matches: (best||[]).map(([t1,t2])=>({team1:t1, team2:t2})), byes };
+  // 가장 적게 뛴 4명을 그대로 이번 경기 멤버로 고정합니다(공평함 최우선).
+  // 그 4명 안에서 파트너/상대 조합만 겹치지 않는 쪽으로 고릅니다.
+  const sortedByPlay = shuffle(ids).sort((a,b)=>playCount[a]-playCount[b]);
+  const four = sortedByPlay.slice(0,4);
+  const combos = [
+    [[four[0],four[1]],[four[2],four[3]]],
+    [[four[0],four[2]],[four[1],four[3]]],
+    [[four[0],four[3]],[four[1],four[2]]],
+  ];
+  let best=null, bestScore=Infinity;
+  combos.forEach(c=>{
+    let v=0; const [t1,t2]=c;
+    if(partnerSet.has(pairKey(...t1))) v+=10;
+    if(partnerSet.has(pairKey(...t2))) v+=10;
+    t1.forEach(p1=>t2.forEach(p2=>{ if(opponentSet.has(pairKey(p1,p2))) v+=1; }));
+    if(v<bestScore){bestScore=v;best=c;}
+  });
+  return { team1:best[0], team2:best[1] };
 }
 
 // 팀(고정파트너) 간 라운드로빈 - circle method
@@ -429,62 +463,69 @@ function roundRobinSchedule(teamIds){
 }
 
 /* ---------------------------------------------------------------------- */
-/* MATCH QUEUE / COURT FILL                                                */
+/* MATCH COMPLETION                                                        */
 /* ---------------------------------------------------------------------- */
-async function fillCourts(grade){
-  const courts = (state.settings.courtAssignment[grade] || []);
-  const gm = state.matches.filter(m=>m.grade===grade);
-  const activeCourts = new Set(gm.filter(m=>m.status==='active').map(m=>m.court));
-  const free = courts.filter(c=>!activeCourts.has(c));
-  if(free.length===0) return;
-  const queued = gm.filter(m=>m.status==='queued').sort((a,b)=>(a.round-b.round)||(a.order-b.order));
-  for(const court of free){
-    const next = queued.shift();
-    if(!next) break;
-    await updateDoc(doc(db,'tournaments',state.tid,'matches',next.id), {status:'active', court});
-  }
-}
-
-async function completeMatch(matchId, grade){
-  await runTransaction(db, async(tx)=>{
-    const mRef = doc(db,'tournaments',state.tid,'matches',matchId);
-    const mSnap = await tx.get(mRef);
-    if(!mSnap.exists()) return;
-    const m = mSnap.data();
-    const allSnap = await tx.get(matchesCol());
-    const queued = allSnap.docs
-      .map(d=>({id:d.id,...d.data()}))
-      .filter(x=>x.grade===grade && x.status==='queued')
-      .sort((a,b)=>(a.round-b.round)||(a.order-b.order));
-    tx.update(mRef, {status:'done'});
-    if(queued.length>0){
-      tx.update(doc(db,'tournaments',state.tid,'matches',queued[0].id), {status:'active', court:m.court});
-    }
-  });
+// 라운드 활성화/비활성화는 전부 수동(라운드 옆 버튼)으로만 이뤄집니다. 자동 진행 없음.
+async function completeMatch(matchId){
+  await updateDoc(doc(db,'tournaments',state.tid,'matches',matchId), {status:'done'});
 }
 
 /* ---------------------------------------------------------------------- */
 /* GENERATORS PER METHOD                                                   */
 /* ---------------------------------------------------------------------- */
-async function generateKDKRound(grade){
+// 조별 목표 게임수(gamesPerGrade)만큼, 그 조 전체 라운드 일정을 한 번에 생성합니다.
+// 1라운드 경기는 바로 활성화되고, 그 라운드가 전부 끝나야 다음 라운드가 활성화됩니다.
+async function generateFullSchedule(grade){
   const players = playersOfGrade(grade);
   if(players.length<4){ toast('해당 등급 인원이 4명 이상이어야 합니다'); return; }
-  const gm = state.matches.filter(m=>m.grade===grade);
-  const currentRound = gm.length ? Math.max(...gm.map(m=>m.round))+1 : 1;
-  const { matches, byes } = generateRoundMatches(players, gm);
-  if(matches.length===0){ toast('대진을 생성할 수 없습니다'); return; }
+  if(state.matches.some(m=>m.grade===grade)){ toast('이미 편성이 있습니다. 먼저 "편성 삭제" 후 다시 생성해주세요.'); return; }
+  const targetGames = (state.settings.gamesPerGrade && state.settings.gamesPerGrade[grade]) || 4;
+  const totalMatchesNeeded = Math.ceil((players.length * targetGames) / 4);
+  let history = [];
   const batch = writeBatch(db);
-  matches.forEach((m,idx)=>{
+  const base = Date.now();
+  for(let r=1; r<=totalMatchesNeeded; r++){
+    const m = pickNextMatch(players, history);
     const ref = doc(matchesCol());
     batch.set(ref, {
-      grade, round: currentRound, order: idx, method:'kdk',
+      grade, round:r, order:r-1, seq: base+r, method:'kdk',
       team1:{playerIds:m.team1}, team2:{playerIds:m.team2},
-      score1:0, score2:0, status:'queued', court:null, byes
+      score1:0, score2:0, status:'active'
     });
-  });
+    history.push({team1:{playerIds:m.team1}, team2:{playerIds:m.team2}});
+  }
   await batch.commit();
-  await fillCourts(grade);
-  toast(`${grade}조 ${currentRound}라운드 생성 완료`);
+  toast(`${grade}조 전체 일정(${targetGames}게임) 생성 완료`);
+}
+
+async function deleteTournament(tid){
+  if(tid===state.activeTid){ toast('진행중인 대회는 삭제할 수 없습니다'); return; }
+  const target = state.tournamentList.find(t=>t.id===tid);
+  if(!confirm(`"${target?target.title:tid}" 기록을 완전히 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+  const [pSnap,tSnap,gSnap,mSnap] = await Promise.all([
+    getDocs(collection(db,'tournaments',tid,'players')),
+    getDocs(collection(db,'tournaments',tid,'teams')),
+    getDocs(collection(db,'tournaments',tid,'groups')),
+    getDocs(collection(db,'tournaments',tid,'matches')),
+  ]);
+  const batch = writeBatch(db);
+  [pSnap,tSnap,gSnap,mSnap].forEach(snap=>snap.docs.forEach(d=>batch.delete(d.ref)));
+  batch.delete(doc(db,'tournaments',tid));
+  await batch.commit();
+  await loadTournamentList();
+  loadTournament(state.activeTid, false);
+  toast('삭제되었습니다');
+}
+
+async function resetGradeDraw(grade){
+  const label = {kdk:'KDK', fixed:'고정파트너', league:'리그전'}[state.settings.method] || '';
+  if(!confirm(`${grade}조의 대진과 점수 기록을 모두 삭제할까요?\n(${label} 방식 관련 팀/조 편성도 함께 삭제됩니다)`)) return;
+  const batch = writeBatch(db);
+  state.matches.filter(m=>m.grade===grade).forEach(m=>batch.delete(doc(db,'tournaments',state.tid,'matches',m.id)));
+  state.teams.filter(t=>t.grade===grade).forEach(t=>batch.delete(doc(db,'tournaments',state.tid,'teams',t.id)));
+  state.groups.filter(g=>g.grade===grade).forEach(g=>batch.delete(doc(db,'tournaments',state.tid,'groups',g.id)));
+  await batch.commit();
+  toast(`${grade}조 편성을 초기화했습니다`);
 }
 
 async function autoFormTeams(grade){
@@ -510,21 +551,19 @@ async function generateFixedSchedule(grade){
   if(state.matches.some(m=>m.grade===grade)){ toast('이미 일정이 생성되었습니다'); return; }
   const rounds = roundRobinSchedule(teams.map(t=>t.id));
   const teamMap = Object.fromEntries(teams.map(t=>[t.id,t]));
+  const allPairs = rounds.flat(); // 라운드 구분 없이 전체 대진을 순서대로 나열 (라운드=경기 1개)
   const batch = writeBatch(db);
-  let order=0;
-  rounds.forEach((round, rIdx)=>{
-    round.forEach(([aId,bId])=>{
-      const ref = doc(matchesCol());
-      batch.set(ref, {
-        grade, round: rIdx+1, order: order++, method:'fixed',
-        team1:{playerIds: teamMap[aId].playerIds, teamId:aId},
-        team2:{playerIds: teamMap[bId].playerIds, teamId:bId},
-        score1:0, score2:0, status:'queued', court:null
-      });
+  const base = Date.now();
+  allPairs.forEach(([aId,bId], idx)=>{
+    const ref = doc(matchesCol());
+    batch.set(ref, {
+      grade, round: idx+1, order: idx, seq: base+idx, method:'fixed',
+      team1:{playerIds: teamMap[aId].playerIds, teamId:aId},
+      team2:{playerIds: teamMap[bId].playerIds, teamId:bId},
+      score1:0, score2:0, status:'active'
     });
   });
   await batch.commit();
-  await fillCourts(grade);
   toast('리그 일정 생성 완료');
 }
 
@@ -550,25 +589,24 @@ async function generateLeagueGroups(grade){
   await gBatch.commit();
 
   const mBatch = writeBatch(db);
-  let order=0;
+  const base = Date.now();
+  let roundCounter = 1;
   groupRefs.forEach(({players:gPlayers, index})=>{
     let history=[];
-    const roundsNeeded = Math.max(1, gPlayers.length-1);
-    for(let r=0;r<roundsNeeded;r++){
-      const {matches} = generateRoundMatches(gPlayers, history);
-      matches.forEach(m=>{
-        const ref = doc(matchesCol());
-        mBatch.set(ref, {
-          grade, round:r+1, order:order++, method:'league', groupIndex:index,
-          team1:{playerIds:m.team1}, team2:{playerIds:m.team2},
-          score1:0, score2:0, status:'queued', court:null
-        });
-        history.push({team1:{playerIds:m.team1}, team2:{playerIds:m.team2}});
+    const matchesNeeded = Math.max(1, gPlayers.length-1);
+    for(let i=0;i<matchesNeeded;i++){
+      const m = pickNextMatch(gPlayers, history);
+      const ref = doc(matchesCol());
+      mBatch.set(ref, {
+        grade, round: roundCounter, order: roundCounter-1, seq: base+roundCounter, method:'league', groupIndex:index,
+        team1:{playerIds:m.team1}, team2:{playerIds:m.team2},
+        score1:0, score2:0, status:'active'
       });
+      roundCounter++;
+      history.push({team1:{playerIds:m.team1}, team2:{playerIds:m.team2}});
     }
   });
   await mBatch.commit();
-  await fillCourts(grade);
   toast('조 편성 및 일정 생성 완료');
 }
 
@@ -612,9 +650,10 @@ function isValidFinish(s1,s2,winGames,deuce){
 function render(){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
   const app = document.getElementById('app');
+  app.classList.toggle('wide', state.tab==='draw' || state.tab==='done' || state.tab==='result');
   if(!state.settings){ app.innerHTML = '<div class="loading">불러오는 중…</div>'; return; }
   if(state.tab==='draw') app.innerHTML = renderDraw();
-  else if(state.tab==='score') app.innerHTML = renderScore();
+  else if(state.tab==='done') app.innerHTML = renderDone();
   else if(state.tab==='result') app.innerHTML = renderResult();
   else app.innerHTML = renderAdmin();
 }
@@ -626,39 +665,46 @@ function matchCardHTML(m, editable){
   const t2 = m.team2.playerIds.map(playerName).join(' / ');
   const win1 = m.status==='done' && m.score1>m.score2;
   const win2 = m.status==='done' && m.score2>m.score1;
-  const scoreHTML = (side, val)=> editable && m.status==='active'
-    ? `<span class="stepper">
-         <button data-action="score-dec" data-id="${m.id}" data-side="${side}">−</button>
-         <span class="score-val">${val}</span>
-         <button data-action="score-inc" data-id="${m.id}" data-side="${side}">+</button>
-       </span>`
-    : `<span class="score">${val}</span>`;
+  const isLiveActive = editable && m.status==='active';
+
+  if(isLiveActive){
+    const maxBtn = 6;
+    const scoreBtns = (side, val)=> `<div class="score-btns">${Array.from({length:maxBtn+1},(_,i)=>i).map(i=>`
+      <button class="score-btn ${val===i?'active':''}" data-action="set-score" data-id="${m.id}" data-side="${side}" data-val="${i}">${i}</button>
+    `).join('')}</div>`;
+    return `
+    <div class="court-card active">
+      <div class="team-row ${win1?'win':''}"><span class="team-names">${t1}</span>${scoreBtns('1', m.score1)}</div>
+      <div class="net"></div>
+      <div class="team-row ${win2?'win':''}"><span class="team-names">${t2}</span>${scoreBtns('2', m.score2)}</div>
+      <button class="btn-confirm" data-action="confirm-match" data-id="${m.id}" ${state.pendingMatchIds && state.pendingMatchIds.has(m.id) ? 'disabled':''}>경기 종료</button>
+    </div>`;
+  }
+
   return `
   <div class="court-card ${m.status}">
-    <div class="court-label">코트 ${m.court ?? '대기'} · ${m.round}R${m.groupIndex?` · ${m.groupIndex}조`:''}</div>
-    <div class="team ${win1?'win':''}"><span class="team-names">${t1}</span>${scoreHTML('1', m.score1)}</div>
+    <div class="team ${win1?'win':''}"><span class="team-names">${t1}</span><span class="score">${m.score1}</span></div>
     <div class="net"></div>
-    <div class="team ${win2?'win':''}"><span class="team-names">${t2}</span>${scoreHTML('2', m.score2)}</div>
-    ${editable && m.status==='active' ? `<button class="btn-confirm" data-action="confirm-match" data-id="${m.id}" data-grade="${m.grade}">경기 확정</button>` : ''}
+    <div class="team ${win2?'win':''}"><span class="team-names">${t2}</span><span class="score">${m.score2}</span></div>
   </div>`;
 }
 
-function renderDraw(){
+// mode: 'live' (경기 탭 - 대기/진행중, 완료 제외) 또는 'done' (완료 탭 - 완료만)
+function renderGradeColumns(mode){
   const s = state.settings;
-  let html = `<div class="section-head"><h2>편성</h2><span class="meta">${methodLabel(s.method)} 방식</span></div>`;
+  const editable = !state.readOnly;
+  let html = `<div class="grade-columns">`;
 
   s.grades.forEach(grade=>{
     const gPlayers = playersOfGrade(grade);
     const gm = state.matches.filter(m=>m.grade===grade);
-    const active = gm.filter(m=>m.status==='active');
-    const queued = gm.filter(m=>m.status==='queued').sort((a,b)=>(a.round-b.round)||(a.order-b.order));
-    const done = gm.filter(m=>m.status==='done').sort((a,b)=>(b.round-a.round)||(b.order-a.order));
-    const curRound = gm.length ? Math.max(...gm.map(m=>m.round)) : 0;
-    const byesThisRound = curRound ? (gm.find(m=>m.round===curRound)?.byes||[]).map(playerName).join(', ') : '';
+    const shown = (mode==='done' ? gm.filter(m=>m.status==='done') : gm.filter(m=>m.status!=='done'))
+      .sort((a,b)=>(a.round-b.round)||((a.seq||0)-(b.seq||0)));
+    const targetGames = (s.gamesPerGrade && s.gamesPerGrade[grade]) || 4;
 
-    html += `<div class="section"><div class="section-head">
-      <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조</h2>
-      <span class="meta">${gPlayers.length}명 · 코트 ${(s.courtAssignment[grade]||[]).join(', ')||'미배정'}</span>
+    html += `<div class="grade-column"><div class="grade-head">
+      <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조
+      <span class="meta">${gPlayers.length}명${mode==='live' && gm.length>0 && editable ? ` · <button class="btn ghost" style="padding:3px 10px;font-size:12px" data-action="reset-draw" data-grade="${grade}">편성 삭제</button>`:''}</span></h2>
     </div>`;
 
     if(gPlayers.length===0){
@@ -666,85 +712,79 @@ function renderDraw(){
       return;
     }
 
-    if(s.method==='kdk'){
-      html += `<div class="btn-row">
-        <button class="btn" data-action="gen-kdk" data-grade="${grade}" ${state.readOnly?'disabled':''}>${curRound? `${curRound+1}라운드 생성`:'1라운드 생성'}</button>
-      </div>`;
-      if(byesThisRound) html += `<div class="bye-note">이번 라운드 휴식: ${byesThisRound}</div>`;
-    } else if(s.method==='fixed'){
-      const teams = state.teams.filter(t=>t.grade===grade);
-      if(gm.length===0){
-        html += `<div class="empty-hint">관리 탭 &gt; 방식설정에서 ${grade}조 팀 편성을 먼저 완료해주세요. (현재 ${teams.length}팀)</div></div>`;
-        return;
-      }
-    } else if(s.method==='league'){
-      const groups = state.groups.filter(g=>g.grade===grade);
-      if(gm.length===0){
-        html += `<div class="empty-hint">관리 탭 &gt; 방식설정에서 ${grade}조 그룹 편성을 먼저 완료해주세요.</div></div>`;
-        return;
+    if(mode==='live'){
+      if(s.method==='kdk' && gm.length===0){
+        html += `<div class="btn-row">
+          <button class="btn" data-action="gen-full-kdk" data-grade="${grade}" ${editable?'':'disabled'}>전체 일정 생성 (1인당 ${targetGames}게임)</button>
+        </div>
+        <div class="small-note">모든 인원이 최소 ${targetGames}게임은 하도록 편성되며, 인원수에 따라 일부는 1게임 더 할 수 있습니다. 라운드는 항상 경기 1개씩이며, 생성 즉시 전부 바로 진행(점수 입력) 가능합니다.</div>`;
+      } else if(s.method==='fixed' && gm.length===0){
+        const teams = state.teams.filter(t=>t.grade===grade);
+        html += `<div class="empty-hint">관리 탭 &gt; 방식설정에서 ${grade}조 팀 편성을 먼저 완료해주세요. (현재 ${teams.length}팀)</div>`;
+      } else if(s.method==='league' && gm.length===0){
+        html += `<div class="empty-hint">관리 탭 &gt; 방식설정에서 ${grade}조 그룹 편성을 먼저 완료해주세요.</div>`;
       }
     }
 
-    if(active.length>0){
-      html += `<div class="court-grid">${active.map(m=>matchCardHTML(m,false)).join('')}</div>`;
+    if(shown.length>0){
+      const rounds = [...new Set(shown.map(m=>m.round))].sort((a,b)=>a-b);
+      rounds.forEach(r=>{
+        const roundMatches = shown.filter(m=>m.round===r);
+        html += `<div class="round-label">${r}라운드</div>`;
+        html += roundMatches.map(m=>matchCardHTML(m, editable && mode==='live')).join('');
+      });
     } else if(gm.length>0){
-      html += `<div class="empty-hint">진행 중인 경기가 없습니다.</div>`;
+      html += `<div class="empty-hint">${mode==='done' ? '완료된 경기가 없습니다.' : '남은 경기가 없습니다.'}</div>`;
     }
 
-    if(queued.length>0){
-      html += `<div style="margin-top:10px">${queued.map(m=>`
-        <div class="queue-row"><span><b>${m.round}R</b> · ${m.team1.playerIds.map(playerName).join('/')} vs ${m.team2.playerIds.map(playerName).join('/')}</span><span>대기중</span></div>
-      `).join('')}</div>`;
-    }
-
-    if(done.length>0){
-      html += `<details class="done-list"><summary>완료된 경기 ${done.length}건</summary>${done.map(m=>`
-        <div class="done-row"><span>${m.round}R · ${m.team1.playerIds.map(playerName).join('/')} vs ${m.team2.playerIds.map(playerName).join('/')}</span><span><b>${m.score1}:${m.score2}</b></span></div>
-      `).join('')}</details>`;
-    }
     html += `</div>`;
   });
 
+  html += `</div>`;
   return html;
 }
 
-function renderScore(){
+function renderDraw(){
   const s = state.settings;
-  const active = state.matches.filter(m=>m.status==='active').sort((a,b)=>(a.court||0)-(b.court||0));
-  let html = `<div class="section-head"><h2>점수입력</h2><span class="meta">${s.winGames}게임 선취${s.deuce?' · 듀스':''}</span></div>`;
-  if(active.length===0){
-    html += `<div class="empty-hint">진행 중인 경기가 없습니다. 편성 탭에서 라운드를 생성해주세요.</div>`;
-  } else {
-    html += `<div class="court-grid">${active.map(m=>matchCardHTML(m,true)).join('')}</div>`;
+  let html = `<div class="section-head"><h2>경기</h2><span class="meta">${methodLabel(s.method)} 방식 · ${s.winGames}게임 선취${s.deuce?' · 듀스':''}</span></div>`;
+  html += renderGradeColumns('live');
+  return html;
+}
+
+function renderDone(){
+  let html = `<div class="section-head"><h2>완료</h2></div>`;
+  if(!state.matches.some(m=>m.status==='done')){
+    html += `<div class="empty-hint">아직 완료된 경기가 없습니다.</div>`;
+    return html;
   }
-  const queuedCount = state.matches.filter(m=>m.status==='queued').length;
-  if(queuedCount>0) html += `<div class="small-note" style="margin-top:12px">대기중인 경기 ${queuedCount}건 — 코트가 비면 자동으로 배정됩니다.</div>`;
+  html += renderGradeColumns('done');
   return html;
 }
 
 function renderResult(){
   const s = state.settings;
-  if(!state.resultGradeTab) state.resultGradeTab = s.grades[0];
   let html = `<div class="section-head"><h2>결과</h2>
-    <button class="btn ghost" data-action="print-result">인쇄 / PDF</button></div>`;
-  html += `<div class="grade-tabs">${s.grades.map(g=>`
-    <button data-action="result-tab" data-grade="${g}" class="${state.resultGradeTab===g?'active':''}">${g}조</button>
-  `).join('')}<button data-action="export-csv" class="btn ghost" style="border-radius:20px;padding:6px 14px">CSV 내보내기</button></div>`;
+    <span class="meta"><button class="btn ghost" data-action="print-result">인쇄 / PDF</button> <button class="btn ghost" data-action="export-csv">CSV 내보내기</button></span></div>`;
 
-  html += `<div id="result-print-area">`;
+  html += `<div id="result-print-area"><div class="grade-columns result-columns">`;
   s.grades.forEach(grade=>{
-    if(grade!==state.resultGradeTab) return;
     const rows = computeStandings(grade);
-    if(rows.length===0){ html += `<div class="empty-hint">등록된 인원이 없습니다.</div>`; return; }
+    html += `<div class="grade-column"><div class="section-head">
+      <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조</h2>
+    </div>`;
+    if(rows.length===0){
+      html += `<div class="empty-hint">등록된 인원이 없습니다.</div></div>`;
+      return;
+    }
     html += `<table class="standings"><thead><tr>
       <th>순위</th><th>이름</th><th>승</th><th>패</th><th>득점합계</th><th>득실차</th><th>경기수</th>
     </tr></thead><tbody>`;
     rows.forEach(r=>{
       html += `<tr><td>${r.rank}</td><td>${r.name}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.scoreFor}</td><td>${r.scoreFor-r.scoreAgainst>=0?'+':''}${r.scoreFor-r.scoreAgainst}</td><td>${r.games}</td></tr>`;
     });
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
   });
-  html += `</div>`;
+  html += `</div></div>`;
   return html;
 }
 
@@ -763,6 +803,7 @@ function renderAdmin(){
       <select id="tourneySelect" data-action-change="switch-tourney" ${false?'disabled':''}>
         ${state.tournamentList.map(t=>`<option value="${t.id}" ${t.id===state.tid?'selected':''}>${t.title}${t.id===state.activeTid?' (진행중)':''}</option>`).join('')}
       </select>
+      ${state.tid!==state.activeTid ? `<button class="btn danger" style="margin-top:8px" data-action="delete-tournament" data-tid="${state.tid}">이 대회 기록 삭제</button>` : `<div class="small-note">진행중인 대회는 삭제할 수 없습니다. 지난 대회를 선택하면 삭제할 수 있습니다.</div>`}
     </div>` : ''}
     <div class="btn-row">
       <button class="btn danger" data-action="new-tournament" ${state.readOnly?'disabled':''}>새 대회 시작 (현재 대회 마감)</button>
@@ -770,56 +811,11 @@ function renderAdmin(){
     <div class="small-note">새 대회를 시작하면 현재 대회 기록은 '지난 대회 보기'에서 계속 열람할 수 있습니다.</div>
   </div>`;
 
-  // 참석인원
-  html += `<div class="card"><h3>참석인원</h3>
-    <div class="field"><label>이름 추가</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="newPlayerName" placeholder="이름" ${state.readOnly?'disabled':''}>
-        <select id="newPlayerGrade" ${state.readOnly?'disabled':''}>${s.grades.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
-        <button class="btn secondary" data-action="add-player" ${state.readOnly?'disabled':''}>추가</button>
-      </div>
-    </div>
-    <div class="field"><label>여러 명 한번에 추가 (한 줄에 한 명, 마지막에 등급 지정)</label>
-      <textarea id="bulkPlayers" placeholder="홍길동
-김철수"></textarea>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <select id="bulkGrade" ${state.readOnly?'disabled':''}>${s.grades.map(g=>`<option value="${g}">${g}조로 일괄추가</option>`).join('')}</select>
-        <button class="btn secondary" data-action="bulk-add" ${state.readOnly?'disabled':''}>일괄추가</button>
-      </div>
-    </div>
-    ${s.grades.map(grade=>{
-      const list = playersOfGrade(grade);
-      return `<div class="field"><label><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조 (${list.length}명)</label>
-      <div class="player-list">${list.map(p=>`
-        <div class="player-row"><span>${p.name}</span>${state.readOnly?'':`<button class="del" data-action="del-player" data-id="${p.id}">삭제</button>`}</div>
-      `).join('') || '<div class="small-note">등록된 인원 없음</div>'}</div></div>`;
-    }).join('')}
-  </div>`;
-
   // 등급설정
   html += `<div class="card"><h3>등급설정</h3>
     <div class="radio-row">
       <button class="radio-card ${s.gradeCount===2?'active':''}" data-action="set-grade-count" data-count="2" ${state.readOnly?'disabled':''}>2단계 (A, B)</button>
       <button class="radio-card ${s.gradeCount===3?'active':''}" data-action="set-grade-count" data-count="3" ${state.readOnly?'disabled':''}>3단계 (A, B, C)</button>
-    </div>
-    <div class="small-note">이미 경기가 시작된 뒤 등급 수를 바꾸면 코트배정을 다시 확인해야 합니다.</div>
-  </div>`;
-
-  // 코트설정
-  html += `<div class="card"><h3>코트설정</h3>
-    <div class="field"><label>사용할 코트</label>
-      <div class="check-row">${[1,2,3,4,5,6].map(c=>`
-        <label><input type="checkbox" data-action="toggle-court" data-court="${c}" ${s.courts.includes(c)?'checked':''} ${state.readOnly?'disabled':''}> 코트 ${c}</label>
-      `).join('')}</div>
-    </div>
-    <div class="field"><label>조별 코트 배정</label>
-      <div class="court-matrix">
-        <div class="hd"></div>${s.courts.map(c=>`<div class="hd">코트${c}</div>`).join('')}
-        ${s.grades.map(g=>`<div>${g}조</div>${s.courts.map(c=>`
-          <div style="text-align:center"><input type="checkbox" data-action="toggle-court-assign" data-grade="${g}" data-court="${c}" ${(s.courtAssignment[g]||[]).includes(c)?'checked':''} ${state.readOnly?'disabled':''}></div>
-        `).join('')}`).join('')}
-      </div>
-      <div class="btn-row"><button class="btn ghost" data-action="auto-assign-courts" ${state.readOnly?'disabled':''}>코트 균등 자동배정</button></div>
     </div>
   </div>`;
 
@@ -831,7 +827,7 @@ function renderAdmin(){
       <button class="radio-card ${s.method==='league'?'active':''}" data-action="set-method" data-method="league" ${state.readOnly?'disabled':''}>리그전</button>
     </div>
     <div class="small-note">
-      ${s.method==='kdk' ? 'KDK: 매 라운드 파트너와 상대가 바뀝니다. 편성 탭에서 라운드를 한 번씩 생성합니다.' : ''}
+      ${s.method==='kdk' ? 'KDK: 매 경기마다 파트너와 상대가 바뀝니다.' : ''}
       ${s.method==='fixed' ? '고정파트너: 아래에서 팀을 먼저 구성하면, 팀끼리 전체 라운드로빈 일정이 한 번에 생성됩니다.' : ''}
       ${s.method==='league' ? '리그전: 등급별로 소그룹(기본 4인)으로 나눠, 그룹 내에서 전원이 서로 파트너가 되도록 일정을 한 번에 생성합니다.' : ''}
     </div>
@@ -877,11 +873,48 @@ function renderAdmin(){
   // 게임설정
   html += `<div class="card"><h3>게임설정</h3>
     <div class="field"><label>승리 게임수</label>
-      <select id="winGamesSelect" data-action-change="set-win-games" ${state.readOnly?'disabled':''}>
-        ${[4,6].map(n=>`<option value="${n}" ${s.winGames===n?'selected':''}>${n}게임 선취</option>`).join('')}
-      </select>
+      <div class="radio-row">${[4,6].map(n=>`
+        <button class="radio-card ${s.winGames===n?'active':''}" data-action="set-win-games-btn" data-n="${n}" ${state.readOnly?'disabled':''}>${n}게임 선취</button>
+      `).join('')}</div>
     </div>
-    <div class="check-row"><label><input type="checkbox" id="deuceCheck" data-action="toggle-deuce" ${s.deuce?'checked':''} ${state.readOnly?'disabled':''}> 듀스 적용 (2게임차 승리)</label></div>
+    <div class="check-row"><label><input type="checkbox" data-action="toggle-deuce" ${s.deuce?'checked':''} ${state.readOnly?'disabled':''}> 듀스 적용 (2게임차 승리)</label></div>
+    <div class="field" style="margin-top:12px"><label>조별 목표 게임수 (KDK 전체 일정 생성 시 사용)</label>
+      ${s.grades.map(g=>{
+        const cur = (s.gamesPerGrade&&s.gamesPerGrade[g])||4;
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span class="grade-pill grade-${g}">${g}</span>
+          <div class="radio-row" style="gap:6px">${[1,2,3,4,5,6].map(n=>`
+            <button class="radio-card ${cur===n?'active':''}" style="padding:5px 12px;font-size:13px" data-action="set-games-per-grade-btn" data-grade="${g}" data-n="${n}" ${state.readOnly?'disabled':''}>${n}</button>
+          `).join('')}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  // 참석인원
+  html += `<div class="card"><h3>참석인원</h3>
+    <div class="field"><label>이름 추가</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="newPlayerName" placeholder="이름" ${state.readOnly?'disabled':''}>
+        <select id="newPlayerGrade" ${state.readOnly?'disabled':''}>${s.grades.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+        <button class="btn secondary" data-action="add-player" ${state.readOnly?'disabled':''}>추가</button>
+      </div>
+    </div>
+    <div class="field"><label>여러 명 한번에 추가 (한 줄에 한 명, 마지막에 등급 지정)</label>
+      <textarea id="bulkPlayers" placeholder="홍길동
+김철수"></textarea>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <select id="bulkGrade" ${state.readOnly?'disabled':''}>${s.grades.map(g=>`<option value="${g}">${g}조로 일괄추가</option>`).join('')}</select>
+        <button class="btn secondary" data-action="bulk-add" ${state.readOnly?'disabled':''}>일괄추가</button>
+      </div>
+    </div>
+    ${s.grades.map(grade=>{
+      const list = playersOfGrade(grade);
+      return `<div class="field"><label><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조 (${list.length}명)</label>
+      <div class="player-list">${list.map(p=>`
+        <div class="player-row"><span>${p.name}</span>${state.readOnly?'':`<button class="del" data-action="del-player" data-id="${p.id}">삭제</button>`}</div>
+      `).join('') || '<div class="small-note">등록된 인원 없음</div>'}</div></div>`;
+    }).join('')}
   </div>`;
 
   return html;
@@ -909,9 +942,6 @@ document.getElementById('app').addEventListener('change', async e=>{
     if(action==='set-group-size'){
       await patchSettings({ leagueGroupSize: Number(el.value) });
     }
-    if(action==='set-win-games'){
-      await patchSettings({ winGames: Number(el.value) });
-    }
   }catch(err){ console.error(err); toast('오류: '+err.message); }
 });
 
@@ -920,25 +950,36 @@ document.getElementById('app').addEventListener('click', async e=>{
   if(!el) return;
   const a = el.dataset.action;
   try{
-    if(a==='gen-kdk') return generateKDKRound(el.dataset.grade);
-    if(a==='score-inc' || a==='score-dec'){
+    if(a==='gen-full-kdk') return generateFullSchedule(el.dataset.grade);
+    if(a==='reset-draw') return resetGradeDraw(el.dataset.grade);
+    if(a==='goto-done'){ state.tab='done'; render(); return; }
+    if(a==='set-score'){
       if(state.readOnly) return;
-      const m = state.matches.find(x=>x.id===el.dataset.id);
-      if(!m) return;
+      if(el.disabled) return;
+      el.disabled = true;
       const field = 'score'+el.dataset.side;
-      let val = m[field] + (a==='score-inc'?1:-1);
-      val = Math.max(0, val);
-      await updateDoc(doc(db,'tournaments',state.tid,'matches',m.id), {[field]:val});
+      try{
+        await updateDoc(doc(db,'tournaments',state.tid,'matches',el.dataset.id), {[field]: Number(el.dataset.val)});
+      } finally {
+        el.disabled = false;
+      }
       return;
     }
     if(a==='confirm-match'){
       if(state.readOnly) return;
       const m = state.matches.find(x=>x.id===el.dataset.id);
       if(!m) return;
+      if(!state.pendingMatchIds) state.pendingMatchIds = new Set();
+      if(state.pendingMatchIds.has(m.id)) return;
       const ok = isValidFinish(m.score1, m.score2, state.settings.winGames, state.settings.deuce);
-      if(!ok && !confirm('설정된 승리 조건을 만족하지 않는 스코어입니다. 그래도 확정할까요?')) return;
-      await completeMatch(m.id, el.dataset.grade);
-      toast('경기 확정');
+      if(!ok && !confirm('설정된 승리 조건을 만족하지 않는 스코어입니다. 그래도 종료할까요?')) return;
+      state.pendingMatchIds.add(m.id);
+      try{
+        await completeMatch(m.id);
+        toast('경기 종료');
+      } finally {
+        state.pendingMatchIds.delete(m.id);
+      }
       return;
     }
     if(a==='result-tab'){ state.resultGradeTab = el.dataset.grade; render(); return; }
@@ -962,6 +1003,9 @@ document.getElementById('app').addEventListener('click', async e=>{
       loadTournament(newRef.id, false);
       toast('새 대회를 시작했습니다');
       return;
+    }
+    if(a==='delete-tournament'){
+      return deleteTournament(el.dataset.tid);
     }
 
     if(a==='add-player'){
@@ -995,41 +1039,10 @@ document.getElementById('app').addEventListener('click', async e=>{
     if(a==='set-grade-count'){
       const count = Number(el.dataset.count);
       const grades = count===2 ? ['A','B'] : ['A','B','C'];
-      if(state.matches.length>0 && !confirm('이미 생성된 경기가 있습니다. 등급 수를 변경하면 코트 배정을 다시 확인해야 합니다. 계속할까요?')) return;
-      const courtAssignment = {};
-      grades.forEach((g,i)=>courtAssignment[g] = state.settings.courtAssignment[g] || []);
-      await patchSettings({gradeCount:count, grades, courtAssignment});
-      return;
-    }
-
-    if(a==='toggle-court'){
-      const c = Number(el.dataset.court);
-      let courts = [...state.settings.courts];
-      courts = courts.includes(c) ? courts.filter(x=>x!==c) : [...courts, c].sort((x,y)=>x-y);
-      await patchSettings({courts});
-      return;
-    }
-    if(a==='toggle-court-assign'){
-      const g = el.dataset.grade, c = Number(el.dataset.court);
-      const ca = {...state.settings.courtAssignment};
-      const cur = ca[g] || [];
-      ca[g] = cur.includes(c) ? cur.filter(x=>x!==c) : [...cur, c].sort((x,y)=>x-y);
-      await patchSettings({courtAssignment:ca});
-      return;
-    }
-    if(a==='auto-assign-courts'){
-      const s = state.settings;
-      const courts = [...s.courts];
-      const ca = {};
-      const n = s.grades.length;
-      let idx=0;
-      s.grades.forEach((g,i)=>{
-        const count = Math.floor(courts.length/n) + (i < courts.length%n ? 1 : 0);
-        ca[g] = courts.slice(idx, idx+count);
-        idx += count;
-      });
-      await patchSettings({courtAssignment:ca});
-      toast('코트 자동배정 완료');
+      if(state.matches.length>0 && !confirm('이미 생성된 경기가 있습니다. 등급 수를 변경할까요?')) return;
+      const gamesPerGrade = {...(state.settings.gamesPerGrade||{})};
+      grades.forEach(g=>{ if(!gamesPerGrade[g]) gamesPerGrade[g] = 4; });
+      await patchSettings({gradeCount:count, grades, gamesPerGrade});
       return;
     }
 
@@ -1056,8 +1069,20 @@ document.getElementById('app').addEventListener('click', async e=>{
     if(a==='gen-fixed') return generateFixedSchedule(el.dataset.grade);
     if(a==='gen-league') return generateLeagueGroups(el.dataset.grade);
 
+    if(a==='set-win-games-btn'){
+      await patchSettings({ winGames: Number(el.dataset.n) });
+      return;
+    }
     if(a==='toggle-deuce'){
       await patchSettings({deuce: el.checked});
+      return;
+    }
+    if(a==='set-games-per-grade-btn'){
+      const g = el.dataset.grade;
+      const n = Number(el.dataset.n);
+      const gpg = {...(state.settings.gamesPerGrade||{})};
+      gpg[g] = n;
+      await patchSettings({ gamesPerGrade: gpg });
       return;
     }
   }catch(err){
@@ -1067,16 +1092,16 @@ document.getElementById('app').addEventListener('click', async e=>{
 });
 
 function exportCSV(){
-  const grade = state.resultGradeTab;
-  const rows = computeStandings(grade);
-  let csv = '순위,이름,승,패,득점합계,득실차,경기수\n';
-  rows.forEach(r=>{
-    csv += `${r.rank},${r.name},${r.wins},${r.losses},${r.scoreFor},${r.scoreFor-r.scoreAgainst},${r.games}\n`;
+  let csv = '조,순위,이름,승,패,득점합계,득실차,경기수\n';
+  state.settings.grades.forEach(grade=>{
+    computeStandings(grade).forEach(r=>{
+      csv += `${grade},${r.rank},${r.name},${r.wins},${r.losses},${r.scoreFor},${r.scoreFor-r.scoreAgainst},${r.games}\n`;
+    });
   });
   const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `${state.settings.title}_${grade}조_결과.csv`;
+  a.href = url; a.download = `${state.settings.title}_결과.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
