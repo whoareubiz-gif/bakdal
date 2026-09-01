@@ -723,7 +723,7 @@ function renderGradeColumns(mode){
     const targetGames = (s.gamesPerGrade && s.gamesPerGrade[grade]) || 4;
 
     html += `<div class="grade-column ${grade===activeGrade?'mobile-active':''}"><div class="grade-head">
-      <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조
+      <h2>${grade}조
       <span class="meta">${gPlayers.length}명${mode==='live' && gm.length>0 && editable ? ` · <button class="btn ghost" style="padding:3px 10px;font-size:12px" data-action="reset-draw" data-grade="${grade}">편성 삭제</button>`:''}</span></h2>
     </div>`;
 
@@ -792,7 +792,7 @@ function renderResult(){
   s.grades.forEach(grade=>{
     const rows = computeStandings(grade);
     html += `<div class="grade-column ${grade===activeGrade?'mobile-active':''}"><div class="section-head">
-      <h2><span class="grade-pill grade-${grade}">${grade}</span> ${grade}조</h2>
+      <h2>${grade}조</h2>
     </div>`;
     if(rows.length===0){
       html += `<div class="empty-hint">등록된 인원이 없습니다.</div></div>`;
