@@ -265,6 +265,7 @@ const LEFT_STATE_REF = db.ref('tennis_left_state');     // 퇴소자(세션) 기
 const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상태(CC/CT/GC/CS/AT)만 별도 경로 (코트 단위로 분리)
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
 const RESERVATION_IMAGE_REF = db.ref('tennis_reservation_image'); // 이번달 코트 예약표 이미지 (날짜별 초기화 대상 아님, 매일 안 지워짐)
+const GAME_COMMIT_LOCK_REF = db.ref('tennis_game_commit_lock'); // 코트별 게임수 반영 중복방지 잠금 (COURT_CONFIRM_REF와 별도 경로 - 그쪽은 코트별 노드를 통째로 덮어쓰므로 여기 같이 두면 잠금이 지워짐)
 
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
@@ -399,7 +400,11 @@ function normalizeS(raw){
   if(raw.AT){
     const at=raw.AT;
     const newAT={1:at['1']||at[1]||null,2:at['2']||at[2]||null,3:at['3']||at[3]||null,4:at['4']||at[4]||null};
+    // 관전모드는 순수 조회 전용이어야 하므로, 여기서도 자동확정 타이머를 스스로 걸지 않는다
+    // (checkPendingAutoConfirms()의 관전모드 가드와 동일한 이유 - 실제 확정은 admin 화면이 처리)
+    const isSpecMode = appMode==='spectator'||appMode==='spectator_admin';
     [1,2,3,4].forEach(n=>{
+      if(isSpecMode){ return; }
       // 타이머 이미 실행 중이면 절대 건드리지 않음
       if(autoConfirmTimers[n]) return;
       // 이미 확정된 코트 스킵
@@ -2466,17 +2471,42 @@ function checkPendingGameCommits(){
   // 반복해서 뜨는 원인). confirmStateReady가 true가 되어 서버의 진짜 GC/CS를 받아온 뒤에만
   // 이 판정을 하도록 막는다.
   if(!initialRenderDone || !confirmStateReady || resyncInProgress) return;
+  // 관전모드는 순수 조회 전용 - 여기서도 확정 취소/게임수 반영 같은 서버 쓰기를 하지 않는다.
+  if(appMode==='spectator'||appMode==='spectator_admin') return;
   [1,2,3,4].forEach(n=>commitOrCancelCourtGame(n));
 }
 // 확정 즉시 게임수 반영 (예전엔 30초 유예를 뒀었지만, 요청에 따라 확정 즉시 반영으로 변경.
 // 실수로 잘못 확정한 경우 되돌리는 것은 "게임중 수정" 기능으로 처리한다.)
-function commitCourtGamesImmediately(n){
+function commitCourtGamesImmediately(n, atSnapshot){
   const pl=S.attendees.filter(x=>x.court===n);
-  CS[n]=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
-  pl.forEach(a=>{a.games+=1;}); // 로컬 즉시 반영(낙관적 업데이트)
-  applyGamesDelta(pl.map(a=>a.id), +1); // 서버에는 트랜잭션으로 원자적 +1 (레이스 방지)
+  const csKey=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
+  CS[n]=csKey;
   GC[n]=true;
-  recordCourtGame(n);
+  // ⚠️ 게임수 반영(+1)과 코트기록 저장은 "이 코트가 이번에 4명 차서 확정되는 이 사건"에 대해
+  // 정확히 한 번만 일어나야 한다. 관전모드 폰, 임원폰, PC 등 여러 기기가 동시에 접속해있으면,
+  // 코트가 4명이 차고 1분이 지나는 순간 모든 기기가 각자 독립적으로 자동확정을 시도하는데,
+  // 그 판단이 각 기기의 "로컬" CC/GC 값 기준이라 서버 동기화가 오기 전까지는 전부 통과해버려서
+  // 기기 수만큼 게임수가 중복 반영되는 문제가 있었다(1게임인데 3게임으로 찍히는 원인).
+  // 그래서 실제 반영 직전에 서버 트랜잭션으로 "코트+이번 배정 시각(AT)+인원구성" 단위 잠금을
+  // 걸어, 여러 기기가 동시에 시도해도 딱 하나만 성공하고 나머지는 조용히 스킵되게 한다.
+  // AT는 호출부에서 AT[n]을 null로 지우기 "직전"의 값을 atSnapshot으로 미리 받아온다
+  // (이 함수 안에서 AT[n]을 읽으면 이미 호출부가 지운 뒤라 항상 null이라 잠금키가 뭉개짐).
+  // 같은 4명이 나중에(재배정 후) 다시 게임하는 정당한 경우까지 "이미 반영된 조합"으로 착각해
+  // 막으면 안 되므로, 코트를 새로 채울 때마다 갱신되는 AT를 키에 포함해 사건마다 구분한다.
+  const claimKey = n+'_'+(atSnapshot||'m')+'_'+csKey;
+  GAME_COMMIT_LOCK_REF.child(n).transaction(cur=>{
+    if(cur===claimKey) return; // 이미 이 사건으로 반영 완료 - 중단(내가 아닌 다른 기기가 이겼음)
+    return claimKey;
+  }, (error,committed,snapshot)=>{
+    if(!error && committed && snapshot && snapshot.val()===claimKey){
+      // 이 기기가 잠금 획득 - 실제로 딱 한 번 반영
+      pl.forEach(a=>{a.games+=1;});
+      applyGamesDelta(pl.map(a=>a.id), +1);
+      recordCourtGame(n);
+      renderAll();
+    }
+    // 잠금 획득 실패 = 다른 기기가 이미 반영함 - 아무것도 안 함(중복 방지)
+  });
 }
 function scheduleGameCommit(n){
   cancelPendingGame(n);
@@ -2496,8 +2526,9 @@ function autoConfirmCourtSilent(n){
   if(CC[n]) return;
   const pl=S.attendees.filter(x=>x.court===n);
   if(pl.length!==CMAX||pl.some(a=>a.leavingScheduled)) return; // 4명 미만/초과 모두 자동확정 안 함
+  const atBeforeConfirm = AT[n]; // 지우기 전에 미리 캡처 (중복방지 잠금 키로 사용)
   CC[n]=true;CT[n]=Date.now();AT[n]=null;
-  commitCourtGamesImmediately(n); // 게임수 즉시 반영
+  commitCourtGamesImmediately(n, atBeforeConfirm); // 게임수 즉시 반영
   save();renderAll();
   toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
 }
@@ -2510,6 +2541,11 @@ function checkPendingAutoConfirms(){
   // 게임수/확정정보를 만들어버려 정원초과 등 유령 데이터의 원인이 됨)
   // courtStateReady도 함께 확인: 진짜 코트 인원(court)을 아직 못 받아온 상태에서 판단하면 안 됨.
   if(!initialRenderDone || !courtStateReady || resyncInProgress) return;
+  // 관전모드는 이름 그대로 "보기 전용"이어야 한다 - 출석/퇴소/편성/확정을 전부 막아놓고
+  // 정작 자동확정만 몰래 계속 실행하는 건 설계상 모순이었다. 여러 관전모드 화면이 동시에
+  // 켜져 있을 때 게임수가 중복 반영되던 문제의 근본 원인이기도 했으므로, 관전모드에서는
+  // 자동확정 판정 자체를 하지 않는다. (실제 확정은 admin 모드 화면이 처리한다)
+  if(appMode==='spectator'||appMode==='spectator_admin') return;
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;
@@ -2566,8 +2602,9 @@ function confirmCourt(n){
   if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   if(pl.length>CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명이 배정되어 있습니다.\n4명을 초과해서 확정할 수 없습니다.\n(${pl.length-CMAX}명을 다른 곳으로 옮기거나 해제해주세요)`,null);return;}
+  const atBeforeConfirm = AT[n]; // cancelAutoConfirm이 AT를 지우기 전에 미리 캡처 (중복방지 잠금 키로 사용)
   CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);
-  commitCourtGamesImmediately(n); // 게임수 즉시 반영
+  commitCourtGamesImmediately(n, atBeforeConfirm); // 게임수 즉시 반영
   save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){

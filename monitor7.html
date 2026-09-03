@@ -255,6 +255,7 @@ const ATTEND_STATE_REF = db.ref('tennis_attend_state'); // 출석자 정보(게�
 const LEFT_STATE_REF = db.ref('tennis_left_state');     // 퇴소자(세션) 기록만 별도 경로 (세션 단위로 분리)
 const COURT_CONFIRM_REF = db.ref('tennis_court_confirm'); // 코트 확정 상태(CC/CT/GC/CS/AT)만 별도 경로 (코트 단위로 분리)
 const GAMES_STATE_REF = db.ref('tennis_games_state'); // 게임수(누적값)는 트랜잭션으로 원자적 증감 (계속 바뀌는 숫자라 diff방식으론 레이스를 못 막음)
+const GAME_COMMIT_LOCK_REF = db.ref('tennis_game_commit_lock'); // 코트별 게임수 반영 중복방지 잠금
 const RESERVATION_IMAGE_REF = db.ref('tennis_reservation_image'); // 이번달 코트 예약표 이미지 (index.html에서 업로드, 여기선 읽기 전용)
 
 let syncPushTimer = null;
@@ -1600,8 +1601,9 @@ function autoConfirmCourtSilent(n){
   if(CC[n]) return;
   const pl=S.attendees.filter(x=>x.court===n);
   if(pl.length!==CMAX||pl.some(a=>a.leavingScheduled)) return; // 4명 미만/초과 모두 자동확정 안 함
+  const atBeforeConfirm = AT[n];
   CC[n]=true;CT[n]=Date.now();AT[n]=null;
-  commitCourtGamesImmediately(n); // 게임수 즉시 반영
+  commitCourtGamesImmediately(n, atBeforeConfirm); // 게임수 즉시 반영
   save();renderAll();
   toast(`✅ ${CNAMES[n]} 자동 확정 (1분 경과)`);
 }
@@ -2277,13 +2279,23 @@ function clearCourt(n){
   cancelAutoConfirm(n);cancelPendingGame(n);CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;save();renderAll();
   toast(!pl.length?`${CNAMES[n]} 상태 초기화 완료`:hadRealGame?`${CNAMES[n]} 해제 완료`:`${CNAMES[n]} 해제 완료 (게임 안 함, 대기시간 유지)`);
 }
-function commitCourtGamesImmediately(n){
+function commitCourtGamesImmediately(n, atSnapshot){
   const pl=S.attendees.filter(x=>x.court===n);
-  CS[n]=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
-  pl.forEach(a=>{a.games+=1;}); // 로컬 즉시 반영(낙관적 업데이트)
-  applyGamesDelta(pl.map(a=>a.id), +1); // 서버에는 트랜잭션으로 원자적 +1 (레이스 방지)
+  const csKey=pl.map(a=>a.id).sort((a,b)=>a-b).join(',');
+  CS[n]=csKey;
   GC[n]=true;
-  recordCourtGame(n);
+  const claimKey = n+'_'+(atSnapshot||'m')+'_'+csKey;
+  GAME_COMMIT_LOCK_REF.child(n).transaction(cur=>{
+    if(cur===claimKey) return;
+    return claimKey;
+  }, (error,committed,snapshot)=>{
+    if(!error && committed && snapshot && snapshot.val()===claimKey){
+      pl.forEach(a=>{a.games+=1;});
+      applyGamesDelta(pl.map(a=>a.id), +1);
+      recordCourtGame(n);
+      renderAll();
+    }
+  });
 }
 function confirmCourt(n){
   if(appMode==='spectator'||appMode==='spectator_admin'){toast('👁 관전 모드 - 확정 불가');return;}
@@ -2296,8 +2308,9 @@ function confirmCourt(n){
   if(leavingMembers.length){openModal(`⚠️ ${CNAMES[n]}에 퇴소예정 회원(${leavingMembers.map(a=>a.name).join(', ')})이 포함되어 있어 확정할 수 없습니다.\n해당 회원을 다른 인원으로 교체해주세요.`,null);return;}
   if(pl.length<CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명만 배정되어 있습니다.\n4명이 되어야 확정할 수 있습니다.\n(1명이 모자랍니다)`,null);return;}
   if(pl.length>CMAX){openModal(`⚠️ ${CNAMES[n]}에 ${pl.length}명이 배정되어 있습니다.\n4명을 초과해서 확정할 수 없습니다.\n(${pl.length-CMAX}명을 다른 곳으로 옮기거나 해제해주세요)`,null);return;}
+  const atBeforeConfirm = AT[n];
   CC[n]=true;CT[n]=Date.now();cancelAutoConfirm(n);
-  commitCourtGamesImmediately(n); // 게임수 즉시 반영
+  commitCourtGamesImmediately(n, atBeforeConfirm); // 게임수 즉시 반영
   save();renderAll();toast(`✅ ${CNAMES[n]} 확정`);
 }
 function clearNextCourt(n){
