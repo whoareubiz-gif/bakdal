@@ -91,14 +91,17 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕','Segoe UI
 .court-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:9px 11px 5px;}
 .ct-card{border-radius:12px;overflow:hidden;border:1px solid #E0DFDB;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.07);}
 .ct-hdr{padding:7px 8px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;}
-.ct-hdr.c1{background:#1D9E75;}.ct-hdr.c2{background:#185FA5;}
-.ct-hdr.c3{background:#B25000;}.ct-hdr.c4{background:#7B3FA0;}
+.ct-hdr.c1{background:#1D9E75;}.ct-hdr.c2{background:#1D9E75;}
+.ct-hdr.c3{background:#1D9E75;}.ct-hdr.c4{background:#1D9E75;}
 .ct-hdr.c5{background:#2E7D9E;}.ct-hdr.c6{background:#6B7280;}
+.ct-hdr.ct-confirmed{background:#8A8D93;}
+.ct-hdr.ct-pending{background:#D97706;box-shadow:inset 0 0 0 2px #FDE68A;animation:ctPendingPulse 1.1s ease-in-out infinite;}
+@keyframes ctPendingPulse{0%,100%{background-color:#D97706}50%{background-color:#F5A623}}
 .ct-name{color:#fff;font-size:12px;font-weight:700;flex:1;}
 .ct-cnt{color:rgba(255,255,255,.85);font-size:9px;}
 .ct-full-badge{background:rgba(0,0,0,.28);color:#fff;font-size:10px;font-weight:900;width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.ct-hbtn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
-.ct-confirm-btn{background:rgba(255,255,255,.9);color:#1A1A1A;border:none;border-radius:5px;padding:2px 5px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
+.ct-hbtn{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;padding:2px 10px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;}
+.ct-confirm-btn{background:rgba(255,255,255,.9);color:#1A1A1A;border:none;border-radius:5px;padding:2px 10px;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;-webkit-appearance:none;margin-right:5px;}
 .ct-body{padding:5px 6px 7px;}
 .ct-slot{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:6px;background:#F5F4F1;margin-bottom:2px;font-size:13px;font-weight:700;color:#1A1A1A;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .ct-slot:active{background:#E0DFDB;}
@@ -1860,6 +1863,23 @@ function autoReset(now){
   clearAllDailyGuests();
   save();curTab=0;leftOnly=false;todayGender=null;renderAll();toast('🌙 자정 자동 초기화',5000);
 }
+function leaveAllAttendees(){
+  if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
+  const ids = S.attendees.map(a=>a.id);
+  if(!ids.length){toast('현재 출석중인 인원이 없습니다');return;}
+  openModal(`⚠️ 현재 출석중인 ${ids.length}명을 전원 퇴소 처리하시겠습니까?\n(코트에 배정/확정된 인원은 배정이 먼저 해제된 뒤 퇴소됩니다)`,()=>{
+    // 코트에 배정되어 있으면 doLeave()가 안전을 위해 퇴소를 막으므로, 먼저 모든 코트의
+    // 배정/확정/자동확정·게임반영 대기 상태를 전부 정리한다.
+    [1,2,3,4].forEach(n=>{
+      cancelAutoConfirm(n);cancelPendingGame(n);
+      CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;
+    });
+    S.attendees.forEach(a=>{ a.court=null; a.nextCourt1=null; a.nextCourt2=null; });
+    ids.forEach(id=>doLeave(id,false));
+    save();renderAll();
+    toast(`✅ 전체 퇴소 처리 완료 (${ids.length}명)`,3000);
+  });
+}
 function manualReset(){
   if(appMode!=='admin'){toast('관리 모드에서만 가능합니다');return;}
   openModal('오늘 데이터를 최종 저장하고 초기화하시겠습니까?\n(퇴소 처리하지 않은 회원은 "퇴소 안 함"으로 저장됩니다)',()=>{
@@ -2866,6 +2886,11 @@ function waitMinutesRaw(a){
 }
 // 추천팀 개별 인원 수동 교체 오버라이드: "팀인덱스_슬롯인덱스" → 교체할 회원id
 let recSwapOverrides={};
+let recPickMode={}; // {male:'order'|'random', female:'order'|'random', mixed:'order'|'random'} - 팀별 추천 방식
+function setRecPickMode(kind, mode){
+  recPickMode[kind]=mode;
+  renderAll();
+}
 function clearRecSwapOverrides(){ recSwapOverrides={}; }
 
 // 오늘 이미 같은 4명 조합으로 코트에 배정(게임 확정)된 적 있는지 확인하기 위한 헬퍼.
@@ -2894,16 +2919,47 @@ function buildRecommendedTeams(){
     const c=S.attendees.filter(x=>(!gender||x.gender===gender)&&x.court&&!NEXT_COURTS.includes(x.court)&&!HIDDEN_MEMBER_IDS.includes(x.id)&&!x.leavingScheduled).sort((a,b)=>(a.attendTs||0)-(b.attendTs||0));
     return{all:[...w,...c]};
   }
-  // 무조건 대기시간(=원래 순번) 순으로만 뽑는다 (섞기 없음)
-  function pick(n,pool){
+  function pickOrder(n,pool){
+    // 대기순: 무조건 대기시간(=원래 순번) 순으로만 뽑는다 (섞기 없음)
     return pool.all.slice(0,n);
+  }
+  function shuffle(arr){
+    const a=arr.slice();
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+  function pickRandom(n,pool,requireFemale){
+    // 랜덤: 현재 대기 풀 전체에서 무작위로 n명을 뽑는다.
+    // requireFemale이면(혼성팀), 대기 풀에 여성이 1명이라도 있으면 반드시 그 중 1명은 포함시킨다.
+    if(requireFemale){
+      const females=pool.all.filter(x=>x.gender==='f');
+      if(females.length){
+        const chosenF=shuffle(females)[0];
+        const rest=pool.all.filter(x=>x.id!==chosenF.id);
+        const restPicked=shuffle(rest).slice(0,Math.max(0,n-1));
+        return [chosenF,...restPicked];
+      }
+    }
+    return shuffle(pool.all).slice(0,n);
   }
   const mp=buildPool('m'),fp=buildPool('f'),allp=buildPool(null);
   const teams=[];
-  if(mp.all.length>=1){const t=pick(4,mp);if(t.length)teams.push({label:'추천1팀 — 남자',color:'#185FA5',badge:'👨',team:t});}
-  if(fp.all.length>=1){const t=pick(4,fp);if(t.length)teams.push({label:'추천2팀 — 여자',color:'#993556',badge:'👩',team:t});}
-  // 추천3팀: 남녀 구분 없이 무조건 대기시간 순 (1팀/2팀과 인원이 겹칠 수 있음)
-  if(allp.all.length>=1){const t=pick(4,allp);if(t.length)teams.push({label:'추천3팀 — 혼성(대기순)',color:'#7B3FA0',badge:'👫',team:t});}
+  if(mp.all.length>=1){
+    const mode=recPickMode.male||'order';
+    const t=mode==='random'?pickRandom(4,mp,false):pickOrder(4,mp);
+    if(t.length)teams.push({kind:'male',label:'추천1팀 — 남자',color:'#185FA5',badge:'👨',team:t,poolSize:mp.all.length,mode});
+  }
+  if(fp.all.length>=1){
+    const mode=recPickMode.female||'order';
+    const t=mode==='random'?pickRandom(4,fp,false):pickOrder(4,fp);
+    if(t.length)teams.push({kind:'female',label:'추천2팀 — 여자',color:'#993556',badge:'👩',team:t,poolSize:fp.all.length,mode});
+  }
+  // 추천3팀: 남녀 구분 없이 뽑되(대기순 모드), 랜덤 모드일 땐 여성 1명 이상 포함을 보장한다
+  if(allp.all.length>=1){
+    const mode=recPickMode.mixed||'order';
+    const t=mode==='random'?pickRandom(4,allp,true):pickOrder(4,allp);
+    if(t.length)teams.push({kind:'mixed',label:'추천3팀 — 혼성',color:'#7B3FA0',badge:'👫',team:t,poolSize:allp.all.length,mode});
+  }
   // 수동 교체 오버라이드 적용
   teams.forEach((teamObj,tIdx)=>{
     teamObj.team = teamObj.team.map((a,slotIdx)=>{
@@ -3302,7 +3358,7 @@ function renderCourts(){
       <div style="display:flex;gap:5px;margin-bottom:4px">`;
     [1,2,3,4].forEach(n=>{
       const isOn=courtActive[n];
-      h+=`<button onclick="toggleCourtActive(${n})" style="flex:1;padding:8px 4px;border-radius:8px;border:1.5px solid ${isOn?CCOLORS[n]:'#D8D5CF'};background:${isOn?CBGS[n]:'#F0EDE8'};color:${isOn?CCOLORS[n]:'#aaa'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+      h+=`<button onclick="toggleCourtActive(${n})" style="flex:1;padding:8px 4px;border-radius:8px;border:1.5px solid ${isOn?CCOLORS[1]:'#D8D5CF'};background:${isOn?CBGS[1]:'#F0EDE8'};color:${isOn?CCOLORS[1]:'#aaa'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
         ${isOn?'✅':'⬜'} ${CNAMES[n]}
       </button>`;
     });
@@ -3327,8 +3383,10 @@ function renderCourts(){
       slots+=`<div class="ct-slot" onclick="removeFromCourt(${a.id})" style="${meSt}"><span style="${meNm}">${isMe?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="flex:1"></span><span class="ct-slot-hint">탭하여 해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
-    const status=over?`<div class="ct-status full" style="background:#C0392B;color:#fff">⚠️ 인원초과(${cnt}/${CMAX}) - 정리 필요</div>`:conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
-    const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
+    // "꽉참(4/4)"·"게임 확정" 하단 표시는 이제 헤더 색상(주황=미확정 펄스, 회색=확정)으로 이미
+    // 표시되므로 중복이라 4명이 찬 경우(확정 여부 무관)엔 아예 없앤다. 초과 경고만 예외로 유지.
+    const status=over?`<div class="ct-status full" style="background:#C0392B;color:#fff">⚠️ 인원초과(${cnt}/${CMAX}) - 정리 필요</div>`:full?'':cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
+    // ✕ 배지는 클릭해도 아무 기능이 없는 순수 장식이었고, 이제 헤더 색상으로 꽉참 상태를 표시하므로 제거.
     const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmCourt(${n})">확정</button>`:'';
     let ctTime='';
     if(CC[n]&&CT[n]){
@@ -3347,7 +3405,15 @@ function renderCourts(){
     } else if(CC[n]&&!CT[n]){
       ctTime=`<span id="ct-elapsed-${n}" style="font-size:9px;color:rgba(255,255,255,.85);margin-left:4px;font-weight:500">0분</span>`;
     }
-    h+=`<div class="ct-card"><div class="ct-hdr c${n}" ontouchstart="(function(el){el._lpt=setTimeout(()=>showMoveCourtAllPopup(${n}),600);}).call(this,this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" oncontextmenu="event.preventDefault();showMoveCourtAllPopup(${n})" style="cursor:pointer" title="길게 누르면 전체 이동"><span class="ct-name">${CNAMES[n]}${ctTime}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
+    // ct-pending일 때 헤더 전체(span 포함)에 펄스를 건다. 다만 이 화면은 다른 기기의 변화(누가
+    // 출석/코트배정 등)가 있을 때마다 renderCourts() 전체가 다시 그려지는데, 그때마다 CSS
+    // 애니메이션이 처음(불투명 100%)부터 재시작되면서, 재렌더가 잦은 시간대엔 눈에 띄게
+    // 깜빡이지 않는 것처럼 보이는 문제가 있었다. 그래서 매번 새로 그려도 "실제 시계 기준"으로
+    // 애니메이션 진행 위치를 맞춰서(음수 animation-delay), 다시 그려질 때마다 그 시점에 맞는
+    // 밝기부터 이어서 보이게 만든다 - 그래야 재렌더가 잦아도 실제로 깜빡이는 것처럼 보인다.
+    const isPending = full&&!conf&&!over;
+    const hdrStyle = isPending ? `cursor:pointer;animation-delay:${-(Date.now()%1100)}ms` : `cursor:pointer`;
+    h+=`<div class="ct-card"><div class="ct-hdr c${n} ${conf?'ct-confirmed':(isPending?'ct-pending':'')}" style="${hdrStyle}" ontouchstart="(function(el){el._lpt=setTimeout(()=>showMoveCourtAllPopup(${n}),600);}).call(this,this)" ontouchend="clearTimeout(this._lpt)" ontouchmove="clearTimeout(this._lpt)" oncontextmenu="event.preventDefault();showMoveCourtAllPopup(${n})" title="길게 누르면 전체 이동"><span class="ct-name">${CNAMES[n]}${ctTime}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${confirmBtn}<button class="ct-hbtn" onclick="clearCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   h+=`</div>`;
   // 다음차례 코트 HTML을 미리 만들어두고, 어디에 넣을지는 모드에 따라 결정한다
@@ -3368,10 +3434,10 @@ function renderCourts(){
       slots+=`<div class="ct-slot" onclick="toggleNextCourt(${a.id},${n===5?1:2})" style="${meSt2}"><span style="${meNm2}">${isMe2?'⭐ ':''}${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}<span style="font-size:7px;color:#B8B5AF">${cb}</span><span style="flex:1"></span><span class="ct-slot-hint">해제</span></div>`;
     });
     for(let i=cnt;i<CMAX;i++)slots+=`<div class="ct-empty">— 빈자리 —</div>`;
-    const status=conf?`<div class="ct-status confirmed">✅ 게임 확정</div>`:full?`<div class="ct-status full">🔴 꽉참(${cnt}/${CMAX})</div>`:cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
-    const fullBadge=full&&!conf?`<div class="ct-full-badge">✕</div>`:'';
+    // "꽉참" 하단 표시도 메인 코트와 동일하게 4명 찼을 땐 없앤다 (확정 여부 무관)
+    const status=full?'':cnt>0?`<div class="ct-status wait">${cnt}/${CMAX}명</div>`:`<div class="ct-status wait">배정없음</div>`;
     const confirmBtn=!conf&&cnt>0?`<button class="ct-confirm-btn" onclick="confirmNextCourt(${n})">확정</button>`:'';
-    nextCourtHtml+=`<div class="ct-card"><div class="ct-hdr c${n}"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${fullBadge}${confirmBtn}<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
+    nextCourtHtml+=`<div class="ct-card"><div class="ct-hdr c5"><span class="ct-name">${CNAMES[n]}</span><span class="ct-cnt">${cnt}/${CMAX}</span>${confirmBtn}<button class="ct-hbtn" onclick="clearNextCourt(${n})">해제</button></div><div class="ct-body">${slots}${status}</div></div>`;
   });
   nextCourtHtml+=`</div>`;
 
@@ -3471,15 +3537,19 @@ function renderCourts(){
         return`<button class="assign-btn" onclick="${onclick}" style="background:${bg}"><span class="ab-label">${CNAMES[n]}</span><span class="ab-sub">${isEmpty?'빈코트':`${ex}/${CMAX}`}</span></button>`;
       }).join('');
     }
-    recTeamsHtml+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div><div style="font-size:11px;color:#888780;margin:-4px 0 8px">무조건 대기시간 순이며 개별인원을 클릭하면 인원변경 가능</div>`;
-    recTeams.forEach(({label,color,badge,team,dup},tIdx)=>{
+    recTeamsHtml+=`<div class="pg-inner" style="padding-top:0"><div class="stitle">📌 다음 게임 추천</div>`;
+    recTeams.forEach(({label,color,badge,team,dup,kind,poolSize,mode},tIdx)=>{
       if(!team.length)return;
       const tIds=JSON.stringify(team.map(a=>a.id));
       const members=team.map((a,slotIdx)=>{const inC=a.court&&!NEXT_COURTS.includes(a.court);const cb=inC?`<span style="font-size:7px;background:${CBGS[a.court]};color:${CCOLORS[a.court]};padding:1px 3px;border-radius:3px">${CNAMES[a.court]}</span>`:'';return`<div class="rec-member" onclick="showSwapMemberPopup(${tIdx},${slotIdx})" style="cursor:pointer">
 <span class="rec-name" style="flex:0;white-space:nowrap">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>${gt(a.gender,true)}${cb}<span style="flex:1"></span>${waitMinutesLabel(a)}<span class="rec-time">${getWaitBaseTimeStr(a)}</span></div>`;}).join('');
       const nextBtn=`<button onclick="assignNextTeam(1,${tIds})" style="flex:1;padding:4px 2px;border-radius:8px;border:2px solid ${CCOLORS[5]};background:${CCOLORS[5]};color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:0;-webkit-appearance:none;"><span style="font-size:12px;font-weight:700">다음차례</span><span style="font-size:12px;font-weight:700;opacity:.95">(자동배정)</span></button>`;
       const dupBadge=dup?`<div style="margin:2px 0 4px;padding:3px 7px;background:#FDECEA;color:#C0392B;border-radius:6px;font-size:11px;font-weight:700;display:inline-block">⚠️ 오늘 이미 이 4명으로 게임했습니다</div>`:'';
-      recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span></div>${dupBadge}<div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
+      const modeBtns=`<div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">
+        <button onclick="setRecPickMode('${kind}','order')" style="padding:3px 8px;border-radius:6px;border:1px solid ${mode==='order'?color:'#D8D5CF'};background:${mode==='order'?color:'#fff'};color:${mode==='order'?'#fff':'#999'};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">대기순</button>
+        <button onclick="setRecPickMode('${kind}','random')" style="padding:3px 8px;border-radius:6px;border:1px solid ${mode==='random'?color:'#D8D5CF'};background:${mode==='random'?color:'#fff'};color:${mode==='random'?'#fff':'#999'};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">랜덤(대기${poolSize}명중)</button>
+      </div>`;
+      recTeamsHtml+=`<div class="rec-card"><div class="rec-title"><span style="font-size:14px">${badge}</span><span style="color:${color}">${label}</span>${modeBtns}</div>${dupBadge}<div class="rec-members">${members}</div><div class="assign-row">${recCourtBtns(tIds)}${nextBtn}</div></div>`;
     });
     recTeamsHtml+=`</div>`;
   }
@@ -3496,7 +3566,7 @@ function renderBottom(){
   let h='<div class="bottom-btns">';
   h+=`<div style="display:flex;gap:5px">
     <button class="btn-reassign" onclick="reassign()" style="flex:1;margin-bottom:0;padding:10px 4px;font-size:12px">🔄 전체 재편성</button>
-    <button class="btn-reset" onclick="manualReset()" style="flex:1;padding:10px 4px;font-size:12px">💾 오늘 최종 저장 후 초기화</button>
+    <button class="btn-reset" onclick="leaveAllAttendees()" style="flex:1;padding:10px 4px;font-size:12px">🚪 전체 퇴소</button>
   </div></div>`;
   el.innerHTML=h;
 }

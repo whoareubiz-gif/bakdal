@@ -1991,6 +1991,11 @@ function assignNextCourtToBoard(n){
       a.courtFreeTs=baseTs+i;
       a.hasCourt=true;
     });
+    // ⚠️ 4명이 이미 다 채워진 상태로 코트에 배정되는데, 다른 배정 경로들과 달리 여기서
+    // 자동확정 타이머(AT[n])를 시작시키는 걸 빼먹고 있었다. 그래서 "다음차례 편성" 버튼으로
+    // 옮기면 1분이 지나도 자동확정이 전혀 안 되는 문제가 있었다(AT[n]가 계속 null이라
+    // checkPendingAutoConfirms()의 "1분 지났는지" 판정 자체가 시작될 수 없었음).
+    if(!CC[n]) scheduleAutoConfirm(n);
 
     // 다음차례2 → 다음차례1 자동 이동 (트랜잭션으로 정원 보호)
     const nc2=S.attendees.filter(x=>x.nextCourt2);
