@@ -617,6 +617,15 @@ function applyAttendState(attendState){
   S.attendees.forEach(a=>{
     const s = attendState[a.id];
     if(s){
+      // ⚠️ 회원 id만으로 매칭하기 때문에, 이 사람이 "퇴소→재출석"으로 오늘 여러 번 출석한 경우
+      // 서버에서 오는 s가 지금 세션이 아니라 예전(더 이전) 세션의 정보일 수 있다. 예를 들어
+      // 어떤 기기가 재출석 전의 오래된 로컬 상태를 계속 들고 있다가 뒤늦게 아무 저장이나
+      // 트리거하면, 그 오래된 출석시각이 다른 기기들의 "진짜 최신(재출석) 시각"을 덮어써버려서
+      // 화면에 "1차 출석 17:47→퇴소 19:12 · 2차 출석 17:47"처럼 재출석 시각이 최초 출석시각과
+      // 똑같이(심지어 퇴소시각보다도 이전으로) 보이는 문제가 있었다.
+      // s.attendTs가 로컬 a.attendTs보다 더 과거면, 이건 지금 세션이 아니라 예전 세션에 대한
+      // 뒤늦은/오래된 보고이므로 통째로 무시한다.
+      if(s.attendTs!=null && a.attendTs!=null && s.attendTs < a.attendTs) return;
       if(s.name!=null) a.name=s.name;
       if(s.gender!=null) a.gender=s.gender;
       if(s.time!=null) a.time=s.time;
