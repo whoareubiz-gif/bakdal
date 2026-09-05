@@ -3053,7 +3053,7 @@ function renderCourts(){
       const divider=a.court&&!NEXT_COURTS.includes(a.court)&&!CC[a.court]&&gInCourt.indexOf(a)===0?`<div style="font-size:13px;color:#888780;padding:4px 0 2px;font-weight:700">─── 코트 배정 중 (미확정) ───</div>`:'';
       return`${divider}<div style="background:${isWaiting?'#fff':'#FFF8E1'};border:.5px solid #E0DFDB;border-radius:9px;margin-bottom:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px">
         <div style="display:flex;align-items:center;gap:4px">
-          <span style="font-size:13px;font-weight:700;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>
+          <span style="font-size:16px;font-weight:800;color:${isWaiting?'#1A1A1A':'#666'};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}${guestTagSmall(a)}${leavingMark(a.leavingScheduled)}</span>
           ${waitMinutesLabel(a)}
         </div>
         <div style="display:flex;gap:3px">${cBtns}${ncBtns}</div>
@@ -3660,7 +3660,7 @@ function renderBoard(){
       : (curTheme===0 ? 'rgba(255,245,235,0.6)' : 'rgba(255,255,255,0.5)');
     const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
     const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
-    return`<div style="background:${slotBg};border-radius:1vw;padding:0.6vw 1.0vw;margin-bottom:0.4vw;display:flex;align-items:center;gap:1vw;${ring}">
+    return`<div style="background:${slotBg};border-radius:1vw;padding:0.4vw 1.0vw;margin-bottom:0.3vw;display:flex;align-items:center;gap:1vw;${ring}">
       <span style="font-size:3.0vw;font-weight:900;color:${nameTc};letter-spacing:-0.02em">${a.name}${guestTagBoard(a)}</span>
       <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
       ${isMe?`<span style="margin-left:auto;font-size:1.2vw;font-weight:900;color:#B8860B;white-space:nowrap">⭐ 나</span>`:''}
@@ -3688,7 +3688,7 @@ function renderBoard(){
       pl.forEach(a=>{
         const nameTc = conf ? (a.gender==='m'?'#0A2E6E':'#6B1A35') : '#1A1A1A';
         const _isG=isGuestAttendee(a);
-        slots.push(`<div style="flex:1;text-align:center;background:${conf?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.78)'};border-radius:0.8vw;padding:0.3vw 0.5vw;font-size:3.0vw;font-weight:900;color:${nameTc};letter-spacing:${_isG?'-0.08em':'-0.02em'};white-space:nowrap;overflow:hidden">${a.name}${guestTagBoard(a,true)}</div>`);
+        slots.push(`<div style="flex:1;text-align:center;background:${conf?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.78)'};border-radius:0.8vw;padding:0.2vw 0.5vw;font-size:3.0vw;font-weight:900;color:${nameTc};letter-spacing:${_isG?'-0.08em':'-0.02em'};white-space:nowrap;overflow:hidden">${a.name}${guestTagBoard(a,true)}</div>`);
       });
       for(let i=cnt;i<CMAX;i++){
         const ec=conf?'rgba(0,0,0,.3)':'rgba(0,0,0,.3)';
@@ -3760,10 +3760,10 @@ function renderBoard(){
   // 화면 너비에 따라 폰트 크기 동적 결정
   const vw = window.innerWidth;
   // 24인치 모니터(1920px~): 0.9vw / 태블릿(768~1199px): 1.4vw / 스마트폰(~767px): 2.0vw
-  const qFs = vw >= 1200 ? '0.9vw' : vw >= 600 ? '1.4vw' : '2.0vw';
-  const qPad = vw >= 1200 ? '1px 4px' : vw >= 600 ? '1px 3px' : '1px 2px';
+  const qFs = vw >= 1200 ? '1.25vw' : vw >= 600 ? '1.95vw' : '2.7vw';
+  const qPad = vw >= 1200 ? '2px 5px' : vw >= 600 ? '2px 4px' : '2px 3px';
   const qGap = vw >= 1200 ? '1px' : '1px';
-  const mMaxH = vw >= 1200 ? 'calc(1.9vw * 2 + 10px)' : vw >= 600 ? 'calc(3.2vw * 2 + 8px)' : 'calc(4.8vw * 2 + 6px)';
+  // 남자 목록은 이제 줄 수 제한 없이 필요한 만큼 자연스럽게 늘어나서, 여자 줄과 겹치지 않게 한다.
 
   function quickBtn(m, fs){
     const isIn = attendIds.has(m.id);
@@ -3779,12 +3779,12 @@ function renderBoard(){
 
   h+=`<div style="background:${THEMES[curTheme].panelBg};border-radius:1vw;padding:0.3vw 0.7vw;margin-bottom:${gap}">
     <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:1px">
-      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].maleTc};margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👨남</span>
-      <div style="display:flex;flex-wrap:wrap;gap:0;max-height:${mMaxH};overflow:hidden;flex:1">${maleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
+      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].femaleTc};margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">👩여</span>
+      <div style="display:flex;flex-wrap:wrap;gap:0;flex:1">${femaleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
     </div>
-    <div style="display:flex;flex-wrap:nowrap;align-items:center;gap:0;overflow:hidden">
-      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].femaleTc};margin-right:4px;flex-shrink:0;white-space:nowrap">👩여</span>
-      ${femaleMembers.map(m=>quickBtn(m,qFs)).join('')}
+    <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
+      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].maleTc};margin-right:4px;flex-shrink:0;white-space:nowrap">👨남</span>
+      <div style="display:flex;flex-wrap:wrap;gap:0;flex:1">${maleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
     </div>
   </div>`;
 
