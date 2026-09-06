@@ -1772,6 +1772,17 @@ function enforceEmptyCourtsCleared(){
       cancelAutoConfirm(n);cancelPendingGame(n);
       changed=true;
     }
+    // ⚠️ 확정 상태(CC)와 실제 코트 인원(court 배정)은 서로 다른 Firebase 경로에 독립적으로
+    // 저장·동기화된다. 두 기기가 거의 동시에 "확정"과 "인원 해제/이동"을 하면, 각 경로의
+    // 값이 따로따로 병합되면서 "확정은 됐는데 실제 인원은 4명이 아닌" 불일치 상태가 생길 수
+    // 있었다(예: 3/4인데 확정 색상으로 표시됨). 확정은 정의상 반드시 4명이어야 하므로,
+    // 인원수가 4명이 아닌데도 확정 상태로 남아있으면 자동으로 확정을 해제한다.
+    // (이미 반영된 게임수는 실제로 있었던 일이므로 되돌리지 않는다 - 0명 케이스와 동일한 방침)
+    else if(cnt>0 && cnt!==CMAX && CC[n]){
+      CC[n]=false;CT[n]=null;GC[n]=false;CS[n]=null;
+      cancelAutoConfirm(n);cancelPendingGame(n);
+      changed=true;
+    }
   });
   return changed;
 }
