@@ -262,6 +262,8 @@ const RESERVATION_IMAGE_REF = db.ref('tennis_reservation_image'); // 이번달 �
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
 let resyncInProgress = false; // 백그라운드 복귀 시 재동기화 중
+let granularReadyWatchdogTimer = null; // 개별 경로(코트/출석/확정/퇴소) 도착 대기 워치독
+let granularReadyWatchdogExpired = false; // 워치독이 만료되어 더는 개별 경로 도착을 기다리지 않는 상태
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -902,7 +904,22 @@ function doSyncPushNow(){
   if(syncPushTimer){ clearTimeout(syncPushTimer); syncPushTimer=null; }
   // ⚠️ 최초 동기화(initialRenderDone) 전 + 백그라운드 복귀 재동기화 중(resyncInProgress)에는
   // 절대 서버로 아무것도 쓰지 않는다. (index.html과 동일한 이유)
-  if(!initialRenderDone || resyncInProgress){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
+  // 추가로: 코트/출석/확정/퇴소 개별 경로가 전부 도착(ready)하기 전에도 막는다 - 전체
+  // 스냅샷(REF)만 빨리 와서 initialRenderDone이 켜졌는데 개별 경로가 아직 안 온 그 틈에
+  // 오래된 코트 인원 구성이 서버로 나가서 "꽉차서 확정됐던 코트가 갑자기 줄어드는" 문제가
+  // 있었다. 네트워크 문제로 영영 안 오는 최악의 경우를 대비해 8초 워치독을 둔다.
+  const allGranularReady = courtStateReady && attendStateReady && confirmStateReady && leftStateReady;
+  if(!initialRenderDone || resyncInProgress || (!allGranularReady && !granularReadyWatchdogExpired)){
+    pendingSyncPushAfterReady=true;
+    if(initialRenderDone && !resyncInProgress && !allGranularReady && !granularReadyWatchdogTimer){
+      granularReadyWatchdogTimer=setTimeout(()=>{
+        granularReadyWatchdogExpired=true;
+        granularReadyWatchdogTimer=null;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      }, 8000);
+    }
+    return Promise.resolve();
+  }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -1002,29 +1019,42 @@ function syncListen(){
     setSyncDot('err');
   });
   // 필드별 전용 경로: 바뀔 때마다 즉시(다른 동기화와 무관하게) 로컬에 반영
+  // 코트/출석/확정/퇴소 4개 경로가 전부 도착한 뒤에만, 막아뒀던 push를 흘려보낸다
+  function flushPendingPushIfAllGranularReady(){
+    if(courtStateReady && attendStateReady && confirmStateReady && leftStateReady){
+      if(granularReadyWatchdogTimer){ clearTimeout(granularReadyWatchdogTimer); granularReadyWatchdogTimer=null; }
+      if(pendingSyncPushAfterReady && initialRenderDone && !resyncInProgress){
+        pendingSyncPushAfterReady=false; syncPush();
+      }
+    }
+  }
   COURT_STATE_REF.on('value', snap=>{
     latestCourtState = snap.val();
     applyCourtState(latestCourtState);
     courtStateReady=true;
     renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   ATTEND_STATE_REF.on('value', snap=>{
     latestAttendState = snap.val();
     applyAttendState(latestAttendState);
     attendStateReady=true;
     renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   LEFT_STATE_REF.on('value', snap=>{
     latestLeftState = snap.val();
     applyLeftState(latestLeftState);
     leftStateReady=true;
     renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   COURT_CONFIRM_REF.on('value', snap=>{
     latestConfirmState = snap.val();
     applyConfirmState(latestConfirmState);
     confirmStateReady=true;
     renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   GAMES_STATE_REF.on('value', snap=>{
     latestGamesState = snap.val();

@@ -273,6 +273,8 @@ const GAME_COMMIT_LOCK_REF = db.ref('tennis_game_commit_lock'); // 코트별 게
 let syncPushTimer = null;
 let pendingSyncPushAfterReady = false; // 최초 동기화 전에 막아둔 push가 있으면 표시
 let resyncInProgress = false; // 백그라운드 복귀 시 재동기화 중(오래된 전체 스냅샷 반영~진짜 최신값 보정 완료 사이)
+let granularReadyWatchdogTimer = null; // 개별 경로(코트/출석/확정/퇴소) 도착 대기 워치독
+let granularReadyWatchdogExpired = false; // 워치독이 만료되어 더는 개별 경로 도착을 기다리지 않는 상태
 const DEVICE_ID = Date.now()+'-'+Math.random().toString(36).slice(2,8); // 기기별 고유 ID
 // 이 기기에서 방금 직접 만든 출석/퇴소 세션을 짧게 기록해둔다 (동기화 레이스 보호용, normalizeS에서 사용)
 const recentLocalTouch = {};
@@ -785,7 +787,26 @@ function doSyncPushNow(){
   // 스냅샷(normalizeS)을 반영한 직후~진짜 최신 코트 정보로 보정 완료되기 전 사이의 틈에
   // tick()이 끼어들어 오래된 인원 구성을 서버에 병합해버리는 문제(예: 1코트 5/4, 3코트 8/4로
   // 표시됐다가 새로고침하면 정상으로 돌아오는 증상)를 막는다.
-  if(!initialRenderDone || resyncInProgress){ pendingSyncPushAfterReady=true; return Promise.resolve(); }
+  // ⚠️ 추가로: initialRenderDone은 "전체 스냅샷(REF)"만 기준으로 켜지는데, 코트배정/출석/확정
+  // 정보는 각각 별도 경로(COURT_STATE_REF 등)로 독립적으로 도착한다. 전체 스냅샷은 빨리 왔는데
+  // 이 개별 경로들이 아직 도착 전인 그 짧은 틈에 뭔가(이 기기의 실제 조작이든 자동 판정이든)가
+  // 서버로 쓰기를 시도하면, 아직 보정 안 된 오래된 코트 인원 구성이 그대로 서버로 나가서
+  // "꽉차서 확정까지 됐던 코트가 갑자기 인원이 줄어든 것처럼" 보이는 심각한 문제가 있었다.
+  // 그래서 이 개별 경로들도 전부 도착(ready)한 뒤에만 실제로 쓰도록 막는다. 다만 네트워크
+  // 문제로 이 경로들 중 하나가 영영 안 오는 최악의 경우까지 대비해, 8초 넘게 기다리면
+  // 더는 막지 않고 흘려보내는 안전장치(워치독)를 둔다(무한정 멈추는 것보다는 낫다).
+  const allGranularReady = courtStateReady && attendStateReady && confirmStateReady && leftStateReady;
+  if(!initialRenderDone || resyncInProgress || (!allGranularReady && !granularReadyWatchdogExpired)){
+    pendingSyncPushAfterReady=true;
+    if(initialRenderDone && !resyncInProgress && !allGranularReady && !granularReadyWatchdogTimer){
+      granularReadyWatchdogTimer=setTimeout(()=>{
+        granularReadyWatchdogExpired=true;
+        granularReadyWatchdogTimer=null;
+        if(pendingSyncPushAfterReady){ pendingSyncPushAfterReady=false; syncPush(); }
+      }, 8000);
+    }
+    return Promise.resolve();
+  }
   const token = DEVICE_ID+'-'+Date.now();
   lastSentToken = token;
   pushCourtStateDiff();
@@ -899,12 +920,23 @@ function syncListen(){
     }
   }, err=>{ setSyncDot('err'); });
   // 필드별 전용 경로: 바뀔 때마다 즉시(다른 동기화와 무관하게) 로컬에 반영
+  // 코트/출석/확정/퇴소 4개 경로가 전부 도착한 뒤에만, 막아뒀던 push를 흘려보낸다
+  // (doSyncPushNow()의 allGranularReady 조건과 짝을 이루는 부분 - 개별 경로 도착 시점마다 확인)
+  function flushPendingPushIfAllGranularReady(){
+    if(courtStateReady && attendStateReady && confirmStateReady && leftStateReady){
+      if(granularReadyWatchdogTimer){ clearTimeout(granularReadyWatchdogTimer); granularReadyWatchdogTimer=null; }
+      if(pendingSyncPushAfterReady && initialRenderDone && !resyncInProgress){
+        pendingSyncPushAfterReady=false; syncPush();
+      }
+    }
+  }
   COURT_STATE_REF.on('value', snap=>{
     latestCourtState = snap.val();
     applyCourtState(latestCourtState);
     courtStateReady=true;
     renderAll();
     if(boardModeOn) renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   ATTEND_STATE_REF.on('value', snap=>{
     latestAttendState = snap.val();
@@ -912,6 +944,7 @@ function syncListen(){
     attendStateReady=true;
     renderAll();
     if(boardModeOn) renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   LEFT_STATE_REF.on('value', snap=>{
     latestLeftState = snap.val();
@@ -919,6 +952,7 @@ function syncListen(){
     leftStateReady=true;
     renderAll();
     if(boardModeOn) renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   COURT_CONFIRM_REF.on('value', snap=>{
     latestConfirmState = snap.val();
@@ -926,6 +960,7 @@ function syncListen(){
     confirmStateReady=true;
     renderAll();
     if(boardModeOn) renderBoard();
+    flushPendingPushIfAllGranularReady();
   });
   // 게임수는 트랜잭션으로 증감하므로 별도 readiness 플래그가 필요 없다 (push 자체가 항상 서버 최신값 기준)
   GAMES_STATE_REF.on('value', snap=>{
