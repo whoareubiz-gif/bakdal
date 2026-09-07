@@ -408,6 +408,13 @@ function normalizeS(raw){
     // 관전모드는 순수 조회 전용이어야 하므로, 여기서도 자동확정 타이머를 스스로 걸지 않는다
     // (checkPendingAutoConfirms()의 관전모드 가드와 동일한 이유 - 실제 확정은 admin 화면이 처리)
     const isSpecMode = appMode==='spectator'||appMode==='spectator_admin';
+    // ⚠️ confirmStateReady 전에는 여기서 타이머를 걸거나 즉시 발동시키지 않는다. 이 블록은
+    // 전체 스냅샷(REF)이 도착할 때마다 매번 실행되는데, 아직 COURT_CONFIRM_REF(진짜 CC/AT
+    // 소스)가 도착하기 전이면 CC[n]이 오래된/기본값이라 오판할 수 있고, 여기서 건 타이머는
+    // doSyncPushNow의 보호를 거치지 않고 직접 서버에 게임수를 반영해버린다. confirmStateReady가
+    // 되면 tick()의 checkPendingAutoConfirms()가 정상적으로 다시 판단해서 처리하므로,
+    // 여기서는 조용히 건너뛰어도 안전하다.
+    if(!confirmStateReady){ return; }
     [1,2,3,4].forEach(n=>{
       if(isSpecMode){ return; }
       // 타이머 이미 실행 중이면 절대 건드리지 않음
@@ -2615,7 +2622,13 @@ function checkPendingAutoConfirms(){
   // (그대로 실행하면 서버의 진짜 최신 코트 인원과 무관하게 오래된 인원 구성으로
   // 게임수/확정정보를 만들어버려 정원초과 등 유령 데이터의 원인이 됨)
   // courtStateReady도 함께 확인: 진짜 코트 인원(court)을 아직 못 받아온 상태에서 판단하면 안 됨.
-  if(!initialRenderDone || !courtStateReady || resyncInProgress) return;
+  // ⚠️ confirmStateReady도 반드시 같이 확인해야 한다: 이 함수가 쓰는 CC[n]/AT[n]은
+  // COURT_CONFIRM_REF(confirmStateReady)에서 오는 값인데, 이게 아직 서버에서 도착하기 전이면
+  // localStorage에 남아있던 오래된 CC/AT 기준으로 판단하게 된다. 게다가 이 함수가 호출하는
+  // autoConfirmCourtSilent→commitCourtGamesImmediately는 doSyncPushNow를 거치지 않고
+  // Firebase 트랜잭션으로 "직접" 쓰기 때문에, doSyncPushNow에 걸어둔 "4개 경로 도착 대기"
+  // 가드로는 이 경로를 막을 수 없었다 - 여기서 별도로 막아야 한다.
+  if(!initialRenderDone || !courtStateReady || !confirmStateReady || resyncInProgress) return;
   // 관전모드는 이름 그대로 "보기 전용"이어야 한다 - 출석/퇴소/편성/확정을 전부 막아놓고
   // 정작 자동확정만 몰래 계속 실행하는 건 설계상 모순이었다. 여러 관전모드 화면이 동시에
   // 켜져 있을 때 게임수가 중복 반영되던 문제의 근본 원인이기도 했으므로, 관전모드에서는

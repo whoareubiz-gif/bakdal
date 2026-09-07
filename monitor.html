@@ -1642,7 +1642,9 @@ function autoConfirmCourtSilent(n){
 }
 // 1분이 지났는데도 자동확정이 안 됐는지 확인해서 뒤늦게라도 처리한다 (백그라운드 타이머 씹힘 대비)
 function checkPendingAutoConfirms(){
-  if(!initialRenderDone || !courtStateReady || resyncInProgress) return; // 최초 동기화 전 오래된 로컬 캐시로 자동확정 방지
+  // confirmStateReady도 함께 확인: CC[n]/AT[n]은 COURT_CONFIRM_REF에서 오는 값이라,
+  // 이게 아직 도착 전이면 오래된 로컬 값 기준으로 자동확정을 실행해버릴 수 있다.
+  if(!initialRenderDone || !courtStateReady || !confirmStateReady || resyncInProgress) return; // 최초 동기화 전 오래된 로컬 캐시로 자동확정 방지
   [1,2,3,4].forEach(n=>{
     if(CC[n] || !AT[n]) return;
     if(Date.now()-AT[n] < 60*1000) return;
