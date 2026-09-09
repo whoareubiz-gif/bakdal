@@ -1576,13 +1576,14 @@ function renderAdminPage(){
 // (예: 테스트로 입력한 데이터라 기록으로 남기면 안 되는 경우 등에 사용).
 function deleteTodayDataNoArchive(){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
-  openModal('⚠️ 오늘 데이터를 통계 이력에도 남기지 않고 완전히 삭제하시겠습니까?\n(초기화와 달리 기록이 전혀 보관되지 않습니다 - 되돌릴 수 없습니다)', ()=>{
+  openModal('⚠️ 오늘 데이터를 통계 이력에도 남기지 않고 완전히 삭제하시겠습니까?\n(혹시 이전에 "전체퇴소/초기화"로 오늘 날짜 기록이 이미 저장되어 있었다면 그것도 함께 지워집니다 - 되돌릴 수 없습니다)', ()=>{
     ATTEND_REF.set(null);
     COURT_REF.set(null);
     NEXT_REF.set(null);
     GAMES_REF.set(null);
     LEFT_REF.set(null);
     GUEST_REF.set(null);
+    HISTORY_REF.child(todayDate || dateStr()).remove(); // 혹시 오늘 이미 저장돼있던 통계 이력이 있다면 그것도 완전히 지운다
     META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
     allTimeStatsCache=null; yesterdayStatsCache=null; // 데이터가 바뀌었으니 통계 캐시를 비워서 다음에 다시 계산하게 함
     toast('🗑 오늘 데이터가 기록 없이 완전히 삭제되었습니다');
