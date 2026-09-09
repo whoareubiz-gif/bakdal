@@ -1329,12 +1329,14 @@ function renderRecommendSection(){
   const fConf=confirmedIds.filter(id=>genderOf(id)==='f');
   function confirmedItemHtml(id){
     const alreadyReserved = [1,2].some(nn=>nextMap[nn] && courtMembers(nextMap[nn]).includes(id));
+    const cur=currentAssignmentOf(id);
+    const courtLabel = (cur && cur.type==='court') ? `<span style="font-size:10px;color:#888;font-weight:700;margin-left:2px">${cur.n}코트</span>` : '';
     const nextBtns=[1,2].map(nn=>{
       const isCur = nextMap[nn] && courtMembers(nextMap[nn]).includes(id);
       return `<button class="wait-assign-btn wait-assign-btn-next${isCur?' wait-assign-btn-current':''}" onclick="reserveNextFromGame(${id},${nn})">다${nn}</button>`;
     }).join('');
     return `<div class="wait-item" style="flex-direction:column;align-items:stretch;gap:5px;background:#EDF5FF">
-      <span>${nameOf(id)}${genderChip(genderOf(id))}${alreadyReserved?'<span style="font-size:10px;color:#185FA5;font-weight:700"> · 예약됨</span>':''}</span>
+      <span>${nameOf(id)}${genderChip(genderOf(id))}${courtLabel}${alreadyReserved?'<span style="font-size:10px;color:#185FA5;font-weight:700"> · 예약됨</span>':''}</span>
       <div style="display:flex;gap:3px">${nextBtns}</div>
     </div>`;
   }
