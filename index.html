@@ -1300,6 +1300,76 @@ function pickTeamAvoidingRepeat(pool, count){
   }
   return picked;
 }
+// 혼성 추천팀은 기본적으로 남2:여2를 목표로 뽑는다. 한쪽이 2명이 안 되면, 있는 만큼만 넣고
+// 나머지는 반대쪽에서 채운다(예: 여자가 1명뿐이면 여자 1명 + 남자 3명).
+function pickMixedGenderCounts(mAvailable, fAvailable){
+  let mCount=Math.min(2, mAvailable);
+  let fCount=Math.min(2, fAvailable);
+  let total=mCount+fCount;
+  if(total<4){
+    let need=4-total;
+    const extraM=Math.min(need, mAvailable-mCount);
+    mCount+=extraM; need-=extraM;
+    const extraF=Math.min(need, fAvailable-fCount);
+    fCount+=extraF;
+  }
+  return {mCount, fCount};
+}
+// 남2:여2 비율을 유지하면서, 오늘 이미 확정되어 같이 뛴 조합과 겹치면 그 안에서 우선순위가
+// 가장 약한(출석시간이 가장 늦은) 1명을, 같은 성별의 다음 대기 후보로 교체한다(성비가 안 깨지게).
+function pickMixedTeamAvoidingRepeat(mPool, fPool){
+  const {mCount, fCount} = pickMixedGenderCounts(mPool.length, fPool.length);
+  let mPicked = mPool.slice(0, mCount);
+  let fPicked = fPool.slice(0, fCount);
+  let mIdx=mCount, fIdx=fCount, attempts=0;
+  while((mPicked.length+fPicked.length)===4 && comboHistorySet[comboKey(mPicked.concat(fPicked))] && attempts<10){
+    const combined = mPicked.map(id=>({id,g:'m'})).concat(fPicked.map(id=>({id,g:'f'})));
+    let idx=0, latestTs=-Infinity;
+    combined.forEach((o,i)=>{ const ts=attendMap[o.id]?(attendMap[o.id].attendTs||-Infinity):-Infinity; if(ts>latestTs){ latestTs=ts; idx=i; } });
+    const target=combined[idx];
+    if(target.g==='m' && mIdx<mPool.length){ mPicked[mPicked.indexOf(target.id)]=mPool[mIdx]; mIdx++; }
+    else if(target.g==='f' && fIdx<fPool.length){ fPicked[fPicked.indexOf(target.id)]=fPool[fIdx]; fIdx++; }
+    else break; // 같은 성별에 교체할 다음 후보가 없으면 중단
+    attempts++;
+  }
+  return mPicked.concat(fPicked);
+}
+// 자유인원 중에 특정 성별이 아예 0명이라 mPicked/fPicked 어느 한쪽이 완전히 빌 수 있다.
+// 이럴 때도 "코트에서 게임중"이거나 "다음차례에 이미 예약된" 사람 중에서라도 그 성별을
+// 찾아서 최소 1명은 넣어준다(대기자가 진짜 0명일 때만 쓰는 마지막 보정 단계).
+function findGenderCandidateAnywhere(gender, excludeIds){
+  const courts=getConfirmedCourtsByElapsed(); // 곧 끝날 것 같은 코트부터 우선
+  for(const c of courts){
+    const cand=c.ids.find(id=>genderOf(id)===gender && !excludeIds.includes(id));
+    if(cand) return cand;
+  }
+  for(let n=1;n<=2;n++){
+    const ids=courtMembers(nextMap[n]);
+    const cand=ids.find(id=>genderOf(id)===gender && !excludeIds.includes(id));
+    if(cand) return cand;
+  }
+  return null;
+}
+function ensureMixedGenderAnywhere(picked, mFreeCount, fFreeCount){
+  const hasM=picked.some(id=>genderOf(id)==='m');
+  const hasF=picked.some(id=>genderOf(id)==='f');
+  if(hasM && hasF) return picked;
+  if(picked.length<4) return picked; // 아직 자리가 남아있으면 뒤이어 진행되는 일반 보충 단계에서 채워짐
+  // 자유인원 자체가 그 성별 0명일 때만 시도한다(자유인원이 있는데 안 뽑힌 경우는 이미 위 단계에서 처리됨)
+  const missing = hasM ? 'f' : 'm';
+  if(missing==='f' && fFreeCount>0) return picked;
+  if(missing==='m' && mFreeCount>0) return picked;
+  const candidate = findGenderCandidateAnywhere(missing, picked);
+  if(!candidate) return picked; // 그 성별이 오늘 정말 아무도 없으면 어쩔 수 없다
+  let idx=0, latestTs=-Infinity;
+  picked.forEach((id,i)=>{
+    const ts = attendMap[id] ? (attendMap[id].attendTs||-Infinity) : -Infinity;
+    if(ts>latestTs){ latestTs=ts; idx=i; }
+  });
+  const result=picked.slice();
+  result[idx]=candidate;
+  return result;
+}
 // 확정된 코트들을 "확정된 지 오래된 순"(=게임을 오래 하고 있어서 가장 먼저 끝날 것 같은 순)으로 반환한다.
 function getConfirmedCourtsByElapsed(){
   const list=[];
@@ -1349,14 +1419,23 @@ function renderRecommendSection(){
   // 대기순으로 4명을 뽑고, 이름만 2명씩 2줄로 보여준 뒤 배정 버튼(1,2,3,4 한 줄 + 다1,다2 한 줄)을 놓는다.
   // 대기자가 4명이 안 되면, 곧 끝날 것 같은 확정 코트에서 빌려와서라도 무조건 4명을 채운다.
   const longestWaiterId = freeIds.length ? freeIds[0] : null; // 전체(남/여 통틀어) 가장 오래 기다린 사람
-  function teamBlock(pool, genderFilter){
-    let picked = pickTeamAvoidingRepeat(pool, Math.min(4, pool.length));
-    let borrowedIds=[];
+  function teamBlock(pool, genderFilter, isMixed, mFreeForMixed, fFreeForMixed){
+    let picked;
+    if(isMixed){
+      picked = pickMixedTeamAvoidingRepeat(mFreeForMixed, fFreeForMixed);
+    } else {
+      picked = pickTeamAvoidingRepeat(pool, Math.min(4, pool.length));
+    }
     if(picked.length<4){
       const need=4-picked.length;
-      borrowedIds = borrowFromConfirmedCourts(need, genderFilter||null).filter(id=>!picked.includes(id));
-      picked = picked.concat(borrowedIds);
+      const borrowed = borrowFromConfirmedCourts(need, genderFilter||null).filter(id=>!picked.includes(id));
+      picked = picked.concat(borrowed);
     }
+    // 자유인원 중 한쪽 성별이 아예 0명이라 4명이 전부 한쪽 성별로만 채워졌다면, 코트에서
+    // 게임중이거나 다음차례에 예약된 사람 중에서라도 최소 1명은 반대 성별로 넣어준다.
+    if(isMixed) picked = ensureMixedGenderAnywhere(picked, mFreeForMixed.length, fFreeForMixed.length);
+    // 지금 자유인원 목록(freeIds)에 없다는 건 = 확정된 코트에서 빌려온(지금 게임중인) 사람이라는 뜻.
+    const borrowedIds = picked.filter(id=>!freeIds.includes(id));
     const hasLongestWaiter = longestWaiterId!==null && picked.includes(longestWaiterId);
     if(!picked.length) return {html:'<div style="text-align:center;color:#B8B5AF;font-size:11px;padding:10px 0">없음</div>', urgent:false};
     const idsJson=JSON.stringify(picked);
@@ -1387,7 +1466,7 @@ function renderRecommendSection(){
     return {html, urgent:hasLongestWaiter};
   }
   let h='<div class="stitle">다음 게임 추천</div>';
-  const teamM=teamBlock(mFree,'m'), teamF=teamBlock(fFree,'f'), teamMix=teamBlock(freeIds,null);
+  const teamM=teamBlock(mFree,'m'), teamF=teamBlock(fFree,'f'), teamMix=teamBlock(freeIds,null,true,mFree,fFree);
   h+=`<div style="display:flex;gap:5px;padding:0 11px 10px">
     <div class="${teamM.urgent?'rec-box-urgent':''}" style="flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;padding:7px;min-width:0">
       <div style="text-align:center;font-size:12px;font-weight:800;color:#185FA5;margin-bottom:5px">남</div>
