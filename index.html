@@ -425,6 +425,7 @@ function leaveAllAttendees(){
     LEFT_REF.set(null);
     GUEST_REF.set(null);
     META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
+    allTimeStatsCache=null; yesterdayStatsCache=null; // 데이터가 바뀌었으니 통계 캐시를 비워서 다음에 다시 계산하게 함
     toast(`✅ 전체 퇴소 + 초기화 완료 (${ids.length}명)`);
   });
 }
@@ -1583,6 +1584,7 @@ function deleteTodayDataNoArchive(){
     LEFT_REF.set(null);
     GUEST_REF.set(null);
     META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
+    allTimeStatsCache=null; yesterdayStatsCache=null; // 데이터가 바뀌었으니 통계 캐시를 비워서 다음에 다시 계산하게 함
     toast('🗑 오늘 데이터가 기록 없이 완전히 삭제되었습니다');
   });
 }
