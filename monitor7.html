@@ -10,6 +10,13 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;background:#000;}
 .toast{position:fixed;bottom:2vw;left:50%;transform:translateX(-50%);background:rgba(20,20,20,.92);color:#fff;padding:0.8vw 1.6vw;border-radius:2vw;font-size:1.3vw;z-index:99999;max-width:88%;text-align:center;white-space:pre-line;}
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99998;padding:2vw;}
+.modal-box{background:#fff;border-radius:1.2vw;padding:2vw;max-width:60vw;box-shadow:0 1vw 3vw rgba(0,0,0,.3);}
+.modal-msg{font-size:1.6vw;font-weight:700;white-space:pre-line;margin-bottom:1.6vw;color:#1A1A1A;line-height:1.5;}
+.modal-btns{display:flex;gap:0.8vw;justify-content:flex-end;}
+.modal-btns button{padding:0.8vw 1.8vw;border-radius:0.8vw;border:none;font-size:1.4vw;font-weight:800;cursor:pointer;font-family:inherit;}
+.modal-btn-gray{background:#EDECE8;color:#555;}
+.modal-btn-primary{background:#1D9E75;color:#fff;}
 </style>
 </head>
 <body>
@@ -54,6 +61,7 @@ const LEFT_REF   = BASE.child('left');
 const META_REF   = BASE.child('meta');
 const MEMBERS_REF = BASE.child('members');
 const RESIMG_REF = db.ref('tennis_reservation_image');
+const COMBO_HISTORY_REF = BASE.child('comboHistory'); // /t3/comboHistory/{정렬된 id csv} = true - 오늘 이미 확정되어 같이 뛴 4인 조합 기록(index3.html과 공유)
 const CMAX=4;
 const SLOTS=['m1','m2','m3','m4'];
 
@@ -66,6 +74,8 @@ let attendMap={}, courtMap={1:null,2:null,3:null,4:null}, nextMap={1:null,2:null
 let courtActive={1:true,2:true,3:true,4:true};
 let reservationImageInfo=null;
 let readyFlags={attend:false,court:false,next:false,games:false,left:false,meta:false,members:false};
+let comboHistorySet={}; // {정렬된 id csv:true} - 오늘 이미 확정되어 같이 뛴 조합들(추천팀 중복 방지, index3.html과 공유)
+let courtFlashUntil={}; // 지금 monitor3에서는 시각 효과 없이 재렌더 트리거용으로만 씀
 function allReady(){ return Object.values(readyFlags).every(Boolean); }
 
 function nowTs(){ return Math.floor(Date.now()/1000); }
@@ -121,6 +131,8 @@ function doAttend(memberId){
     leavingScheduled:false, leavingScheduledAt:null, courtFreeAt:t, courtFreeTs:ts,
   });
   GAMES_REF.child(memberId).set(0);
+  // 같은 날 이전에 퇴소했다가 다시 출석하는 경우, 예전 퇴소기록이 중복으로 남지 않게 지운다(index3.html과 동일).
+  leftList.filter(x=>x.id===memberId).forEach(x=> LEFT_REF.child(x.key).remove() );
 }
 function doLeave(memberId){
   const a=attendMap[memberId]; if(!a) return;
@@ -158,7 +170,394 @@ function checkAutoConfirm(){
       if(v && v.confirm && v.confirm.committedGen===v.gen && v.confirm.confirmedAt && (Date.now()-v.confirm.confirmedAt)<3000){
         const ids2=v.confirm.ids.split(',').map(Number);
         ids2.forEach(id=>GAMES_REF.child(id).transaction(g=>(g||0)+1));
+        COMBO_HISTORY_REF.child(v.confirm.ids).set(true); // 오늘 이 4명이 같이 뛰었다는 걸 기록(추천팀 중복 방지용, index3.html과 공유)
       }
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   코트 배정/해제/확정 + 다음차례 편성 - index3.html과 완전히 동일한 로직을 그대로 가져옴.
+   회원들이 모니터링 화면에서도 직접 눌러서 게임을 편성할 수 있게 하기 위함.
+   ══════════════════════════════════════════════════════════════════════════ */
+function toggleCourtActive(n){
+  const isOn = courtActive[n];
+  if(isOn){
+    const rec = courtMap[n];
+    const cnt = courtMembers(rec).length;
+    if(cnt>0){ toast(`${n}코트에 배정된 인원이 있어 비활성화할 수 없습니다\n(먼저 게임끝을 눌러주세요)`); return; }
+  }
+  META_REF.child('courtActive').child(n).transaction(cur=>!cur);
+}
+function openModal(msg, onOk, okText){
+  const old=document.getElementById('modalOv'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='modalOv'; ov.className='modal-ov';
+  ov.innerHTML=`<div class="modal-box"><div class="modal-msg">${msg}</div><div class="modal-btns">
+    <button class="modal-btn-gray" onclick="document.getElementById('modalOv').remove()">취소</button>
+    <button class="modal-btn-primary" id="modalOkBtn">${okText||'확인'}</button>
+  </div></div>`;
+  document.body.appendChild(ov);
+  document.getElementById('modalOkBtn').onclick=()=>{ ov.remove(); onOk&&onOk(); };
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+}
+// 이 사람이 지금 어디 배정되어 있는지: {type:'court'|'next', n} 또는 배정 안 됐으면 null
+function currentAssignmentOf(id){
+  for(let n=1;n<=4;n++){ if(courtMap[n] && courtMembers(courtMap[n]).includes(id)) return {type:'court', n}; }
+  for(let n=1;n<=2;n++){ if(nextMap[n] && courtMembers(nextMap[n]).includes(id)) return {type:'next', n}; }
+  return null;
+}
+function whereIsMember(id){
+  for(let n=1;n<=4;n++){ if(courtMap[n] && courtMembers(courtMap[n]).includes(id)) return CNAME(n); }
+  for(let n=1;n<=2;n++){ if(nextMap[n] && courtMembers(nextMap[n]).includes(id)) return '다음'+n; }
+  return '대기중';
+}
+function flashCourtCard(dropKey){
+  courtFlashUntil[dropKey]=Date.now()+900;
+  renderBoard();
+  setTimeout(()=>{ delete courtFlashUntil[dropKey]; renderBoard(); }, 950);
+}
+function assignToCourt(memberId, n, isNext){
+  if(!isNext && !courtActive[n]){ toast('비활성화된 코트입니다'); return; }
+  const a=attendMap[memberId]; if(!a){ toast('출석 정보가 없습니다'); return; }
+  const cur=currentAssignmentOf(memberId);
+  if(cur && ((isNext && cur.type==='next' && cur.n===n) || (!isNext && cur.type==='court' && cur.n===n))){
+    removeFromAnyCourtOrNext(memberId, ()=>{ toast(`${a.name}님 배정을 취소했습니다`); });
+    return;
+  }
+  if(a.leavingScheduled){ toast('퇴소예정 회원은 배정할 수 없습니다'); return; }
+  removeFromAnyCourtOrNext(memberId, ()=>{
+    const ref = isNext ? NEXT_REF.child(n) : COURT_REF.child(n);
+    ref.transaction(cur=>{
+      cur = cur || {m1:null,m2:null,m3:null,m4:null,gen:0};
+      if(SLOTS.some(k=>cur[k]===memberId)) return cur;
+      const slot = SLOTS.find(k=>!cur[k]);
+      if(!slot) return;
+      cur[slot]=memberId;
+      const cnt = SLOTS.filter(k=>cur[k]).length;
+      cur.gen = (cur.gen||0)+1;
+      if(cnt===CMAX) cur.filledAt = Date.now();
+      return cur;
+    }, (err,committed)=>{
+      if(err || !committed){ toast('배정할 자리가 없습니다'); return; }
+      flashCourtCard(isNext?'n'+n:n);
+    });
+  });
+}
+function reserveNextFromGame(memberId, n){
+  const ref = NEXT_REF.child(n);
+  const alreadyThere = nextMap[n] && courtMembers(nextMap[n]).includes(memberId);
+  if(alreadyThere){
+    ref.transaction(cur=>{
+      if(!cur) return cur;
+      SLOTS.forEach(k=>{ if(cur[k]===memberId) cur[k]=null; });
+      cur.gen=(cur.gen||0)+1;
+      return cur;
+    }, (err,committed)=>{
+      if(err||!committed) return;
+      toast(`${nameOf(memberId)}님의 다음차례${n} 예약을 취소했습니다`);
+    });
+    return;
+  }
+  ref.transaction(cur=>{
+    cur = cur || {m1:null,m2:null,m3:null,m4:null,gen:0};
+    if(SLOTS.some(k=>cur[k]===memberId)) return cur;
+    const slot = SLOTS.find(k=>!cur[k]);
+    if(!slot) return;
+    cur[slot]=memberId;
+    const cnt = SLOTS.filter(k=>cur[k]).length;
+    cur.gen = (cur.gen||0)+1;
+    if(cnt===CMAX) cur.filledAt = Date.now();
+    return cur;
+  }, (err,committed)=>{
+    if(err || !committed){ toast('예약할 자리가 없습니다'); return; }
+    flashCourtCard('n'+n);
+    toast(`${nameOf(memberId)}님을 다음차례${n}로 예약했습니다`);
+  });
+}
+// "게임끝" 버튼: index3.html의 코트 카드 상단 "해제" 버튼과 완전히 동일. 대기시간 리셋은
+// 확정된(=실제로 게임을 한) 코트를 해제할 때만 적용된다.
+function clearCourt(n, isNext){
+  const ref = isNext?NEXT_REF.child(n):COURT_REF.child(n);
+  const rec = isNext?nextMap[n]:courtMap[n];
+  const wasConfirmed = !isNext && isConfirmed(rec);
+  const memberIds = rec ? SLOTS.map(k=>rec[k]).filter(Boolean) : [];
+  ref.set({m1:null,m2:null,m3:null,m4:null,gen:Date.now()});
+  if(wasConfirmed && memberIds.length){
+    const t=timeStr(), ts=nowTs();
+    memberIds.forEach(id=> ATTEND_REF.child(id).update({courtFreeAt:t, courtFreeTs:ts}) );
+  }
+}
+/* ── 추천팀 선정 로직 (index3.html과 완전히 동일) ── */
+function getWaitingIds(){
+  return Object.keys(attendMap).map(Number)
+    .filter(id=>{
+      const a=attendMap[id];
+      if(a.leavingScheduled) return false;
+      for(let n=1;n<=4;n++){ if(courtMap[n] && isConfirmed(courtMap[n]) && courtMembers(courtMap[n]).includes(id)) return false; }
+      return true;
+    })
+    .sort((a,b)=>(attendMap[a].courtFreeTs||attendMap[a].attendTs||0)-(attendMap[b].courtFreeTs||attendMap[b].attendTs||0));
+}
+function getFreeIds(){
+  return getWaitingIds().filter(id=>!currentAssignmentOf(id));
+}
+function comboKey(ids){ return ids.slice().sort((a,b)=>a-b).join(','); }
+function pickTeamAvoidingRepeat(pool, count){
+  let picked = pool.slice(0, count);
+  let poolIdx = count;
+  let attempts = 0;
+  while(picked.length===4 && comboHistorySet[comboKey(picked)] && poolIdx<pool.length && attempts<10){
+    let latestIdx=0, latestTs=-Infinity;
+    picked.forEach((id,i)=>{
+      const ts = attendMap[id] ? (attendMap[id].attendTs||-Infinity) : -Infinity;
+      if(ts>latestTs){ latestTs=ts; latestIdx=i; }
+    });
+    picked[latestIdx]=pool[poolIdx];
+    poolIdx++;
+    attempts++;
+  }
+  return picked;
+}
+function pickMixedGenderCounts(mAvailable, fAvailable){
+  let mCount=Math.min(2, mAvailable);
+  let fCount=Math.min(2, fAvailable);
+  let total=mCount+fCount;
+  if(total<4){
+    let need=4-total;
+    const extraM=Math.min(need, mAvailable-mCount);
+    mCount+=extraM; need-=extraM;
+    const extraF=Math.min(need, fAvailable-fCount);
+    fCount+=extraF;
+  }
+  return {mCount, fCount};
+}
+function pickMixedTeamAvoidingRepeat(mPool, fPool){
+  const {mCount, fCount} = pickMixedGenderCounts(mPool.length, fPool.length);
+  let mPicked = mPool.slice(0, mCount);
+  let fPicked = fPool.slice(0, fCount);
+  let mIdx=mCount, fIdx=fCount, attempts=0;
+  while((mPicked.length+fPicked.length)===4 && comboHistorySet[comboKey(mPicked.concat(fPicked))] && attempts<10){
+    const combined = mPicked.map(id=>({id,g:'m'})).concat(fPicked.map(id=>({id,g:'f'})));
+    let idx=0, latestTs=-Infinity;
+    combined.forEach((o,i)=>{ const ts=attendMap[o.id]?(attendMap[o.id].attendTs||-Infinity):-Infinity; if(ts>latestTs){ latestTs=ts; idx=i; } });
+    const target=combined[idx];
+    if(target.g==='m' && mIdx<mPool.length){ mPicked[mPicked.indexOf(target.id)]=mPool[mIdx]; mIdx++; }
+    else if(target.g==='f' && fIdx<fPool.length){ fPicked[fPicked.indexOf(target.id)]=fPool[fIdx]; fIdx++; }
+    else break;
+    attempts++;
+  }
+  return mPicked.concat(fPicked);
+}
+function findGenderCandidateAnywhere(gender, excludeIds){
+  const courts=getConfirmedCourtsByElapsed();
+  for(const c of courts){
+    const cand=c.ids.find(id=>genderOf(id)===gender && !excludeIds.includes(id));
+    if(cand) return cand;
+  }
+  for(let n=1;n<=2;n++){
+    const ids=courtMembers(nextMap[n]);
+    const cand=ids.find(id=>genderOf(id)===gender && !excludeIds.includes(id));
+    if(cand) return cand;
+  }
+  return null;
+}
+function ensureMixedGenderAnywhere(picked, mFreeCount, fFreeCount){
+  const hasM=picked.some(id=>genderOf(id)==='m');
+  const hasF=picked.some(id=>genderOf(id)==='f');
+  if(hasM && hasF) return picked;
+  if(picked.length<4) return picked;
+  const missing = hasM ? 'f' : 'm';
+  if(missing==='f' && fFreeCount>0) return picked;
+  if(missing==='m' && mFreeCount>0) return picked;
+  const candidate = findGenderCandidateAnywhere(missing, picked);
+  if(!candidate) return picked;
+  let idx=0, latestTs=-Infinity;
+  picked.forEach((id,i)=>{
+    const ts = attendMap[id] ? (attendMap[id].attendTs||-Infinity) : -Infinity;
+    if(ts>latestTs){ latestTs=ts; idx=i; }
+  });
+  const result=picked.slice();
+  result[idx]=candidate;
+  return result;
+}
+function getConfirmedCourtsByElapsed(){
+  const list=[];
+  [1,2,3,4].forEach(n=>{
+    const rec=courtMap[n];
+    if(rec && isConfirmed(rec)){
+      list.push({n, ids: courtMembers(rec), confirmedAt: (rec.confirm&&rec.confirm.confirmedAt)||0});
+    }
+  });
+  return list.sort((a,b)=>a.confirmedAt-b.confirmedAt);
+}
+function borrowFromConfirmedCourts(needed, genderFilter){
+  const courts=getConfirmedCourtsByElapsed();
+  if(!courts.length || needed<=0) return [];
+  const result=[]; const used=new Set();
+  let i=0;
+  while(i<courts.length && result.length<needed){
+    const baseTs=courts[i].confirmedAt;
+    const group=[]; let j=i;
+    while(j<courts.length && courts[j].confirmedAt-baseTs<=5*60*1000){ group.push(courts[j]); j++; }
+    let candidates=[];
+    group.forEach(c=>{ candidates.push(...c.ids); });
+    candidates=candidates.filter(id=>!used.has(id) && (!genderFilter || genderOf(id)===genderFilter));
+    candidates.sort((a,b)=>(attendMap[a]?(attendMap[a].attendTs||0):0)-(attendMap[b]?(attendMap[b].attendTs||0):0));
+    for(const id of candidates){
+      if(result.length>=needed) break;
+      result.push(id); used.add(id);
+    }
+    i=j;
+  }
+  return result;
+}
+function assignTeamToCourt(ids, n, isNext){
+  let i=0;
+  function next(){
+    if(i>=ids.length) return;
+    const id=ids[i++];
+    assignToCourt(id,n,isNext);
+    setTimeout(next,120);
+  }
+  next();
+}
+function checkAndAssignTeam(ids, n, isNext){
+  const busy = ids.filter(id=>{
+    const loc = whereIsMember(id);
+    if(isNext) return loc.startsWith('다음');
+    return loc.endsWith('코트') || loc.startsWith('다음');
+  });
+  if(busy.length){
+    const names = busy.map(id=>`${nameOf(id)}(${whereIsMember(id)})`).join(', ');
+    openModal(`⚠️ 다음 인원이 이미 다른 곳에 배정되어 있어 배정할 수 없습니다.\n${names}\n\n먼저 해당 인원을 해제한 뒤 다시 시도해주세요.`, null, '확인');
+    return;
+  }
+  assignTeamToCourt(ids, n, isNext);
+}
+function assignRecommendedTeamToNext(ids, n){
+  let i=0;
+  function next(){
+    if(i>=ids.length) return;
+    const id=ids[i++];
+    const cur=currentAssignmentOf(id);
+    if(cur && cur.type==='court' && isConfirmed(courtMap[cur.n])){
+      reserveNextFromGame(id, n);
+    } else {
+      assignToCourt(id, n, true);
+    }
+    setTimeout(next, 120);
+  }
+  next();
+}
+// "남자만/여자만/혼성" 버튼: index3.html의 추천팀 로직 그대로 계산해서, 그 결과를 곧바로
+// 다음차례N에 편성한다(추천 카드 없이 바로 실행).
+// 이미 그 자리에 인원이 채워져 있어도(예: 방금 "남자만"을 눌러서 4명이 찬 상태) 계속
+// "여자만"/"혼성"을 눌러서 다시 편성할 수 있어야 하므로, 기존 인원이 있으면 먼저 비우고
+// (그 인원들은 다시 대기자로 돌아감) 그다음에 새로 계산한 팀을 채운다.
+function formGenderTeamToNext(n, kind){
+  const existing = courtMembers(nextMap[n]);
+  if(existing.length){
+    NEXT_REF.child(n).set({m1:null,m2:null,m3:null,m4:null,gen:Date.now()});
+    setTimeout(()=>doFormGenderTeamToNext(n, kind), 400); // 비우는 게 실제로 반영될 시간을 준 뒤 새로 채운다
+  } else {
+    doFormGenderTeamToNext(n, kind);
+  }
+}
+function doFormGenderTeamToNext(n, kind){
+  const freeIds=getFreeIds();
+  const mFree=freeIds.filter(id=>genderOf(id)==='m');
+  const fFree=freeIds.filter(id=>genderOf(id)==='f');
+  let picked;
+  if(kind==='mix'){
+    picked=pickMixedTeamAvoidingRepeat(mFree,fFree);
+    if(picked.length<4){
+      const need=4-picked.length;
+      const borrowed=borrowFromConfirmedCourts(need,null).filter(id=>!picked.includes(id));
+      picked=picked.concat(borrowed);
+    }
+    picked=ensureMixedGenderAnywhere(picked, mFree.length, fFree.length);
+  } else {
+    const pool = kind==='m'?mFree:fFree;
+    picked=pickTeamAvoidingRepeat(pool, Math.min(4,pool.length));
+    if(picked.length<4){
+      const need=4-picked.length;
+      const borrowed=borrowFromConfirmedCourts(need, kind).filter(id=>!picked.includes(id));
+      picked=picked.concat(borrowed);
+    }
+  }
+  if(!picked.length){ toast('추천할 인원이 없습니다'); return; }
+  const hasBorrowed = picked.some(id=>!freeIds.includes(id));
+  if(hasBorrowed) assignRecommendedTeamToNext(picked, n);
+  else checkAndAssignTeam(picked, n, true);
+}
+// 다음차례1,2 전용 "빈코트에 편성하기": 4명을 실제 빈 코트로 옮긴다(index3.html과 동일).
+function confirmNextCourt(n){
+  const rec = nextMap[n];
+  const ids = courtMembers(rec);
+  if(ids.length!==CMAX){ toast('4명이 채워져야 편성할 수 있습니다'); return; }
+  // 이 4명 중 아직 다른 코트에서 확정되어 게임 중인 사람이 있으면, 그 코트를 강제로 깨뜨리지
+  // 않기 위해 편성 자체를 막는다(index3.html과 동일한 안전장치).
+  const stillPlaying = ids.filter(id=>{
+    const cur=currentAssignmentOf(id);
+    return cur && cur.type==='court' && isConfirmed(courtMap[cur.n]);
+  });
+  if(stillPlaying.length){
+    const names = stillPlaying.map(id=>`${nameOf(id)}(${currentAssignmentOf(id).n}코트)`).join(', ');
+    openModal(`⚠️ 다음 인원이 아직 다른 코트에서 게임 중이라 편성할 수 없습니다.\n${names}\n\n해당 게임이 끝난 뒤 다시 시도해주세요.`, null, '확인');
+    return;
+  }
+  const emptyCourt = [1,2,3,4].find(cn=>courtActive[cn] && courtMembers(courtMap[cn]).length===0);
+  if(!emptyCourt){
+    openModal('⚠️ 배정 가능한 빈 코트가 없습니다.\n코트가 빌 때까지 기다려주세요.', null, '확인');
+    return;
+  }
+  let i=0;
+  function next(){
+    if(i>=ids.length){
+      if(n===1) setTimeout(shiftNext2ToNext1, 1200);
+      return;
+    }
+    const id=ids[i++];
+    assignToCourt(id, emptyCourt, false);
+    setTimeout(next,120);
+  }
+  next();
+}
+function shiftNext2ToNext1(){
+  const ids2 = courtMembers(nextMap[2]);
+  if(!ids2.length) return;
+  let j=0;
+  function moveNext(){
+    if(j>=ids2.length) return;
+    const id=ids2[j++];
+    moveNextSlotPreservingGame(id, 2, 1);
+    setTimeout(moveNext,120);
+  }
+  moveNext();
+}
+function moveNextSlotPreservingGame(memberId, fromN, toN){
+  const cur = currentAssignmentOf(memberId);
+  const stillPlaying = cur && cur.type==='court' && isConfirmed(courtMap[cur.n]);
+  if(!stillPlaying){
+    assignToCourt(memberId, toN, true);
+    return;
+  }
+  NEXT_REF.child(fromN).transaction(c=>{
+    if(!c) return c;
+    SLOTS.forEach(k=>{ if(c[k]===memberId) c[k]=null; });
+    c.gen=(c.gen||0)+1;
+    return c;
+  }, ()=>{
+    NEXT_REF.child(toN).transaction(c=>{
+      c = c || {m1:null,m2:null,m3:null,m4:null,gen:0};
+      if(SLOTS.some(k=>c[k]===memberId)) return c;
+      const slot=SLOTS.find(k=>!c[k]);
+      if(!slot) return;
+      c[slot]=memberId;
+      const cnt=SLOTS.filter(k=>c[k]).length;
+      c.gen=(c.gen||0)+1;
+      if(cnt===CMAX) c.filledAt=Date.now();
+      return c;
     });
   });
 }
@@ -301,6 +700,7 @@ function startSync(){
     readyFlags.members=true; onDataChanged();
   });
   RESIMG_REF.on('value', snap=>{ reservationImageInfo=snap.val(); });
+  COMBO_HISTORY_REF.on('value', snap=>{ comboHistorySet=snap.val()||{}; onDataChanged(); });
   firebase.database().ref('.info/connected').on('value', snap=>{
     const dot=document.getElementById('board-sync-dot');
     if(dot) dot.style.background = snap.val()===true ? '#2ECC71' : '#C0392B';
@@ -395,8 +795,8 @@ function renderBoard(){
   function bigCard(n, isNext){
     if(!isNext && !courtActive[n]){
       return`<div style="background:#C8CDD2;border-radius:1.4vw;padding:2.5vw 1.5vw;min-width:0;height:100%;box-sizing:border-box;box-shadow:0 0.4vw 1.2vw rgba(0,0,0,.1);text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:.6">
-        <div style="color:#fff;font-size:2.6vw;font-weight:900;margin-bottom:0.5vw">${CNAME(n)}</div>
-        <div style="color:rgba(255,255,255,.8);font-size:1.6vw;font-weight:700">오늘 사용 안 함</div>
+        <div onclick="toggleCourtActive(${n})" style="color:#fff;font-size:2.6vw;font-weight:900;margin-bottom:0.5vw;cursor:pointer;text-decoration:underline">${CNAME(n)}</div>
+        <div style="color:rgba(255,255,255,.8);font-size:1.6vw;font-weight:700">오늘 사용 안 함 (눌러서 켜기)</div>
       </div>`;
     }
     const rec = isNext ? nextMap[n] : courtMap[n];
@@ -432,11 +832,29 @@ function renderBoard(){
         : cnt>=CMAX
           ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">미확정(대기)</span>`
           : `<span style="background:rgba(0,0,0,.15);color:rgba(255,255,255,.9);${badgeStyle};font-weight:800">${cnt}/${CMAX}명 대기</span>`;
+    // "게임끝" 버튼: index3.html의 코트 카드 "해제" 버튼과 동일 - 회원이 직접 눌러서 게임을
+    // 끝낼 수 있게 한다. 인원이 있는 코트에만 노출한다.
+    const gameEndBtn = (!isNext && cnt>0)
+      ? `<button onclick="clearCourt(${n},false)" style="background:rgba(255,255,255,.9);color:#B25000;border:none;${badgeStyle};cursor:pointer;font-family:inherit">게임끝</button>`
+      : '';
+    // 다음차례 카드: "남자만/여자만/혼성" 버튼(추천팀을 그 자리에 바로 편성) + 4명 꽉 차면
+    // "빈코트에 편성하기" 버튼(=index3.html의 확정 기능, 안전장치 포함)을 같이 보여준다.
+    const nextFormBtnStyle=`${badgeStyle};background:rgba(255,255,255,.85);color:#1A1A1A;border:none;cursor:pointer;font-family:inherit`;
+    const nextFormBtns = isNext
+      ? `<button onclick="formGenderTeamToNext(${n},'m')" style="${nextFormBtnStyle}">남자만</button>
+         <button onclick="formGenderTeamToNext(${n},'f')" style="${nextFormBtnStyle}">여자만</button>
+         <button onclick="formGenderTeamToNext(${n},'mix')" style="${nextFormBtnStyle}">혼성</button>
+         ${cnt===CMAX?`<button onclick="confirmNextCourt(${n})" style="${badgeStyle};background:#1D9E75;color:#fff;border:none;cursor:pointer;font-family:inherit">빈코트에 편성하기</button>`:''}`
+      : '';
     const t=THEMES[curTheme];
     const cardBg = isNext ? t.cardBg2 : (conf ? t.cardBg1 : t.cardBg2);
     return`<div style="background:${cardBg};border-radius:1.4vw;padding:${isNext?'0.6vw 1.5vw':'1.2vw 1.5vw'};min-width:0;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1vw;flex-wrap:wrap;gap:0.4vw">
-        <span style="color:#fff;font-size:2.4vw;font-weight:900;text-shadow:0 2px 6px rgba(0,0,0,.5);letter-spacing:-0.02em">${isNext?('다음차례'+n):CNAME(n)}</span>
+        <div style="display:flex;align-items:center;gap:0.6vw;flex-wrap:wrap">
+          ${gameEndBtn}
+          <span ${isNext?'':`onclick="toggleCourtActive(${n})"`} style="color:#fff;font-size:2.4vw;font-weight:900;text-shadow:0 2px 6px rgba(0,0,0,.5);letter-spacing:-0.02em${isNext?'':';cursor:pointer;text-decoration:underline'}">${isNext?('다음차례'+n):CNAME(n)}</span>
+          ${nextFormBtns}
+        </div>
         ${statusBadge}
       </div>
       ${body}

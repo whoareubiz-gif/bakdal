@@ -331,6 +331,9 @@ function doAttend(memberId, isGuestName){
   };
   ATTEND_REF.child(memberId).set(rec);
   GAMES_REF.child(memberId).set(0);
+  // 같은 날 이전에 퇴소했다가 다시 출석하는 경우, 예전 퇴소기록이 "퇴소자" 목록에 중복으로
+  // 남아있으면 안 되므로 지금 다시 출석하는 이 사람의 기존 퇴소기록은 전부 지운다.
+  leftList.filter(x=>x.id===memberId).forEach(x=> LEFT_REF.child(x.key).remove() );
 }
 let _guestGenderPending='m';
 let guestRegistry={}; // GUEST_REF의 실시간 스냅샷 - 게스트 ID 충돌 방지에 사용
@@ -673,7 +676,12 @@ function confirmNextCourt(n){
   function next(){
     if(i>=ids.length){
       // 다음차례1이 확정되어 비워졌으면, 다음차례2에 있던 인원을 자동으로 다음차례1로 당겨온다.
-      if(n===1) setTimeout(shiftNext2ToNext1, 150);
+      // 다음차례1이 확정되어 비워졌으면, 다음차례2에 있던 인원을 자동으로 다음차례1로 당겨온다.
+      // ⚠️ 방금 코트에 배정된 음성 안내가 먼저 나가고, 그다음에 다음차례1 이동 음성이 나가야
+      // 순서가 안 꼬인다. 코트 배정은 Firebase 왕복(네트워크 지연 포함)을 거쳐야 실제로
+      // 반영되고 음성도 그때 트리거되므로, 그 반영이 확실히 끝날 시간을 넉넉히 준 뒤에
+      // 다음 단계(다음차례2→1 이동)를 시작한다.
+      if(n===1) setTimeout(shiftNext2ToNext1, 1200);
       return;
     }
     const id=ids[i++];
