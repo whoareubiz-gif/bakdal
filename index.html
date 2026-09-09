@@ -657,12 +657,29 @@ function confirmNextCourt(n){
   }
   let i=0;
   function next(){
-    if(i>=ids.length) return;
+    if(i>=ids.length){
+      // 다음차례1이 확정되어 비워졌으면, 다음차례2에 있던 인원을 자동으로 다음차례1로 당겨온다.
+      if(n===1) setTimeout(shiftNext2ToNext1, 150);
+      return;
+    }
     const id=ids[i++];
     assignToCourt(id, emptyCourt, false);
     setTimeout(next,120); // 같은 코트로 순서대로 배정되도록 트랜잭션 사이에 살짝 간격을 둠
   }
   next();
+}
+// 다음차례1이 비었을 때, 다음차례2에 있던 인원을 다음차례1 자리로 옮긴다(기존 index.html에 있던 기능).
+function shiftNext2ToNext1(){
+  const ids2 = courtMembers(nextMap[2]);
+  if(!ids2.length) return;
+  let j=0;
+  function moveNext(){
+    if(j>=ids2.length) return;
+    const id=ids2[j++];
+    assignToCourt(id, 1, true);
+    setTimeout(moveNext,120);
+  }
+  moveNext();
 }
 
 /* ── 자동확정: 1분 지난 꽉 찬 코트를 매초 확인해서 시도 (관전모드는 시도 안 함) ── */
