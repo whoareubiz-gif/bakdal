@@ -1567,8 +1567,24 @@ function renderAdminPage(){
     <button class="btn btn-primary" style="width:100%" onclick="changeAdminPin()">변경</button></div></div>`;
 
   h+='<div class="stitle">⚠️ 위험 작업</div><div class="card"><div class="card-bd">';
-  h+=`<button class="btn btn-red" style="width:100%" onclick="leaveAllAttendees()">전체 퇴소 (퇴소 + 오늘 데이터 초기화)</button></div></div>`;
+  h+=`<button class="btn btn-red" style="width:100%;margin-bottom:8px" onclick="leaveAllAttendees()">전체 퇴소 (퇴소 + 오늘 데이터 초기화)</button>
+    <button class="btn btn-red" style="width:100%" onclick="deleteTodayDataNoArchive()">오늘 DB 삭제 (기록 보관 없이 완전 삭제)</button></div></div>`;
   return h;
+}
+// "초기화"와는 다르게, 통계 이력에 남기지 않고 오늘 데이터를 그냥 통째로 지운다
+// (예: 테스트로 입력한 데이터라 기록으로 남기면 안 되는 경우 등에 사용).
+function deleteTodayDataNoArchive(){
+  if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
+  openModal('⚠️ 오늘 데이터를 통계 이력에도 남기지 않고 완전히 삭제하시겠습니까?\n(초기화와 달리 기록이 전혀 보관되지 않습니다 - 되돌릴 수 없습니다)', ()=>{
+    ATTEND_REF.set(null);
+    COURT_REF.set(null);
+    NEXT_REF.set(null);
+    GAMES_REF.set(null);
+    LEFT_REF.set(null);
+    GUEST_REF.set(null);
+    META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
+    toast('🗑 오늘 데이터가 기록 없이 완전히 삭제되었습니다');
+  });
 }
 function changeAdminPin(){
   const v=document.getElementById('newPinInput').value.trim();
