@@ -690,10 +690,39 @@ function shiftNext2ToNext1(){
   function moveNext(){
     if(j>=ids2.length) return;
     const id=ids2[j++];
-    assignToCourt(id, 1, true);
+    moveNextSlotPreservingGame(id, 2, 1);
     setTimeout(moveNext,120);
   }
   moveNext();
+}
+// 다음차례 자리를 옮길 때(예: 다음차례2→1), 이 사람이 아직 다른 코트에서 확정되어 게임
+// 중이라면 그 코트는 절대 건드리지 않고 다음차례 슬롯만 옮긴다(기존 코트에서 강제로
+// 빠지면 그 코트의 확정이 깨지기 때문). 게임 중이 아니면 기존 방식대로 옮긴다.
+function moveNextSlotPreservingGame(memberId, fromN, toN){
+  const cur = currentAssignmentOf(memberId);
+  const stillPlaying = cur && cur.type==='court' && isConfirmed(courtMap[cur.n]);
+  if(!stillPlaying){
+    assignToCourt(memberId, toN, true);
+    return;
+  }
+  NEXT_REF.child(fromN).transaction(c=>{
+    if(!c) return c;
+    SLOTS.forEach(k=>{ if(c[k]===memberId) c[k]=null; });
+    c.gen=(c.gen||0)+1;
+    return c;
+  }, ()=>{
+    NEXT_REF.child(toN).transaction(c=>{
+      c = c || {m1:null,m2:null,m3:null,m4:null,gen:0};
+      if(SLOTS.some(k=>c[k]===memberId)) return c; // 이미 있음(멱등)
+      const slot=SLOTS.find(k=>!c[k]);
+      if(!slot) return; // 자리 없음
+      c[slot]=memberId;
+      const cnt=SLOTS.filter(k=>c[k]).length;
+      c.gen=(c.gen||0)+1;
+      if(cnt===CMAX) c.filledAt=Date.now();
+      return c;
+    });
+  });
 }
 
 /* ── 자동확정: 1분 지난 꽉 찬 코트를 매초 확인해서 시도 (관전모드는 시도 안 함) ── */
