@@ -191,6 +191,7 @@ const GUEST_REF  = BASE.child('guests');   // /t3/guests = 오늘 등록된 게�
 const ADMIN_PIN_REF = BASE.child('adminPin'); // /t3/adminPin = 관리자 PIN(문자열)
 const RESIMG_REF = db.ref('tennis_reservation_image'); // 예약표 이미지는 기존 index.html과 공유(단순 이미지 조회라 안전)
 const HISTORY_REF = BASE.child('history'); // /t3/history/{yyyy-mm-dd}/{이름} = {gender, games} - 날짜별 게임수 기록 보관용
+const COMBO_HISTORY_REF = BASE.child('comboHistory'); // /t3/comboHistory/{정렬된 id csv} = true - 오늘 이미 확정되어 같이 뛴 4인 조합 기록(추천팀이 같은 조합을 또 추천하지 않게 하는 용도)
 
 /* ══════════════════════════════════════════════════════════════════════════
    ⚠️ 설계 원칙 (이전 버전의 반복되던 버그들을 구조적으로 없애기 위함)
@@ -272,6 +273,7 @@ let allTimeStatsCache=null;
 let statsMainTab='games'; // 'games' | 'attendance' - 통계탭 상위 구분
 let attendanceRateCache=null;
 let monthlyAttendanceCache={}; // {'YYYY-MM': [{name,gender,count}, ...]}
+let comboHistorySet={}; // {정렬된 id csv: true} - 오늘 이미 확정되어 같이 뛴 조합들
 let selectedStatsMonth=null; // 'YYYY-MM' - 처음엔 null이었다가 렌더 시점에 이번달로 채워짐
 // 아래 5개도 전부 같은 이유(자동로그인 시 renderAll()이 그 자리에서 바로 실행되며
 // 이 변수들을 참조하는 함수를 호출할 수 있음)로 아주 이른 시점에 선언해둔다.
@@ -520,7 +522,17 @@ function flashCourtCard(dropKey){
 function clearCourt(n, isNext){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
   const ref = isNext?NEXT_REF.child(n):COURT_REF.child(n);
+  // ⚠️ 해제 버튼으로 코트를 통째로 비울 때도, 개별로 뺄 때(일반 해제)와 마찬가지로
+  // 그 코트에 있던 사람들의 대기시간 기준 시각을 지금으로 리셋해줘야 한다. 예전엔 이 부분이
+  // 빠져있어서, 해제 버튼으로 나간 사람들의 "대기중" 시간이 실제 해제 시점이 아니라 예전
+  // 시각(출석 시각 등) 기준으로 계속 누적되어 표시되는 문제가 있었다.
+  const rec = isNext?nextMap[n]:courtMap[n];
+  const memberIds = rec ? SLOTS.map(k=>rec[k]).filter(Boolean) : [];
   ref.set({m1:null,m2:null,m3:null,m4:null,gen:Date.now()});
+  if(!isNext && memberIds.length){
+    const t=timeStr(), ts=nowTs();
+    memberIds.forEach(id=> ATTEND_REF.child(id).update({courtFreeAt:t, courtFreeTs:ts}) );
+  }
 }
 function removeOneFromCourt(memberId, n, isNext){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
@@ -618,6 +630,7 @@ function tryConfirm(n, isNext){
       // 내가(이 트랜잭션 시도가) 방금 막 확정을 만든 경우에만 게임수 반영
       const ids = v.confirm.ids.split(',').map(Number);
       ids.forEach(id=> GAMES_REF.child(id).transaction(g=>(g||0)+1) );
+      COMBO_HISTORY_REF.child(v.confirm.ids).set(true); // 오늘 이 4명이 같이 뛰었다는 걸 기록(추천팀 중복 방지용)
     }
   });
 }
@@ -683,6 +696,7 @@ function startSync(){
   });
   RESIMG_REF.on('value', snap=>{ reservationImageInfo = snap.val(); });
   GUEST_REF.on('value', snap=>{ guestRegistry = snap.val()||{}; renderAll(); });
+  COMBO_HISTORY_REF.on('value', snap=>{ comboHistorySet = snap.val()||{}; renderAll(); });
   setInterval(()=>{ checkAutoConfirm(); updateClock(); }, 1000);
 }
 function allReady(){ return Object.values(readyFlags).every(Boolean); }
@@ -1225,7 +1239,11 @@ function getWaitingIds(){
       for(let n=1;n<=4;n++){ if(courtMap[n] && isConfirmed(courtMap[n]) && courtMembers(courtMap[n]).includes(id)) return false; }
       return true;
     })
-    .sort((a,b)=>(attendMap[a].attendTs||0)-(attendMap[b].attendTs||0));
+    // 화면에 보여주는 "N분"(courtFreeTs 기준, 없으면 attendTs)과 똑같은 기준으로 정렬해서
+    // 대기시간이 긴 사람이 위로 오게 한다. attendTs로만 정렬하면, 게임을 막 끝내고 방금
+    // 자유로워진 사람이 "출석은 일찍 했다"는 이유로 대기시간 0분인데도 맨 위에 뜨는
+    // 불일치가 있었다.
+    .sort((a,b)=>(attendMap[a].courtFreeTs||attendMap[a].attendTs||0)-(attendMap[b].courtFreeTs||attendMap[b].attendTs||0));
 }
 // 완전히 자유로운(어디에도 배정 안 된) 사람만 - 추천팀의 1순위 후보
 function getFreeIds(){
@@ -1253,22 +1271,60 @@ function currentAssignmentOf(id){
   for(let n=1;n<=2;n++){ if(nextMap[n] && courtMembers(nextMap[n]).includes(id)) return {type:'next', n}; }
   return null;
 }
-function shuffleArr(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
-// 랜덤 뽑기도 완전 무작위는 아니고, 가장 오래 대기한 2명은 항상 포함시키고 나머지만 랜덤으로 채운다.
-// pool은 이미 대기시간순(오래된 순)으로 정렬되어 들어온다.
-function pickRandom(n, pool, requireFemale){
-  const guaranteedCount = Math.min(2, n, pool.length);
-  let guaranteed = pool.slice(0, guaranteedCount); // 대기순 앞쪽 = 가장 오래 기다린 사람들
-  let rest = pool.slice(guaranteedCount);
-  if(requireFemale && !guaranteed.some(id=>genderOf(id)==='f')){
-    const femaleInRest = rest.find(id=>genderOf(id)==='f');
-    if(femaleInRest){
-      guaranteed = guaranteed.slice(0,-1).concat(femaleInRest); // 마지막 한 자리를 여성으로 교체
-      rest = pool.filter(id=>!guaranteed.includes(id));
-    }
+function comboKey(ids){ return ids.slice().sort((a,b)=>a-b).join(','); }
+// 대기순으로 4명을 뽑되, 그 조합이 "오늘 이미 확정되어 같이 뛴 적 있는 조합"과 정확히 같으면
+// 그 안에서 출석시간이 가장 빠른 1명만 빼고 다음 대기순 후보로 교체한다(빠진 사람은 대기순이
+// 원래도 4등이었으니 다음 추천에선 자연스럽게 앞쪽에 서게 된다).
+function pickTeamAvoidingRepeat(pool, count){
+  let picked = pool.slice(0, count);
+  let poolIdx = count;
+  let attempts = 0;
+  while(picked.length===4 && comboHistorySet[comboKey(picked)] && poolIdx<pool.length && attempts<10){
+    let earliestIdx=0, earliestTs=Infinity;
+    picked.forEach((id,i)=>{
+      const ts = attendMap[id] ? (attendMap[id].attendTs||Infinity) : Infinity;
+      if(ts<earliestTs){ earliestTs=ts; earliestIdx=i; }
+    });
+    picked[earliestIdx]=pool[poolIdx];
+    poolIdx++;
+    attempts++;
   }
-  const fillCount = Math.max(0, n-guaranteed.length);
-  return [...guaranteed, ...shuffleArr(rest).slice(0,fillCount)];
+  return picked;
+}
+// 확정된 코트들을 "확정된 지 오래된 순"(=게임을 오래 하고 있어서 가장 먼저 끝날 것 같은 순)으로 반환한다.
+function getConfirmedCourtsByElapsed(){
+  const list=[];
+  [1,2,3,4].forEach(n=>{
+    const rec=courtMap[n];
+    if(rec && isConfirmed(rec)){
+      list.push({n, ids: courtMembers(rec), confirmedAt: (rec.confirm&&rec.confirm.confirmedAt)||0});
+    }
+  });
+  return list.sort((a,b)=>a.confirmedAt-b.confirmedAt); // 오래 전에 확정된(=오래 게임중인) 코트가 먼저
+}
+// 대기자가 4명이 안 될 때, 확정된(=게임중인) 코트에서 "가장 먼저 끝날 것 같은" 순서로 인원을
+// 빌려와서 채운다. 확정 시각이 서로 5분 이내인 코트들은 "거의 동시에 끝날 것"으로 보고 묶어서,
+// 그 안에서는 출석시간이 빠른 사람부터 채운다.
+function borrowFromConfirmedCourts(needed, genderFilter){
+  const courts=getConfirmedCourtsByElapsed();
+  if(!courts.length || needed<=0) return [];
+  const result=[]; const used=new Set();
+  let i=0;
+  while(i<courts.length && result.length<needed){
+    const baseTs=courts[i].confirmedAt;
+    const group=[]; let j=i;
+    while(j<courts.length && courts[j].confirmedAt-baseTs<=5*60*1000){ group.push(courts[j]); j++; }
+    let candidates=[];
+    group.forEach(c=>{ candidates.push(...c.ids); });
+    candidates=candidates.filter(id=>!used.has(id) && (!genderFilter || genderOf(id)===genderFilter));
+    candidates.sort((a,b)=>(attendMap[a]?(attendMap[a].attendTs||0):0)-(attendMap[b]?(attendMap[b].attendTs||0):0));
+    for(const id of candidates){
+      if(result.length>=needed) break;
+      result.push(id); used.add(id);
+    }
+    i=j;
+  }
+  return result;
 }
 function waitMinutesOf(id){
   const a=attendMap[id];
@@ -1276,66 +1332,63 @@ function waitMinutesOf(id){
 }
 function renderRecommendSection(){
   const waiting=getWaitingIds(); // 대기자 화면 표시용(자유인원 + 미확정 배정자 모두 포함)
-  const freeIds=getFreeIds(); // 추천 1순위: 완전히 자유로운 사람
-  const fallbackIds=getCourtAssignedUnconfirmedIds(); // 추천 2순위: 코트 배정(미확정)자
-  const confirmedFallbackIds=getConfirmedCourtIds(); // 추천 3순위(랜덤 전용, 최대 2명): 이미 확정되어 뛰고 있는 인원
+  const freeIds=getFreeIds(); // 추천은 완전히 자유로운 사람만 대상으로 한다
   const mPool=waiting.filter(id=>genderOf(id)==='m');
   const fPool=waiting.filter(id=>genderOf(id)==='f');
   const mFree=freeIds.filter(id=>genderOf(id)==='m');
   const fFree=freeIds.filter(id=>genderOf(id)==='f');
-  const mFallback=fallbackIds.filter(id=>genderOf(id)==='m');
-  const fFallback=fallbackIds.filter(id=>genderOf(id)==='f');
-  const mConfirmedFallback=confirmedFallbackIds.filter(id=>genderOf(id)==='m');
-  const fConfirmedFallback=confirmedFallbackIds.filter(id=>genderOf(id)==='f');
-  function team(kind,label,color,freePool,fallbackPool,confirmedPool,requireFemale){
-    const mode=recPickMode[kind]||'order';
-    let picked;
-    if(mode==='order'){
-      // 대기순: 오직 진짜 대기자만 넣는다 - 4명이 안 채워져도 그대로 둔다.
-      picked = freePool.slice(0,4);
-    } else {
-      // 랜덤: 대기자 우선 → 부족하면 코트 배정중(미확정) 인원 → 그래도 부족하면 이미 확정된
-      // (뛰고 있는) 인원을 최대 2명까지만 섞어서 4명을 채운다.
-      let pool = freePool.slice();
-      if(pool.length<4) pool = pool.concat(fallbackPool);
-      if(pool.length<4){
-        const need = Math.min(2, 4-pool.length);
-        pool = pool.concat(confirmedPool.filter(id=>!pool.includes(id)).slice(0, need));
-      }
-      picked = pickRandom(Math.min(4,pool.length), pool, requireFemale);
+  // 대기순으로 4명을 뽑고, 이름만 2명씩 2줄로 보여준 뒤 배정 버튼(1,2,3,4 한 줄 + 다1,다2 한 줄)을 놓는다.
+  // 대기자가 4명이 안 되면, 곧 끝날 것 같은 확정 코트에서 빌려와서라도 무조건 4명을 채운다.
+  function teamBlock(pool, genderFilter){
+    let picked = pickTeamAvoidingRepeat(pool, Math.min(4, pool.length));
+    let borrowedIds=[];
+    if(picked.length<4){
+      const need=4-picked.length;
+      borrowedIds = borrowFromConfirmedCourts(need, genderFilter||null).filter(id=>!picked.includes(id));
+      picked = picked.concat(borrowedIds);
     }
-    if(!picked.length) return '';
-    const usesAssigned = picked.some(id=>fallbackPool.includes(id) || confirmedPool.includes(id));
+    if(!picked.length) return '<div style="text-align:center;color:#B8B5AF;font-size:11px;padding:10px 0">없음</div>';
     const idsJson=JSON.stringify(picked);
-    const members=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">${picked.map(id=>{
-      const cur=currentAssignmentOf(id);
-      const tag = cur ? `<span style="color:#185FA5;font-size:9px;font-weight:700"> (${cur.type==='court'?cur.n+'코트':'다'+cur.n})</span>` : '';
-      return `<div style="display:flex;align-items:center;gap:5px;padding:6px 7px;background:#F5F4F1;border-radius:7px;overflow:hidden"><span style="flex:1;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nameOf(id)}${tag}</span><span style="font-size:9px;color:#888;flex-shrink:0">${waitMinutesOf(id)}분</span>${genderChip(genderOf(id))}</div>`;
+    const namesHtml=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:5px">${picked.map(id=>{
+      const isBorrowed = borrowedIds.includes(id);
+      return `<div style="text-align:center;padding:5px 2px;background:#F5F4F1;border-radius:6px;font-size:12px;font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:${isBorrowed?'#D9720C':'inherit'}">${nameOf(id)}</div>`;
     }).join('')}</div>`;
-    // 이 팀에 이미 코트 배정된(미확정) 인원이 섞여있으면, 동시에 두 코트에 배정되는 사고를
-    // 막기 위해 1~4코트 즉시배정은 아예 숨기고 "다음차례" 예약만 가능하게 한다.
-    const assignedNotice = usesAssigned ? '<div style="font-size:10px;color:#B25000;margin-bottom:4px">※ 코트 배정중인 인원 포함 - 다음차례로만 예약 가능</div>' : '';
-    const courtBtns = usesAssigned ? '' : [1,2,3,4].filter(cn=>courtActive[cn]).map(cn=>{
-      const full = courtMembers(courtMap[cn]).length>=CMAX;
+    // 빌려온(=지금 다른 코트에서 게임중인) 인원이 섞여 있으면, 동시에 두 코트에 배정되는 사고를
+    // 막기 위해 1~4코트 즉시배정은 숨기고 "다음차례" 예약만 가능하게 한다.
+    const hasBorrowed = borrowedIds.length>0;
+    const borrowedNotice = hasBorrowed ? '<div style="font-size:9px;color:#B25000;margin-bottom:3px;text-align:center">게임중인 인원 포함 · 다음차례만 가능</div>' : '';
+    const courtBtns = hasBorrowed ? '' : [1,2,3,4].filter(cn=>courtActive[cn]).map(cn=>{
+      const full=courtMembers(courtMap[cn]).length>=CMAX;
       return full
-        ? `<button class="btn btn-gray" style="flex:1;padding:6px 2px;opacity:.5" disabled>${cn}코트</button>`
-        : `<button class="btn btn-court" style="flex:1;padding:6px 2px" onclick="checkAndAssignTeam(${idsJson},${cn},false)">${cn}코트</button>`;
+        ? `<button class="btn btn-gray" style="flex:1;padding:5px 1px;font-size:11px;opacity:.5" disabled>${cn}</button>`
+        : `<button class="btn btn-court" style="flex:1;padding:5px 1px;font-size:11px" onclick="checkAndAssignTeam(${idsJson},${cn},false)">${cn}</button>`;
     }).join('');
-    const nextBtns=[1,2].map(nn=>`<button class="btn btn-primary" style="flex:1;padding:6px 2px" onclick="checkAndAssignTeam(${idsJson},${nn},true)">다음차례${nn}</button>`).join('');
-    return `<div class="card"><div class="card-bd">
-      <div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:800;color:${color};flex:1">${label}</span>
-        <button onclick="setRecPickMode('${kind}','order')" style="padding:3px 8px;border-radius:6px;border:1px solid ${mode==='order'?color:'#D8D5CF'};background:${mode==='order'?color:'#fff'};color:${mode==='order'?'#fff':'#999'};font-size:10px;font-weight:700;margin-right:4px">대기순</button>
-        <button onclick="setRecPickMode('${kind}','random')" style="padding:3px 8px;border-radius:6px;border:1px solid ${mode==='random'?color:'#D8D5CF'};background:${mode==='random'?color:'#fff'};color:${mode==='random'?'#fff':'#999'};font-size:10px;font-weight:700">랜덤</button>
-      </div>
-      ${members}
-      ${assignedNotice}
-      <div style="display:flex;gap:3px">${courtBtns}${nextBtns}</div>
-    </div></div>`;
+    const nextBtns=[1,2].map(nn=>{
+      const full = courtMembers(nextMap[nn]).length>=CMAX;
+      if(full) return `<button class="btn btn-gray" style="flex:1;padding:5px 1px;font-size:11px;opacity:.5" disabled>다${nn}</button>`;
+      const action = hasBorrowed ? `assignRecommendedTeamToNext(${idsJson},${nn})` : `checkAndAssignTeam(${idsJson},${nn},true)`;
+      return `<button class="btn btn-primary" style="flex:1;padding:5px 1px;font-size:11px" onclick="${action}">다${nn}</button>`;
+    }).join('');
+    return `${namesHtml}
+      ${borrowedNotice}
+      ${courtBtns?`<div style="display:flex;gap:2px;margin-bottom:2px">${courtBtns}</div>`:''}
+      <div style="display:flex;gap:2px">${nextBtns}</div>`;
   }
-  let h='<div class="stitle">📌 다음 게임 추천</div>';
-  h+=team('male','👨 추천 - 남자','#185FA5',mFree,mFallback,mConfirmedFallback,false);
-  h+=team('female','👩 추천 - 여자','#993556',fFree,fFallback,fConfirmedFallback,false);
-  h+=team('mixed','👫 추천 - 혼성','#7B3FA0',freeIds,fallbackIds,confirmedFallbackIds,true);
+  let h='<div class="stitle">다음 게임 추천</div>';
+  h+=`<div style="display:flex;gap:5px;padding:0 11px 10px">
+    <div style="flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;padding:7px;min-width:0">
+      <div style="text-align:center;font-size:12px;font-weight:800;color:#185FA5;margin-bottom:5px">남</div>
+      ${teamBlock(mFree,'m')}
+    </div>
+    <div style="flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;padding:7px;min-width:0">
+      <div style="text-align:center;font-size:12px;font-weight:800;color:#993556;margin-bottom:5px">여</div>
+      ${teamBlock(fFree,'f')}
+    </div>
+    <div style="flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;padding:7px;min-width:0">
+      <div style="text-align:center;font-size:12px;font-weight:800;color:#7B3FA0;margin-bottom:5px">혼성</div>
+      ${teamBlock(freeIds,null)}
+    </div>
+  </div>`;
   h+='<div class="stitle">⏳ 대기자 <span style="font-size:10px;color:#888;font-weight:400">· 버튼을 누르면 바로 배정됩니다</span></div><div class="wait-wrap">';
   h+=`<div class="wait-col"><div class="wait-hd m">남자 (${mPool.length})</div><div class="wait-body">${mPool.map(id=>waitItemHtml(id)).join('')||'<div style="text-align:center;color:#B8B5AF;padding:10px 0">없음</div>'}</div></div>`;
   h+=`<div class="wait-col"><div class="wait-hd f">여자 (${fPool.length})</div><div class="wait-body">${fPool.map(id=>waitItemHtml(id)).join('')||'<div style="text-align:center;color:#B8B5AF;padding:10px 0">없음</div>'}</div></div>`;
@@ -1413,6 +1466,24 @@ function checkAndAssignTeam(ids, n, isNext){
     return;
   }
   assignTeamToCourt(ids, n, isNext);
+}
+// 추천팀 중 "지금 확정된 코트에서 게임중인" 인원이 섞여있을 때 다음차례로 예약하는 전용 함수.
+// 게임중인 사람은 reserveNextFromGame으로(지금 코트에서 절대 빼지 않음), 자유로운 사람은
+// 기존 방식(assignToCourt)으로 각각 알맞게 처리한다.
+function assignRecommendedTeamToNext(ids, n){
+  let i=0;
+  function next(){
+    if(i>=ids.length) return;
+    const id=ids[i++];
+    const cur=currentAssignmentOf(id);
+    if(cur && cur.type==='court' && isConfirmed(courtMap[cur.n])){
+      reserveNextFromGame(id, n);
+    } else {
+      assignToCourt(id, n, true);
+    }
+    setTimeout(next, 120);
+  }
+  next();
 }
 
 /* ── 탭3: 통계 (오늘자 게임수 순위만 - 과거 이력은 새 구조 시작이라 없음) ── */
