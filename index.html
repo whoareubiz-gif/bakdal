@@ -650,6 +650,20 @@ function confirmNextCourt(n){
   const rec = nextMap[n];
   const ids = courtMembers(rec);
   if(ids.length!==CMAX){ toast('4명이 채워져야 확정할 수 있습니다'); return; }
+  // ⚠️ 이 4명 중, "게임중 → 다음차례 예약"으로 들어와서 지금 다른 코트에서 아직 확정되어
+  // 뛰고 있는 사람이 있을 수 있다(그 기능은 일부러 지금 코트를 안 건드리고 다음차례에만
+  // 추가하는 구조라서). 이 상태로 그냥 확정해버리면, 그 사람을 빈 코트로 옮기는 과정에서
+  // 지금 뛰고 있는 원래 코트에서 강제로 빠져나오게 되어 그 코트의 확정이 깨져버린다.
+  // 그래서 아직 게임 중인 사람이 1명이라도 있으면, 그 게임이 끝날 때까지 확정 자체를 막는다.
+  const stillPlaying = ids.filter(id=>{
+    const cur=currentAssignmentOf(id);
+    return cur && cur.type==='court' && isConfirmed(courtMap[cur.n]);
+  });
+  if(stillPlaying.length){
+    const names = stillPlaying.map(id=>`${nameOf(id)}(${currentAssignmentOf(id).n}코트)`).join(', ');
+    openModal(`⚠️ 다음 인원이 아직 다른 코트에서 게임 중이라 확정할 수 없습니다.\n${names}\n\n해당 게임이 끝난 뒤 다시 시도해주세요.`, null, '확인');
+    return;
+  }
   const emptyCourt = [1,2,3,4].find(cn=>courtActive[cn] && courtMembers(courtMap[cn]).length===0);
   if(!emptyCourt){
     openModal('⚠️ 배정 가능한 빈 코트가 없습니다.\n코트가 빌 때까지 기다려주세요.', null, '확인');
