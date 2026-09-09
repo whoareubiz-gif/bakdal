@@ -416,9 +416,16 @@ function leaveAllAttendees(){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
   const ids=Object.keys(attendMap).map(Number);
   if(!ids.length){ toast('현재 출석중인 인원이 없습니다'); return; }
-  openModal(`⚠️ 현재 출석중인 ${ids.length}명을 전원 퇴소 처리하시겠습니까?`, ()=>{
-    ids.forEach(id=>doLeave(id));
-    toast(`✅ 전체 퇴소 처리 완료 (${ids.length}명)`);
+  openModal(`⚠️ 현재 출석중인 ${ids.length}명을 전원 퇴소 처리하고, 오늘 데이터를 초기화하시겠습니까?\n(통계 이력은 보관됩니다)`, ()=>{
+    archiveTodayStats(); // 지금 상태(출석중 인원 + 기존 퇴소자) 그대로 통계 이력에 보관
+    ATTEND_REF.set(null);
+    COURT_REF.set(null);
+    NEXT_REF.set(null);
+    GAMES_REF.set(null);
+    LEFT_REF.set(null);
+    GUEST_REF.set(null);
+    META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
+    toast(`✅ 전체 퇴소 + 초기화 완료 (${ids.length}명)`);
   });
 }
 function toggleLeavingScheduled(memberId){
@@ -706,20 +713,6 @@ function archiveTodayStats(){
     };
   });
   if(Object.keys(combined).length) HISTORY_REF.child(todayDate || dateStr()).set(combined);
-}
-function adminResetToday(){
-  if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
-  openModal('⚠️ 오늘 데이터를 전부 지우고 새로 시작하시겠습니까?\n(출석/코트배정/게임수/퇴소기록이 모두 삭제됩니다. 통계 이력은 보관됩니다)', ()=>{
-    archiveTodayStats();
-    ATTEND_REF.set(null);
-    COURT_REF.set(null);
-    NEXT_REF.set(null);
-    GAMES_REF.set(null);
-    LEFT_REF.set(null);
-    GUEST_REF.set(null);
-    META_REF.update({date: dateStr(), courtActive:{1:true,2:true,3:true,4:true}});
-    toast('✅ 초기화 완료');
-  });
 }
 function toggleCourtActive(n){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
@@ -1574,8 +1567,7 @@ function renderAdminPage(){
     <button class="btn btn-primary" style="width:100%" onclick="changeAdminPin()">변경</button></div></div>`;
 
   h+='<div class="stitle">⚠️ 위험 작업</div><div class="card"><div class="card-bd">';
-  h+=`<button class="btn btn-red" style="width:100%;margin-bottom:8px" onclick="leaveAllAttendees()">전체 퇴소</button>
-    <button class="btn btn-red" style="width:100%" onclick="adminResetToday()">오늘 데이터 초기화</button></div></div>`;
+  h+=`<button class="btn btn-red" style="width:100%" onclick="leaveAllAttendees()">전체 퇴소 (퇴소 + 오늘 데이터 초기화)</button></div></div>`;
   return h;
 }
 function changeAdminPin(){
