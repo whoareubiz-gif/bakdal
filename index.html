@@ -529,14 +529,14 @@ function flashCourtCard(dropKey){
 function clearCourt(n, isNext){
   if(appMode!=='admin'){ toast('관리 모드에서만 가능합니다'); return; }
   const ref = isNext?NEXT_REF.child(n):COURT_REF.child(n);
-  // ⚠️ 해제 버튼으로 코트를 통째로 비울 때도, 개별로 뺄 때(일반 해제)와 마찬가지로
-  // 그 코트에 있던 사람들의 대기시간 기준 시각을 지금으로 리셋해줘야 한다. 예전엔 이 부분이
-  // 빠져있어서, 해제 버튼으로 나간 사람들의 "대기중" 시간이 실제 해제 시점이 아니라 예전
-  // 시각(출석 시각 등) 기준으로 계속 누적되어 표시되는 문제가 있었다.
+  // 대기시간 리셋은 "실제로 게임을 한 뒤 해제하는 경우"에만 해야 한다. 확정도 안 됐는데
+  // (배정만 해놓고 게임을 안 한 상태에서) 해제하면, 그 사람은 실제로는 계속 대기하고 있던
+  // 것이므로 대기시간을 0으로 되돌리면 안 된다 - 이 부분이 예전에 빠져있었다.
   const rec = isNext?nextMap[n]:courtMap[n];
+  const wasConfirmed = !isNext && isConfirmed(rec);
   const memberIds = rec ? SLOTS.map(k=>rec[k]).filter(Boolean) : [];
   ref.set({m1:null,m2:null,m3:null,m4:null,gen:Date.now()});
-  if(!isNext && memberIds.length){
+  if(wasConfirmed && memberIds.length){
     const t=timeStr(), ts=nowTs();
     memberIds.forEach(id=> ATTEND_REF.child(id).update({courtFreeAt:t, courtFreeTs:ts}) );
   }
