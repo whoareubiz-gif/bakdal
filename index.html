@@ -773,6 +773,9 @@ function startSync(){
   GUEST_REF.on('value', snap=>{ guestRegistry = snap.val()||{}; renderAll(); });
   COMBO_HISTORY_REF.on('value', snap=>{ comboHistorySet = snap.val()||{}; renderAll(); });
   setInterval(()=>{ checkAutoConfirm(); updateClock(); }, 1000);
+  // 코트 카드의 "확정 경과시간" 표시는 데이터가 바뀔 때만 다시 그려지는데, 아무 변화 없이
+  // 시간만 흘러도 문구가 갱신되도록 30초마다 한 번씩 다시 그려준다.
+  setInterval(()=>{ if(curTab===2) renderAll(); }, 30000);
 }
 function allReady(){ return Object.values(readyFlags).every(Boolean); }
 function checkDateRollover(){
@@ -1266,10 +1269,16 @@ function buildCourtCard(n, isNext){
     ? `<button class="ct-hd-btn ct-hd-btn-confirm" onclick="${isNext?`confirmNextCourt(${n})`:`tryConfirm(${n},false)`}">확정</button>`
     : '';
   const releaseBtn = appMode==='admin' ? `<button class="ct-hd-btn ct-hd-btn-release" onclick="clearCourt(${n},${isNext})">해제</button>` : '';
+  // 확정된 코트는 "언제 확정됐는지"뿐 아니라 "확정된 지 얼마나 지났는지"도 같이 보여준다.
+  let ctStr='';
+  if(!isNext && conf && rec.confirm && rec.confirm.confirmedAt){
+    const em=Math.max(0,Math.floor((Date.now()-rec.confirm.confirmedAt)/60000));
+    ctStr = em>=60 ? ` ${Math.floor(em/60)}시간${em%60>0?em%60+'분':''}` : ` ${em}분`;
+  }
   const dropKey = isNext?'n'+n:n;
   const isFlashing = courtFlashUntil[dropKey] && courtFlashUntil[dropKey] > Date.now();
   return `<div class="ct-card${isFlashing?' assign-flash':''}" data-drop="${dropKey}">
-    <div class="ct-hd ${stCls}"><span class="ct-name">${label}</span>${confirmBtn}${releaseBtn}</div>
+    <div class="ct-hd ${stCls}"><span class="ct-name">${label}${ctStr?`<span style="font-size:11px;font-weight:700;opacity:.85;margin-left:6px">${ctStr}</span>`:''}</span>${confirmBtn}${releaseBtn}</div>
     <div class="ct-bd">${slotsHtml}</div>
   </div>`;
 }

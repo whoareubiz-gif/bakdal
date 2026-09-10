@@ -775,16 +775,18 @@ function renderBoard(){
   const el=document.getElementById('board-content');
   if(!el) return;
 
-  function bigSlot(a, conf){
+  function bigSlot(a, conf, id){
     const nameTc = conf ? (a.gender==='m'?'#0A2E6E':'#6B1A35') : '#1A1A1A';
     const slotBg = conf
       ? (curTheme===0 ? 'rgba(255,245,235,0.95)' : 'rgba(255,255,255,0.92)')
       : (curTheme===0 ? 'rgba(255,245,235,0.6)' : 'rgba(255,255,255,0.5)');
     const genderBg = conf ? (a.gender==='m' ? '#E6F1FB' : '#FBEAF0') : 'rgba(0,0,0,0.1)';
     const genderTc = conf ? (a.gender==='m' ? '#185FA5' : '#993556') : '#1A1A1A';
-    return`<div style="background:${slotBg};border-radius:1vw;padding:0.4vw 1.0vw;margin-bottom:0.3vw;display:flex;align-items:center;gap:1vw;">
+    const games = (id!=null && gamesMap[id]!=null) ? gamesMap[id] : 0;
+    return`<div style="background:${slotBg};border-radius:1vw;padding:0.4vw 1.0vw;margin-bottom:0.3vw;display:flex;align-items:center;gap:0.6vw;">
       <span style="font-size:3.0vw;font-weight:900;color:${nameTc};letter-spacing:-0.02em">${a.name}${guestTagBoard(a)}</span>
-      <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw">${a.gender==='m'?'남':'여'}</span>
+      <span style="font-size:1.3vw;font-weight:700;color:${genderTc};background:${genderBg};padding:0.2vw 0.7vw;border-radius:0.5vw;white-space:nowrap;flex-shrink:0">${a.gender==='m'?'남':'여'}</span>
+      <span style="font-size:1.3vw;font-weight:700;color:#1A1A1A;white-space:nowrap;flex-shrink:0">${games}게임</span>
     </div>`;
   }
   function emptySlot(conf){
@@ -817,7 +819,7 @@ function renderBoard(){
       }
       body=`<div style="display:flex;gap:0.5vw;align-items:stretch">${slots.join('')}</div>`;
     } else {
-      ids.forEach(id=>{ body+=bigSlot(attendMap[id]||{name:nameOf(id),gender:genderOf(id)}, conf); });
+      ids.forEach(id=>{ body+=bigSlot(attendMap[id]||{name:nameOf(id),gender:genderOf(id)}, conf, id); });
       for(let i=cnt;i<CMAX;i++) body+=emptySlot(conf);
     }
     const badgeStyle='padding:0.3vw 0.8vw;border-radius:1.5vw;font-size:1.3vw;font-weight:900;white-space:nowrap;letter-spacing:-0.01em';
@@ -851,8 +853,8 @@ function renderBoard(){
     return`<div style="background:${cardBg};border-radius:1.4vw;padding:${isNext?'0.6vw 1.5vw':'1.2vw 1.5vw'};min-width:0;box-sizing:border-box;box-shadow:0 0.4vw 1.4vw rgba(0,0,0,.18)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1vw;flex-wrap:wrap;gap:0.4vw">
         <div style="display:flex;align-items:center;gap:0.6vw;flex-wrap:wrap">
-          ${gameEndBtn}
           <span ${isNext?'':`onclick="toggleCourtActive(${n})"`} style="color:#fff;font-size:2.4vw;font-weight:900;text-shadow:0 2px 6px rgba(0,0,0,.5);letter-spacing:-0.02em${isNext?'':';cursor:pointer;text-decoration:underline'}">${isNext?('다음차례'+n):CNAME(n)}</span>
+          ${gameEndBtn}
           ${nextFormBtns}
         </div>
         ${statusBadge}
@@ -912,6 +914,9 @@ function updateBoardClock(){
 }
 setInterval(updateBoardClock,1000);
 updateBoardClock();
+// 코트 카드의 "확정N분" 표시는 데이터가 바뀔 때만 다시 그려지는 renderBoard()로 계산되는데,
+// 아무 데이터 변화 없이 시간만 흘러도 그 문구가 갱신되도록 30초마다 한 번씩 다시 그려준다.
+setInterval(()=>{ if(typeof renderBoard==='function') renderBoard(); }, 30000);
 
 /* ══════════════════════════════════════════════════════════════════════════
    시작 - 로그인 없이 바로 보드 모드로 들어간다. 크롬은 사용자 인터랙션 없이는
