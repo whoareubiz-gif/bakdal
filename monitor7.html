@@ -832,7 +832,7 @@ function renderBoard(){
       : conf
         ? `<span style="background:rgba(255,255,255,.3);color:#fff;${badgeStyle}">확정${ctStr}</span>`
         : cnt>=CMAX
-          ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">미확정(대기)</span>`
+          ? `<span style="background:rgba(0,0,0,.2);color:#fff;${badgeStyle}">미확정</span>`
           : `<span style="background:rgba(0,0,0,.15);color:rgba(255,255,255,.9);${badgeStyle};font-weight:800">${cnt}/${CMAX}명 대기</span>`;
     // "게임끝" 버튼: index3.html의 코트 카드 "해제" 버튼과 동일 - 회원이 직접 눌러서 게임을
     // 끝낼 수 있게 한다. 인원이 있는 코트에만 노출한다.
