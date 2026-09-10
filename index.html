@@ -98,14 +98,14 @@ button,input,select{font-family:inherit;}
 .wait-assign-btn-disabled{background:#EDECE8!important;color:#C4C1BA!important;border-color:#E5E3DE!important;cursor:not-allowed;}
 .wait-time{font-size:10px;color:#888;font-weight:600;}
 /* 회원명부 / 참석자 리스트 */
-.member-row{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid #F0EFEA;}
+.member-row{display:flex;align-items:center;gap:4px;padding:6px 5px;border-bottom:1px solid #F0EFEA;}
 .member-row .nm{flex:1;font-size:14px;font-weight:700;}
 .attend-btn{padding:5px 14px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;}
 .attend-btn.on{background:#E1F5EE;color:#0F6E56;}
 .attend-btn.off{background:#F0EDE8;color:#888;}
 .attend-btn.left{background:#FBE9E7;color:#C0392B;}
 /* 남/여 두 컬럼(좌남/우여) 레이아웃 */
-.gender-cols{display:flex;gap:6px;padding:0 11px;}
+.gender-cols{display:flex;gap:4px;padding:0 6px;}
 .gender-col{flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;overflow:hidden;}
 .gender-col-hd{padding:7px;text-align:center;font-size:12px;font-weight:800;color:#fff;}
 .gender-col-hd.m{background:#185FA5;}
@@ -1205,7 +1205,7 @@ function renderTodayPage(){
       <span class="nm" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}${guestTag(a)}${a.leavingScheduled?'<span style="color:#C0392B;font-weight:900"> *</span>':''}</span>
       <span style="font-size:13px;color:#555;font-weight:600;white-space:nowrap;flex-shrink:0">${a.time}</span>
       <span style="font-size:11px;font-weight:800;color:#1D9E75;white-space:nowrap;flex-shrink:0">${games}게임</span>
-      ${appMode==='admin'?`<button class="btn btn-red" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="doLeave(${id})">퇴소</button>`:''}
+      ${appMode==='admin'?`<button class="btn btn-red" style="padding:4px 6px;font-size:10px;flex-shrink:0" onclick="doLeave(${id})">퇴소</button>`:''}
     </div>`;
   }
   let h=`<div class="stitle">📋 출석중 (${ids.length}명)</div>`;
