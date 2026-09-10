@@ -103,6 +103,7 @@ button,input,select{font-family:inherit;}
 .attend-btn{padding:5px 14px;border-radius:8px;border:none;font-size:12px;font-weight:700;cursor:pointer;}
 .attend-btn.on{background:#E1F5EE;color:#0F6E56;}
 .attend-btn.off{background:#F0EDE8;color:#888;}
+.attend-btn.left{background:#FBE9E7;color:#C0392B;}
 /* 남/여 두 컬럼(좌남/우여) 레이아웃 */
 .gender-cols{display:flex;gap:6px;padding:0 11px;}
 .gender-col{flex:1;background:#fff;border:1px solid #E0DFDB;border-radius:10px;overflow:hidden;}
@@ -1175,8 +1176,14 @@ function renderMemberListPage(){
   const fList=list.filter(m=>m.gender==='f');
   function rowHtml(m){
     const isOn=!!attendMap[m.id];
+    // 오늘 이미 퇴소한 기록이 있으면(그리고 지금 다시 출석 중이 아니면) "퇴소"로 표시한다.
+    const hasLeftToday = !isOn && leftList.some(x=>x.id===m.id);
+    let label, cls, onclick;
+    if(isOn){ label='출석중'; cls='on'; onclick=`doLeave(${m.id})`; }
+    else if(hasLeftToday){ label='퇴소'; cls='left'; onclick=`doAttend(${m.id})`; }
+    else { label='출석'; cls='off'; onclick=`doAttend(${m.id})`; }
     return `<div class="member-row"><span class="nm">${m.name}</span>
-      <button class="attend-btn ${isOn?'on':'off'}" onclick="${isOn?`doLeave(${m.id})`:`doAttend(${m.id})`}">${isOn?'출석중':'출석'}</button></div>`;
+      <button class="attend-btn ${cls}" onclick="${onclick}">${label}</button></div>`;
   }
   let h=`<div class="gender-cols">
     <div class="gender-col"><div class="gender-col-hd m">남 (${mList.length})</div><div class="gender-col-body">${mList.map(rowHtml).join('')||'<div style="text-align:center;color:#999;padding:16px 0">없음</div>'}</div></div>
@@ -1192,11 +1199,13 @@ function renderTodayPage(){
   const fIds=ids.filter(id=>attendMap[id].gender==='f');
   function attRow(id){
     const a=attendMap[id]; const games=gamesMap[id]||0;
-    return `<div class="member-row" style="flex-wrap:wrap;row-gap:2px">
-      <span class="nm" style="flex:1 1 auto;min-width:0">${a.name}${guestTag(a)}${a.leavingScheduled?'<span style="color:#C0392B;font-weight:900"> *</span>':''}</span>
-      <span style="font-size:13px;color:#555;font-weight:600;white-space:nowrap">${a.time}</span>
-      <span style="font-size:11px;font-weight:800;color:#1D9E75;white-space:nowrap">${games}게임</span>
-      ${appMode==='admin'?`<button class="btn btn-red" style="padding:4px 8px;font-size:10px" onclick="doLeave(${id})">퇴소</button>`:''}
+    // 게스트 뱃지("게")가 붙으면 폭이 넓어져서 줄바꿈되던 문제 - 무조건 한 줄에 다 들어가게
+    // 하고, 자리가 모자라면 이름 쪽만 말줄임(...)으로 줄어들게 한다.
+    return `<div class="member-row" style="flex-wrap:nowrap">
+      <span class="nm" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}${guestTag(a)}${a.leavingScheduled?'<span style="color:#C0392B;font-weight:900"> *</span>':''}</span>
+      <span style="font-size:13px;color:#555;font-weight:600;white-space:nowrap;flex-shrink:0">${a.time}</span>
+      <span style="font-size:11px;font-weight:800;color:#1D9E75;white-space:nowrap;flex-shrink:0">${games}게임</span>
+      ${appMode==='admin'?`<button class="btn btn-red" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="doLeave(${id})">퇴소</button>`:''}
     </div>`;
   }
   let h=`<div class="stitle">📋 출석중 (${ids.length}명)</div>`;
@@ -1209,10 +1218,10 @@ function renderTodayPage(){
     const mLeft=sortedLeft.filter(a=>a.gender==='m');
     const fLeft=sortedLeft.filter(a=>a.gender==='f');
     function leftRow(a){
-      return `<div class="member-row" style="opacity:.75;flex-wrap:wrap;row-gap:2px">
-        <span class="nm" style="flex:1 1 auto;min-width:0">${a.name}${guestTag(a)}</span>
-        <span style="font-size:11.5px;color:#555;font-weight:600;white-space:nowrap">${a.time}→${a.leftAt}</span>
-        <span style="font-size:11px;font-weight:800;color:#666;white-space:nowrap">${a.games||0}게임</span>
+      return `<div class="member-row" style="opacity:.75;flex-wrap:nowrap">
+        <span class="nm" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}${guestTag(a)}</span>
+        <span style="font-size:11.5px;color:#555;font-weight:600;white-space:nowrap;flex-shrink:0">${a.time}→${a.leftAt}</span>
+        <span style="font-size:11px;font-weight:800;color:#666;white-space:nowrap;flex-shrink:0">${a.games||0}게임</span>
       </div>`;
     }
     h+=`<div class="stitle">🚪 퇴소자 (${leftList.length}명)</div>`;
@@ -1259,7 +1268,7 @@ function buildCourtCard(n, isNext){
   if(!isNext && conf) stCls='st-confirmed'; else if(full && !isNext) stCls='st-pending';
   let slotsHtml='';
   ids.forEach(id=>{
-    slotsHtml+=`<div class="ct-slot" onclick="${appMode==='admin'?`removeOneFromCourt(${id},${n},${isNext})`:''}"><span style="flex:1">${nameOf(id)}${genderOf(id)==='f'?'':''}</span>${genderChip(genderOf(id))}</div>`;
+    slotsHtml+=`<div class="ct-slot" onclick="${appMode==='admin'?`removeOneFromCourt(${id},${n},${isNext})`:''}"><span style="flex:1">${nameOf(id)}${guestTag(attendMap[id]||{})}</span>${genderChip(genderOf(id))}</div>`;
   });
   for(let i=cnt;i<CMAX;i++) slotsHtml+='<div class="ct-empty">— 빈자리 —</div>';
   // 다음차례1,2는 "확정"의 의미가 다르다: 게임을 시작하는 게 아니라 4명이 다 차면
