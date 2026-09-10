@@ -873,8 +873,8 @@ function renderBoard(){
   const leftIds = new Set(leftList.map(a=>a.id));
 
   const vw = window.innerWidth;
-  const qFs = vw >= 1200 ? '1.25vw' : vw >= 600 ? '1.95vw' : '2.7vw';
-  const qPad = vw >= 1200 ? '2px 5px' : vw >= 600 ? '2px 4px' : '2px 3px';
+  const qFs = vw >= 1200 ? '1.45vw' : vw >= 600 ? '2.2vw' : '3.1vw';
+  const qPad = vw >= 1200 ? '3px 5px' : vw >= 600 ? '3px 4px' : '3px 3px';
 
   function quickBtn(m, fs){
     const isIn = attendIds.has(m.id);
@@ -883,18 +883,18 @@ function renderBoard(){
     const bg = isIn ? _qt.inBg : isLeft ? _qt.leftBg : _qt.nonBg;
     const tc = isIn ? _qt.inTc : isLeft ? _qt.leftTc : _qt.nonTc;
     const onclick = isIn ? `doLeave(${m.id})` : `doAttend(${m.id})`;
-    return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:${qPad};margin:1px;cursor:pointer;flex-shrink:0;border:1px solid rgba(0,0,0,.08)" onclick="${onclick}">
+    return `<div style="display:inline-flex;align-items:center;background:${bg};border-radius:4px;padding:${qPad};margin:3px 2px;cursor:pointer;flex-shrink:0;border:1px solid rgba(0,0,0,.08)" onclick="${onclick}">
       <span style="font-size:${fs};font-weight:700;color:${tc};white-space:nowrap">${m.name}</span>
     </div>`;
   }
 
   h+=`<div style="background:${THEMES[curTheme].panelBg};border-radius:1vw;padding:0.3vw 0.7vw;margin-bottom:${gap}">
     <div style="display:flex;align-items:flex-start;gap:0;margin-bottom:1px">
-      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].femaleTc};margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">여</span>
+      <span style="font-size:${vw>=1200?'1.1vw':vw>=600?'1.5vw':'2.2vw'};font-weight:800;color:${THEMES[curTheme].femaleTc};margin-right:4px;flex-shrink:0;white-space:nowrap;padding-top:3px">여</span>
       <div style="display:flex;flex-wrap:wrap;gap:0;flex:1">${femaleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
     </div>
     <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
-      <span style="font-size:${vw>=1200?'0.85vw':vw>=600?'1.2vw':'1.8vw'};font-weight:800;color:${THEMES[curTheme].maleTc};margin-right:4px;flex-shrink:0;white-space:nowrap">남</span>
+      <span style="font-size:${vw>=1200?'1.1vw':vw>=600?'1.5vw':'2.2vw'};font-weight:800;color:${THEMES[curTheme].maleTc};margin-right:4px;flex-shrink:0;white-space:nowrap">남</span>
       <div style="display:flex;flex-wrap:wrap;gap:0;flex:1">${maleMembers.map(m=>quickBtn(m,qFs)).join('')}</div>
     </div>
   </div>`;
